@@ -67,4 +67,12 @@ Before temporary hypotheses are permanently transferred to long-term memory, the
 
 * **Test Corpus:** Wikipedia category "Computer" (fully pre-parsed).
 * **Safety Mode:** During the ongoing calibration of phases 6 and 7, permanent write operations at the database level (`fact_promotion`, `direct_fact_writes`, `direct_relation_writes`) are explicitly set to **`disabled`**.
-* **Objective:** Learning currently takes place exclusively within the transient metaplasticity states in RAM to mathematically verify system stability and ensure the error-free convergence of all homeostatic control loops over hundreds of test cycles.
+* **Objective:** Learning currently takes place exclusively within the transient metaplasticity states in RAM to mathematically verify system stability and ensure the error-free convergence of all homeostatic control loops over hundreds of test cycles.*
+
+
+## Development Notes & Technical Context
+
+* **Codebase Language:** Please note that while the documentation is in English, the source code itself, including comments and internal naming conventions, is **written in German**.
+* **AI-Assisted Engineering:** This architecture is developed and refined with the collaborative assistance of advanced language models, utilizing **Claude 3.5/4 Opus, ChatGPT 5.5, and Gemini**.
+* **Project Scale & Status:** This repository represents a massive, highly experimental testing system. Due to its scale and the ongoing calibration of complex homeostatic loops, the architecture **has not yet been consolidated**. It is currently a playground for heavy benchmarking and mathematical verification of neuromorphic concepts.
+
