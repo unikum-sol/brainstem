@@ -136,8 +136,6 @@ python main.py --gui
 | 2 | **Import & Jobs → ZIM Einlesen** | Stage 1 — pre-parse & import the corpus into the chunk store (run once). |
 | 3 | **Import & Jobs → Autonom dauerhaft starten** | Stage 2 — start the autonomous learning loop; each GUI cycle runs several internal chain passes. |
 | 4 | **Import & Jobs → Autonom stoppen** | Stop the loop cleanly. |
-| 5 | **Button Lernen/Relationen/Ontologie** is dangerous and can damage the Database |
-| 6 | **GUI** Neurotransmitter data display not paired and not complete |
 
 > **Note on the GUI:** This is an experimental testing interface. Currently **only the `Import & Jobs` and `Export/Konfig` tabs are functional** — all other tabs are placeholders without real functionality yet.
 >
