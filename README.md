@@ -2,6 +2,14 @@
 
 > A biologically-inspired, neuro-symbolic cognitive architecture for lifelong learning.  
 > Digital **neuromodulators** regulate learning, hypothesis tracking, and memory consolidation over an SQLite backend.
+>An autonomous, biologically inspired AI system designed to understand the underlying mechanics, structures, and rules of language and text—rather than just memorizing facts.
+>
+>## The Core Philosophy
+>Traditional AI models and semantic databases often focus on memorizing and reproducing content (the "what"). **Brainstem takes a fundamentally different approach (the "how").**
+>The system treats incoming data (such as massive text corpora or Wikipedia dumps) not as a static knowledge base to be memorized, but as a training substrate. Its goal is to analyze, comprehend, and master the **structural and semantic grammar of language**. 
+> **Structural Learning:** Brainstem learns how subjects, relations, and objects interact, mapping how meaning is built dynamically.
+> **Noise Filtering via Sleep Cycles:** By mimicking biological sleep phases (such as slow-wave sleep and consolidation), the system constantly prunes weak or chaotic connections to crystalize the core rules of language.
+
 
 ![status](https://img.shields.io/badge/status-experimental-orange)
 ![python](https://img.shields.io/badge/python-3.11-blue)
