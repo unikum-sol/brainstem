@@ -29,7 +29,7 @@ The system extracts logical relations from unstructured text and incrementally b
 
 ### Central Phase Registry
 
-Phases are layered sequentially (`4x → 5x → 6a–6d → 7a–7g`). Loading is handled by a single **declarative registry** (`ki_system/phase_registry.py`) instead of scattered monkey-patch blocks:
+Phases are layered sequentially (`4x → 5x → 6a–6d → 7a–7g`). Loading is handled by a single **declarative registry** (`ki_system/phase_registry.py`) :
 
 - Defines the **exact load order** in one place
 - Isolates each entry with its own error handling + machine-readable load report
@@ -65,7 +65,7 @@ Each cycle computes **12** self-regulating chemical messengers. Every level is d
 | 7 | **Adenosine** `phase7a` | Sleep-pressure homeostat — accumulates while awake, forces sleep-replay at max, depletes after replay. |
 | 8 | **Endocannabinoids** `phase7b` | Retrograde gain control — 2-AG / Anandamide dampening & LTD of over-excited pathways. |
 
-### Regulatory & Growth Modulators — *new in this stage*
+### Regulatory & Growth Modulators 
 
 | # | Neurotransmitter | System Role |
 |---|------------------|-------------|
