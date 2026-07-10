@@ -160,7 +160,7 @@ python main.py --gui
 
 ### Prerequisites for ZIM Import
 
->  **Required:** `zimdump` (the **`.exe`** together with its required **`.dll`** files) must be placed in the **project root directory**. Without it, the *ZIM Einlesen* function will not work.
+>  **Required:** `zimdump` for Windows (the **`.exe`** together with its required **`.dll`** files) must be placed in the **project root directory**. Without it, the *ZIM Einlesen* function will not work.
 
 The ZIM import relies on `zimdump` to extract articles from the `.zim` archive. Make sure the executable and all accompanying DLLs sit next to `main.py` in the root folder before running Stage 1.
 
