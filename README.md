@@ -125,7 +125,7 @@ Old, unresolved hypotheses are **never discarded** — they form a growing *revi
 - **Reading coverage:** Learning is corpus-bounded; observed plateaus correspond to *not-yet-read* material rather than true stagnation. Coverage is tracked explicitly and rises as cycles run.
 - **Safety mode (Stage A lock):** During calibration of phases 6 & 7, permanent writes (`fact_promotion`, `direct_fact_writes`, `direct_relation_writes`) are explicitly **`disabled`**, and **no word blacklists** are used. Learning happens purely in transient metaplasticity/hypothesis states to verify stability and convergence over hundreds of cycles.
 - **Roadmap:** Stage A (stabilize the learning core) is **complete**. **Stage B** — controlled, consolidation-gated opening of the write locks so repeatedly confirmed hypotheses may become first anchors — is the next major milestone.
-
+- **Future:** switch to vector database
 ---
 
 ## Database Initialization
