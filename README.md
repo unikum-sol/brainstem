@@ -120,6 +120,20 @@ Old, unresolved hypotheses are **never discarded** — they form a growing *revi
 
 ---
 
+## Database Initialization
+
+The system uses a single **SQLite** database (`ki_memory.sqlite3`) in the project root.
+
+**No manual setup is required.** If the database file does not exist on startup, it is **created automatically**:
+
+- The core schema (documents, chunks, hypotheses, settings, etc.) is initialized on first launch.
+- Every phase module carries its own schema and applies it idempotently via `ensure_schema()` at the start of each cycle — missing tables are created and missing columns are added automatically (self-healing schema).
+- A built-in `_self_check_schema()` verifies all required columns exist before any writes occur.
+
+As a result, you can simply run the GUI on a clean checkout; the database and all required tables/columns are provisioned on demand.
+
+---
+
 ## Running the System
 
 The GUI is launched from the project root:
