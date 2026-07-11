@@ -95,6 +95,14 @@ class CorpusReader:
 
     def read_once(self, batch_size=50):
         ensure_corpus_schema(self.memory)
+        # >>> SENSORY_DEPRIVATION_GUARD >>>
+        try:
+            from ki_system.v8_sensory_deprivation import is_deprivation_active as _sd_active
+            if _sd_active(self.memory):
+                return {"status": "sensory_deprivation_no_read", "seeded_reading_queue": 0, "totals": {}, "deprivation": True}
+        except Exception:
+            pass
+        # <<< SENSORY_DEPRIVATION_GUARD <<<
         query = """SELECT rq.*, chunks.text, chunks.metadata_json, documents.title
                    FROM reading_queue rq
                    JOIN chunks ON chunks.id=rq.chunk_id

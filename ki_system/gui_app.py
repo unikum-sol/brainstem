@@ -219,7 +219,7 @@ class App(tk.Tk):
         nb = ttk.Notebook(self)
         nb.pack(fill=tk.BOTH, expand=True)
         self.tabs = {}
-        for n in ["Chat", "Import & Jobs", "Suche & Antwort", "Datenbank", "Fakten/Relationen", "Export/Konfig"]:
+        for n in ["Chat", "Import & Jobs", "Suche & Antwort", "Datenbank", "Fakten/Relationen", "Export/Konfig", "Drift-Report"]:
             f = ttk.Frame(nb, padding=8)
             nb.add(f, text=n)
             self.tabs[n] = f
@@ -229,6 +229,7 @@ class App(tk.Tk):
         self._db_tab()
         self._facts_tab()
         self._export_tab()
+        self._drift_tab()
     def _chat_tab(self):
         f = self.tabs["Chat"]
         self.chat_out = tk.Text(f, wrap=tk.WORD)
@@ -547,6 +548,129 @@ class App(tk.Tk):
             self.mood_name.configure(text=name)
     def refresh(self):
         self.after(0, self._refresh)
+    def _drift_tab(self):
+        f = self.tabs["Drift-Report"]
+        self.drift_running = False
+        self.drift_stop = False
+        self.drift_rows = []
+        ttk.Label(f, text="Sensorischer Entzug / Drift-Kalibrierung", font=("Arial", 10, "bold")).pack(anchor=tk.W)
+        ttk.Label(f, text="Input AUS (keine neuen Chunks), innere Dynamik laeuft weiter. Log als CSV im Projekt-Root.",
+                  foreground="#555555").pack(anchor=tk.W, pady=(0, 6))
+        ctl = ttk.Frame(f)
+        ctl.pack(anchor=tk.W, pady=(2, 4))
+        self.drift_start_btn = ttk.Button(ctl, text="Start", command=self.drift_start)
+        self.drift_start_btn.pack(side=tk.LEFT)
+        self.drift_stop_btn = ttk.Button(ctl, text="Stop", command=self.drift_stop_now, state=tk.DISABLED)
+        self.drift_stop_btn.pack(side=tk.LEFT, padx=6)
+        self.drift_limit_on = tk.BooleanVar(value=False)
+        ttk.Checkbutton(ctl, text="Zyklenzahl begrenzen", variable=self.drift_limit_on,
+                        command=self._drift_toggle_limit).pack(side=tk.LEFT, padx=(12, 4))
+        self.drift_cycles = tk.IntVar(value=100)
+        self.drift_spin = ttk.Spinbox(ctl, from_=1, to=9999, textvariable=self.drift_cycles, width=8, state=tk.DISABLED)
+        self.drift_spin.pack(side=tk.LEFT)
+        self.drift_status = ttk.Label(f, text="Bereit.")
+        self.drift_status.pack(anchor=tk.W, pady=(2, 4))
+        self.drift_canvas = tk.Canvas(f, width=760, height=240, bg="white",
+                                      highlightthickness=1, highlightbackground="#cccccc")
+        self.drift_canvas.pack(anchor=tk.W, pady=(2, 4))
+        ttk.Label(f, text="Kurven: exploration_bias (rot) | adenosine (braun) | plasticity (blau) | effectiveness (gruen) | histamine (magenta)",
+                  font=("Arial", 8), foreground="#555555").pack(anchor=tk.W)
+        self.drift_report = tk.Text(f, wrap=tk.WORD, height=12)
+        self.drift_report.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
+    def _drift_toggle_limit(self):
+        self.drift_spin.configure(state=(tk.NORMAL if self.drift_limit_on.get() else tk.DISABLED))
+    def drift_stop_now(self):
+        self.drift_stop = True
+        self.drift_status.configure(text="Stop-Anforderung gesetzt.")
+    def drift_start(self):
+        if self.drift_running:
+            return
+        if self.auto_running:
+            from tkinter import messagebox
+            messagebox.showwarning("Drift-Report", "Bitte zuerst 'Autonom stoppen'.")
+            return
+        self.drift_running = True
+        self.drift_stop = False
+        self.drift_rows = []
+        self.drift_start_btn.configure(state=tk.DISABLED)
+        self.drift_stop_btn.configure(state=tk.NORMAL)
+        self.drift_report.delete("1.0", tk.END)
+        threading.Thread(target=self._drift_worker, daemon=True).start()
+    def _drift_worker(self):
+        import importlib.util, pathlib, sqlite3
+        root = pathlib.Path(__file__).resolve().parent.parent
+        def _load(modfile, modname):
+            spec = importlib.util.spec_from_file_location(modname, str(root / "ki_system" / modfile))
+            m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m
+        try:
+            runner = _load("v8_deprivation_runner.py", "v8_deprivation_runner")
+            sd = _load("v8_sensory_deprivation.py", "v8_sensory_deprivation")
+        except Exception as e:
+            self.after(0, lambda: self.drift_status.configure(text="Modul-Fehler: " + str(e)))
+            self._drift_finish()
+            return
+        con = sqlite3.connect(str(root / "ki_memory.sqlite3"), timeout=30.0)
+        loop = AutonomousLoop(self.mem)
+        limit_on = bool(self.drift_limit_on.get())
+        cycles = int(self.drift_cycles.get()) if limit_on else None
+        def cycle_fn():
+            loop.cycle()
+        def stop_flag():
+            return self.drift_stop
+        def set_flag_fn(active):
+            sd.set_deprivation(con, active)
+        def on_cycle(n, snap):
+            self.drift_rows.append(snap)
+            self.after(0, lambda: self.drift_status.configure(
+                text="Entzug-Zyklus %d | expl=%.3f ade=%.3f eff=%.4f" % (
+                    n, snap.get("exploration_bias", 0.0), snap.get("adenosine", 0.0), snap.get("effectiveness", 0.0))))
+            self.after(0, self._drift_draw)
+        try:
+            csv_name = "drift_log_" + time.strftime("%Y%m%d_%H%M%S") + ".csv"
+            csv_path = str(root / csv_name)
+            rep = runner.run_deprivation(con, cycle_fn, cycles=cycles, stop_flag=stop_flag,
+                                         on_cycle=on_cycle, csv_path=csv_path, set_flag_fn=set_flag_fn)
+            text, overall = runner.write_report(rep["rows"], csv_path)
+            self.after(0, lambda: (self.drift_report.insert(tk.END, text + "\n\nCSV: " + csv_path + "\n"),
+                                   self.drift_status.configure(text="Fertig: %d Zyklen | GESAMT: %s" % (rep["cycles"], overall))))
+        except Exception as e:
+            self.after(0, lambda: self.drift_status.configure(text="Drift-Fehler: " + str(e)))
+        finally:
+            try: sd.set_deprivation(con, False)
+            except Exception: pass
+            try: con.close()
+            except Exception: pass
+            self._drift_finish()
+    def _drift_finish(self):
+        self.drift_running = False
+        self.drift_stop = False
+        self.after(0, lambda: (self.drift_start_btn.configure(state=tk.NORMAL),
+                               self.drift_stop_btn.configure(state=tk.DISABLED)))
+        self.after(0, self.refresh)
+    def _drift_draw(self):
+        c = self.drift_canvas
+        c.delete("all")
+        w = int(c["width"]); h = int(c["height"]); pad = 12
+        c.create_rectangle(pad, pad, w - pad, h - pad, outline="#dddddd")
+        rows = self.drift_rows
+        if len(rows) < 2:
+            return
+        series = [("exploration_bias", "#d62728"), ("adenosine", "#8c564b"),
+                  ("plasticity_level", "#1f77b4"), ("effectiveness", "#2ca02c"), ("histamine", "#e377c2")]
+        nn = len(rows)
+        for key, color in series:
+            pts = []
+            for i, r in enumerate(rows):
+                v = r.get(key, 0.0)
+                try: v = float(v)
+                except Exception: v = 0.0
+                if v < 0.0: v = 0.0
+                if v > 1.0: v = 1.0
+                x = pad + (w - 2 * pad) * (i / max(1, nn - 1))
+                y = (h - pad) - v * (h - 2 * pad)
+                pts.append((x, y))
+            for i in range(1, len(pts)):
+                c.create_line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], fill=color, width=2) 
     def _refresh(self):
         try:
             covered, total, hypo = self._corpus_stats()
