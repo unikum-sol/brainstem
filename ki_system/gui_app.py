@@ -106,7 +106,11 @@ def read_all_neuromods(con):
         "orexin": _kv(con, "phase7f_orexin_state").get("last_regime", "n/a"),
         "bdnf": _kv(con, "phase7g_bdnf_state").get("last_regime", "n/a"),
         "cortisol": _kv(con, "cortisol_state").get("last_regime", "n/a"),
+        "histamine": _kv(con, "phase7e_histamine_state").get("last_regime", "n/a"),
     }
+    asleep = ((vals["adenosine"] >= 0.6 and vals["histamine"] <= 0.45)
+              or regimes["histamine"] == "sleep_permissive")
+    regimes["_asleep"] = bool(asleep)
     return vals, regimes
 
 def compute_mood(vals, regimes):
@@ -115,10 +119,12 @@ def compute_mood(vals, regimes):
     orx = vals.get("orexin", 0.0)
     bdnf = vals.get("bdnf", 0.0)
     glu = vals.get("glutamate", 0.0)
+    his = vals.get("histamine", 0.0)
+    asleep = regimes.get("_asleep", False)
     if cortisol >= 0.6:
         return ("(>_<)", "Gestresst")
-    if adeno >= 0.75:
-        return ("(-_-) zzz", "Muede")
+    if asleep or adeno >= 0.75:
+        return ("(-_-) zzz", "Schlaeft")
     if regimes.get("orexin") == "curious_drive" and regimes.get("bdnf") == "growth":
         return ("(^o^)/", "Wissbegierig")
     if regimes.get("bdnf") == "growth":
@@ -202,6 +208,9 @@ class App(tk.Tk):
         self.auto_running = False
         self.auto_loop = None
         self.head = None
+        self.mode = "idle"
+        self._cov_cache = None
+        self._cov_ts = 0.0
         self._ui()
         self._create_floating_head()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -237,10 +246,14 @@ class App(tk.Tk):
         self.auto_start_btn.pack(side=tk.LEFT)
         self.auto_stop_btn = ttk.Button(row, text="Autonom stoppen", command=self.auto_stop_now, state=tk.DISABLED)
         self.auto_stop_btn.pack(side=tk.LEFT, padx=6)
-        self.bar = ttk.Progressbar(f, maximum=100)
-        self.bar.pack(fill=tk.X)
+        ttk.Label(f, text="Gesamtfortschritt (gelesene Chunks)", font=("Arial", 8)).pack(anchor=tk.W, pady=(6, 0))
+        self.bar_total = ttk.Progressbar(f, maximum=100)
+        self.bar_total.pack(fill=tk.X)
+        ttk.Label(f, text="Aktueller GUI-Zyklus (Schritt/5)", font=("Arial", 8)).pack(anchor=tk.W, pady=(4, 0))
+        self.bar_cycle = ttk.Progressbar(f, maximum=100)
+        self.bar_cycle.pack(fill=tk.X)
         self.status = ttk.Label(f)
-        self.status.pack(anchor=tk.W)
+        self.status.pack(anchor=tk.W, pady=(2, 0))
         left = ttk.Frame(f)
         left.pack(fill=tk.X, anchor=tk.NW)
         ttk.Label(left, text="Digitale Botenstoffe", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(8, 0))
@@ -290,13 +303,18 @@ class App(tk.Tk):
         ttk.Button(f, text="Speichern", command=self.save_config).pack(anchor=tk.W)
         self.config_status = ttk.Label(f, text="Aktueller Wert: " + str(self.mem.get_setting("max_articles", 2000)))
         self.config_status.pack(anchor=tk.W, pady=(8, 0))
+        ttk.Separator(f).pack(fill=tk.X, pady=12)
+        ttk.Label(f, text="Achtung: entfernt alle gelernten Daten, ZIM-Korpus bleibt erhalten.",
+        foreground="#b00000").pack(anchor=tk.W)
+        self.reset_btn = ttk.Button(f, text="Lernsystem zuruecksetzen (Korpus bleibt)", command=self.reset_learning_gui)
+        self.reset_btn.pack(anchor=tk.W, pady=(4, 0))
     def _create_floating_head(self):
         self.head = tk.Toplevel(self)
         self.head.overrideredirect(True)
         self.head.attributes("-topmost", True)
         frame = tk.Frame(self.head, bg="#f0f0f0", relief=tk.RIDGE, borderwidth=2)
         frame.pack()
-        self.mood_emoji = tk.Label(frame, text="(^_^)", font=("Consolas", 22, "bold"), bg="#f0f0f0", width=9, anchor="center")
+        self.mood_emoji = tk.Label(frame, text="(^_^)", font=("Consolas", 22, "bold"), bg="#f0f0f0", width=11, anchor="center")
         self.mood_emoji.pack(padx=6, pady=(6, 0))
         self.mood_name = tk.Label(frame, text="Ausgewogen", font=("Arial", 10), bg="#f0f0f0", anchor="center")
         self.mood_name.pack(padx=6, pady=(0, 6))
@@ -342,10 +360,77 @@ class App(tk.Tk):
             self.config_status.configure(text="Aktueller Wert: %d" % value)
         except Exception as e:
             self.config_status.configure(text="Speichern fehlgeschlagen: " + str(e))
+    def reset_learning_gui(self):
+        from tkinter import messagebox
+        if self.auto_running:
+            messagebox.showwarning("Reset", "Bitte zuerst 'Autonom stoppen'.")
+            return
+        confirm = messagebox.askyesno("Lernsystem zuruecksetzen",
+            "Wirklich ALLE gelernten Daten loeschen?\nDer ZIM-Korpus (Chunks) bleibt erhalten.\nEin Backup wird automatisch angelegt.")
+        if not confirm:
+            return
+        def _worker():
+            try:
+                import importlib.util, pathlib
+                root = pathlib.Path(__file__).resolve().parent.parent
+                mod_path = root / "reset_learning.py"
+                spec = importlib.util.spec_from_file_location("reset_learning", str(mod_path))
+                rl = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(rl)
+                db = str(root / "ki_memory.sqlite3")
+                self.println("Lern-Reset gestartet ...")
+                rep = rl.reset_learning(db, dry_run=False)
+                wiped = len(rep.get("deleted", {}))
+                total = 0
+                for v in rep.get("deleted", {}).values():
+                    if isinstance(v, int):
+                        total += v
+                self.println("Backup: " + str(rep.get("backup")))
+                self.println("Geleerte Tabellen: %d | geloeschte Zeilen: %d" % (wiped, total))
+                self.println("FERTIG: Lernsystem zurueckgesetzt, Korpus bleibt erhalten.")
+                self.refresh()
+            except Exception as e:
+                self.println("Reset-FEHLER: " + str(e))
+        import threading
+        threading.Thread(target=_worker, daemon=True).start()           
     def println(self, msg):
         self.after(0, lambda: (self.log.insert(tk.END, str(msg) + "\n"), self.log.see(tk.END)))
     def progress(self, c, t, msg=""):
-        self.after(0, lambda: (self.bar.configure(value=(c / max(1, t)) * 100), self.status.configure(text="%s/%s %s" % (c, t, msg))))
+        if self.mode == "learn":
+            return
+        self.after(0, lambda: (self.bar_cycle.configure(value=(c / max(1, t)) * 100),
+                               self.status.configure(text="%s/%s %s" % (c, t, msg))))
+    def _set_cycle_bar(self, step, total):
+        self.after(0, lambda: self.bar_cycle.configure(value=(step / max(1, total)) * 100))
+    def _corpus_stats(self):
+        now = time.time()
+        if self._cov_cache is not None and (now - self._cov_ts) < 10.0:
+            return self._cov_cache
+        con = None
+        covered = 0; total = 0; hypo = 0
+        try:
+            con = sqlite3.connect("ki_memory.sqlite3", timeout=5)
+            r = con.execute("SELECT COUNT(*) FROM chunks").fetchone()
+            total = r[0] if r else 0
+            try:
+                r = con.execute("SELECT COUNT(DISTINCT chunk_id) FROM chunk_attention_scores").fetchone()
+                covered = r[0] if r else 0
+            except Exception:
+                covered = 0
+            try:
+                r = con.execute("SELECT COUNT(*) FROM context_hypotheses").fetchone()
+                hypo = r[0] if r else 0
+            except Exception:
+                hypo = 0
+        except Exception:
+            pass
+        finally:
+            if con is not None:
+                try: con.close()
+                except Exception: pass
+        self._cov_cache = (covered, total, hypo)
+        self._cov_ts = now
+        return self._cov_cache
     def chat_send(self):
         t = self.chat_in.get().strip()
         if t:
@@ -358,17 +443,26 @@ class App(tk.Tk):
         if paths:
             threading.Thread(target=self._import, args=(paths,), daemon=True).start()
     def _import(self, paths):
-        for p in paths:
-            try:
-                self.println("Import: " + p)
-                self.println(str(import_file(p, self.mem, int(self.mem.get_setting("max_articles", 2000) or 2000), self.progress, lambda: self.cancel, True)))
-            except Exception as e:
-                self.println("FEHLER: " + str(e))
+        self.mode = "import"
+        try:
+            for p in paths:
+                try:
+                    self.println("Import: " + p)
+                    self.println(str(import_file(p, self.mem, int(self.mem.get_setting("max_articles", 2000) or 2000), self.progress, lambda: self.cancel, True)))
+                except Exception as e:
+                    self.println("FEHLER: " + str(e))
+        finally:
+            self.mode = "idle"
         self.refresh()
     def learn(self):
         threading.Thread(target=lambda: self.println("Lernen: " + str(nlp.learn_from_memory(self.mem, self.progress, lambda: self.cancel))), daemon=True).start()
     def _set_auto(self, r):
-        self.after(0, lambda: (self.auto_start_btn.configure(state=tk.DISABLED if r else tk.NORMAL), self.auto_stop_btn.configure(state=tk.NORMAL if r else tk.DISABLED)))
+        def _apply():
+            self.auto_start_btn.configure(state=tk.DISABLED if r else tk.NORMAL)
+            self.auto_stop_btn.configure(state=tk.NORMAL if r else tk.DISABLED)
+            if hasattr(self, "reset_btn"):
+                self.reset_btn.configure(state=tk.DISABLED if r else tk.NORMAL)
+        self.after(0, _apply)        
     def auto_start(self):
         if self.auto_running:
             return
@@ -382,18 +476,25 @@ class App(tk.Tk):
         self.auto_stop = True
         self.cancel = True
         if self.auto_loop:
-            self.auto_loop.stop()
+            try: self.auto_loop.stop()
+            except Exception: pass
         self.println("Stop-Anforderung gesetzt.")
     def _auto_worker(self):
         n = 0
+        self.mode = "learn"
         try:
             while not self.auto_stop:
                 n += 1
                 self.println("=== Autonomer Dauerlern-Zyklus %d ===" % n)
                 self.auto_loop = AutonomousLoop(self.mem)
-                res = self.auto_loop.run(5, self.progress)
-                self.println(json.dumps(res, ensure_ascii=False, indent=2))
-                self.refresh()
+                self._set_cycle_bar(0, 5)
+                for step in range(5):
+                    if self.auto_stop:
+                        break
+                    r = self.auto_loop.cycle()
+                    self.println(json.dumps(r, ensure_ascii=False, indent=2))
+                    self._set_cycle_bar(step + 1, 5)
+                    self.refresh()
                 self.auto_loop = None
                 for _ in range(10):
                     if self.auto_stop:
@@ -403,6 +504,7 @@ class App(tk.Tk):
             self.auto_running = False
             self.auto_stop = False
             self.cancel = False
+            self.mode = "idle"
             self._set_auto(False)
             self.refresh()
             self.println("Autonomes Dauerlernen gestoppt.")
@@ -446,21 +548,38 @@ class App(tk.Tk):
     def refresh(self):
         self.after(0, self._refresh)
     def _refresh(self):
-        if hasattr(self, "status"):
-            self.status.configure(text=json.dumps(self.mem.stats(), ensure_ascii=False))
-        if hasattr(self, "neuro_text"):
+        try:
+            covered, total, hypo = self._corpus_stats()
+            pct = (100.0 * covered / total) if total else 0.0
+            st = {}
             try:
-                self._update_neuro_dashboard()
-            except Exception as exc:
-                self.neuro_text.configure(text="Neuromodulatoren: nicht verfuegbar: " + str(exc))
-        if hasattr(self, "docs"):
-            self.docs.delete(*self.docs.get_children())
-            for d in self.mem.rows("SELECT * FROM documents ORDER BY created_at DESC LIMIT 2000"):
-                self.docs.insert("", tk.END, values=(d["id"], d["title"], d["kind"], d["path"]))
-        if hasattr(self, "facts"):
-            self.facts.delete(*self.facts.get_children())
-            for f in self.mem.rows("SELECT * FROM facts ORDER BY created_at DESC LIMIT 2000"):
-                self.facts.insert("", tk.END, values=(f["subject"], f["relation"], f["value"], round(f["confidence"], 2)))
+                st = self.mem.stats()
+            except Exception:
+                st = {}
+            self.status.configure(text="Chunks gelesen %d/%d (%.1f%%) | Fakten %d | Relationen %d | Ontologie %d | Fragen %d | Hypothesen %d" % (
+                covered, total, pct, st.get("facts", 0), st.get("relations", 0), st.get("ontology", 0), st.get("questions", 0), hypo))
+            try:
+                self.bar_total.configure(value=pct)
+            except Exception:
+                pass
+            if hasattr(self, "neuro_text"):
+                try:
+                    self._update_neuro_dashboard()
+                except Exception as exc:
+                    self.neuro_text.configure(text="Neuromodulatoren: nicht verfuegbar: " + str(exc))
+            if hasattr(self, "docs"):
+                self.docs.delete(*self.docs.get_children())
+                for d in self.mem.rows("SELECT * FROM documents ORDER BY created_at DESC LIMIT 2000"):
+                    self.docs.insert("", tk.END, values=(d["id"], d["title"], d["kind"], d["path"]))
+            if hasattr(self, "facts"):
+                self.facts.delete(*self.facts.get_children())
+                for f in self.mem.rows("SELECT * FROM facts ORDER BY created_at DESC LIMIT 2000"):
+                    self.facts.insert("", tk.END, values=(f["subject"], f["relation"], f["value"], round(f["confidence"], 2)))
+        finally:
+            try:
+                self.after(2000, self._refresh)
+            except Exception:
+                pass
 
 def main():
     App().mainloop()
