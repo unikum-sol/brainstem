@@ -165,7 +165,7 @@ A GUI-controlled **sensory-deprivation mode** (tab "Drift-Report") for homeostat
 - **Drift report:** for each signal — first/last/delta/span and a verdict (stabil / konvergiert / DIVERGIERT); count-signals (survivors etc.) are judged relative to their mean, normalized signals by absolute thresholds. Overall verdict: kein_drift / konvergenz / DIVERGENZ-WARNUNG. Appended to the CSV as a comment block.
 - **Fail-safe:** the deprivation flag is always cleared on stop/finish (finally), so the system can never remain stuck in deprivation.
 
-Result so far: over 100 input-free cycles the regulated signals (neuromodulators, exploration_bias, plasticity) stay within a very tight band — the system is homeostatically stable and does not drift under input removal.
+Result so far: over 1000 input-free cycles the regulated signals (neuromodulators, exploration_bias, plasticity) stay within a very tight band — the system is homeostatically stable and does not drift under input removal.
 
 ---
 
