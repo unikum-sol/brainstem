@@ -124,7 +124,7 @@ Old, unresolved hypotheses are **never discarded** — they form a growing *revi
 - **Own Test corpus:** Wikipedia category *"Computer"* (German) (~102k chunks, fully pre-parsed as a ZIM import). You must bring our own ZIM file.
 - **Reading coverage:** Learning is corpus-bounded; observed plateaus correspond to *not-yet-read* material rather than true stagnation. Coverage is tracked explicitly and rises as cycles run.
 - **Safety mode (Stage A lock):** During calibration of phases 6 & 7, permanent writes (`fact_promotion`, `direct_fact_writes`, `direct_relation_writes`) are explicitly **`disabled`**, and **no word blacklists** are used. Learning happens purely in transient metaplasticity/hypothesis states to verify stability and convergence over hundreds of cycles.
-- **Roadmap:** Stage A (stabilize the learning core) is **complete**. **Stage B** — controlled, consolidation-gated opening of the write locks so repeatedly confirmed hypotheses may become first anchors — is the next major milestone.
+- **Roadmap:** Stage A (stabilize the learning core) is **complete** and its stability has been empirically verified via the sensory-deprivation drift test (no harmful drift under input removal). **Stage B** — controlled, consolidation-gated opening of the write locks (with a warm-up dampening of the first promotions to avoid overfitting on the earliest references) — is the next major milestone.
 - **Future:** switch to vector database
 ---
 
@@ -139,6 +139,33 @@ The system uses a single **SQLite** database (`ki_memory.sqlite3`) in the projec
 - A built-in `_self_check_schema()` verifies all required columns exist before any writes occur.
 
 As a result, you can simply run the GUI on a clean checkout; the database and all required tables/columns are provisioned on demand.
+
+---
+
+### Learning Reset (Corpus-Preserving)
+
+For calibration and repeatable experiments, the learning state can be reset **without** re-importing the corpus. Available as a GUI button in **Export/Konfig** ("Lernsystem zuruecksetzen (Korpus bleibt)") and as a standalone script (reset_learning.py).
+
+- **KEEP (preserved):** chunks, chunks_fts*, documents, settings/config, import_state, sqlite internals — i.e. the full imported ZIM corpus stays intact.
+- **WIPE (cleared):** all learning-generated tables (context_hypotheses, chunk_attention_scores, all phase* state/event/cycle tables, cortisol/neuromodulator states, reading queue, gaps, etc.).
+- **Safety:** dry-run by default (python reset_learning.py shows the plan, changes nothing); the real reset (--apply or the GUI button) makes an automatic timestamped DB backup first, then DELETEs rows (tables/schema are never dropped) and VACUUMs.
+- **GUI guard:** the reset button is only active while autonomous learning is stopped, and asks for confirmation.
+
+This lets the system be returned to a clean "just-imported" state in seconds, after which it re-seeds all neurotransmitters to their baselines on the first cycle and starts learning from zero.
+
+---
+
+### Sensory Deprivation & Drift Report
+
+A GUI-controlled **sensory-deprivation mode** (tab "Drift-Report") for homeostatic calibration: the wake/read step is skipped (no new chunks, no new hypotheses) while the inner dynamics — sleep replay, consolidation and all 12 neuromodulators — keep running. This isolates the system's **self-regulation** from input noise and answers a single question: *does anything drift when no input arrives?*
+
+- **Controls:** Start/Stop, plus an optional cycle-limit field (up to 9999). With the limit checkbox off, the run continues until Stop; with it on, it stops after N cycles — Stop always remains effective.
+- **Per-cycle CSV log:** every deprivation cycle is written to drift_log_<timestamp>.csv in the project root (all 12 neurotransmitters + exploration_bias, plasticity, adaptive_threshold, survivors/participated/weakened, effectiveness, reciprocal_gate, allostatic_load).
+- **Live graphs:** key signals (exploration_bias, adenosine, plasticity, effectiveness, histamine) are plotted live on a canvas.
+- **Drift report:** for each signal — first/last/delta/span and a verdict (stabil / konvergiert / DIVERGIERT); count-signals (survivors etc.) are judged relative to their mean, normalized signals by absolute thresholds. Overall verdict: kein_drift / konvergenz / DIVERGENZ-WARNUNG. Appended to the CSV as a comment block.
+- **Fail-safe:** the deprivation flag is always cleared on stop/finish (finally), so the system can never remain stuck in deprivation.
+
+Result so far: over 100 input-free cycles the regulated signals (neuromodulators, exploration_bias, plasticity) stay within a very tight band — the system is homeostatically stable and does not drift under input removal.
 
 ---
 
@@ -160,7 +187,7 @@ python main.py --gui
 | 4 | **Import & Jobs → Autonom stoppen** | Stop the loop cleanly. |
 | 5 | **DON'T** close GUI while running Cycle, possible database damage |
 
-> **Note on the GUI:** This is an experimental testing interface. Currently **only the `Import & Jobs` and `Export/Konfig` tabs are functional** — all other tabs are placeholders without real functionality yet.
+> **Note on the GUI:** This is an experimental testing interface. Currently the **Import & Jobs**, **Export/Konfig** and **Drift-Report** tabs are functional — the remaining tabs are placeholders. Import & Jobs >shows a live 12-neurotransmitter dashboard (with tooltips and legend), two progress bars (total corpus coverage + current GUI-cycle step), and a small floating "mood head" window that mirrors the system state >(curious / growing / sleeping / stressed) and auto-closes with the GUI.
 >
 > The **maximum article count** for the ZIM import is configured in **`Export/Konfig`** and must be set before running *ZIM Einlesen*.
 
