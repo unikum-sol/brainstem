@@ -140,4 +140,44 @@ This lets the system be returned to a clean "just-imported" state in seconds, af
 A GUI-controlled **sensory-deprivation mode** (tab "Drift-Report") for homeostatic calibration: the wake/read step is skipped (no new chunks, no new hypotheses) while the inner dynamics — sleep replay, consolidation and all 12 neuromodulators — keep running. This isolates the system's **self-regulation** from input noise and answers a single question: *does anything drift when no input arrives?*
 
 - **Controls:** Start/Stop, plus an optional cycle-limit field (up to 9999). With the limit checkbox off, the run continues until Stop; with it on, it stops after N cycles — Stop always remains effective.
-- **Per-cycle CSV log:** every deprivation cycle is written to `drift_log_<timestamp>.csv` in the project root (all 12 neurotransmitters + exploration_bias, plasticity, adaptive_threshold, survivors/participated/weakened, 
+- **Per-cycle CSV log:** every deprivation cycle is written to `drift_log_<timestamp>.csv` in the project root (all 12 neurotransmitters + exploration_bias, plasticity, adaptive_threshold, survivors/participated/weakened, effectiveness, reciprocal_gate, allostatic_load).
+- **Live graphs:** key signals (exploration_bias, adenosine, plasticity, effectiveness, histamine) are plotted live on a canvas.
+- **Drift report:** for each signal — first/last/delta/span and a verdict (stabil / konvergiert / DIVERGIERT); count-signals (survivors etc.) are judged relative to their mean, normalized signals by absolute thresholds. Overall verdict: kein_drift / konvergenz / DIVERGENZ-WARNUNG. Appended to the CSV as a comment block.
+- **Fail-safe:** the deprivation flag is always cleared on stop/finish (finally), so the system can never remain stuck in deprivation.
+
+Result so far: over 1300 input-free cycles the regulated signals (neuromodulators, exploration_bias, plasticity) stay within a very tight band — the system is homeostatically stable and does not drift under input removal.
+
+## Running the System
+
+The GUI is launched from the project root:
+
+```bash
+python main.py --gui
+```
+
+### Workflow
+
+| Step | GUI Action | Purpose |
+|------|-----------|---------|
+| 1 | **Export/Konfig** | Set the **maximum number of articles** for the ZIM import (**must** be configured before importing). |
+| 2 | **Import & Jobs → ZIM Einlesen** | Stage 1 — pre-parse & import the corpus into the chunk store (run once). |
+| 3 | **Import & Jobs → Autonom dauerhaft starten** | Stage 2 — start the autonomous learning loop; each GUI cycle runs several internal chain passes. |
+| 4 | **Import & Jobs → Autonom stoppen** | Stop the loop cleanly. |
+| 5 | ⚠️ **DO NOT** close the GUI while a cycle is running | Possible database damage. |
+
+**Note on the GUI:** This is an experimental testing interface. Currently the **Import & Jobs**, **Export/Konfig** and **Drift-Report** tabs are functional — the remaining tabs are placeholders. *Import & Jobs* shows a live 12-neurotransmitter dashboard (with tooltips and legend), two progress bars (total corpus coverage + current GUI-cycle step), and a small floating "mood head" window that mirrors the system state (curious / growing / sleeping / stressed) and auto-closes with the GUI.
+
+The **maximum article count** for the ZIM import is configured in **Export/Konfig** and must be set before running *ZIM Einlesen*.
+
+### Prerequisites for ZIM Import
+
+**Required:** `zimdump` for Windows (the **`.exe`** together with its required **`.dll`** files) must be placed in the **project root directory**. Without it, the *ZIM Einlesen* function will not work.
+
+The ZIM import relies on `zimdump` to extract articles from the `.zim` archive. Make sure the executable and all accompanying DLLs sit next to `main.py` in the root folder before running Stage 1.
+
+## Development Notes & Technical Context
+
+- **Codebase language:** Documentation is English; the source code (comments & internal naming) is **written in German**.
+- **AI-assisted engineering:** Developed with the collaborative assistance of advanced language models (**Claude 3.5/4 Opus, ChatGPT, Gemini**).
+- **Delivery & verification workflow:** Every module ships with idempotent schema management, self-checks, and a smoke test before integration; patches are validated with compile checks, backups, and automatic rollback.
+- **Project scale & status:** A massive, highly experimental testing system. Due to its scale and ongoing calibration of complex homeostatic loops, the architecture **has not yet been consolidated** — it remains a playground for heavy benchmarking and mathematical verification of neuromorphic concepts.
