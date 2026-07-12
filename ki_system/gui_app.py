@@ -395,7 +395,58 @@ class App(tk.Tk):
         import threading
         threading.Thread(target=_worker, daemon=True).start()           
     def println(self, msg):
-        self.after(0, lambda: (self.log.insert(tk.END, str(msg) + "\n"), self.log.see(tk.END)))
+        def _do():
+            try:
+                self.log.insert(tk.END, str(msg) + "\n")
+                total = int(self.log.index("end-1c").split(".")[0])
+                if total > 200:
+                    self.log.delete("1.0", "%d.0" % (total - 200 + 1))
+                self.log.see(tk.END)
+            except Exception:
+                pass
+        self.after(0, _do)
+    def _cycle_diag_text(self, n, step):
+        import sqlite3
+        lines = ["=== Autonomer Zyklus %d / Schritt %d ===" % (n, step)]
+        try:
+            con = sqlite3.connect("ki_memory.sqlite3", timeout=5)
+            try:
+                vals, regimes = read_all_neuromods(con)
+                total = 0; covered = 0; hyp = 0
+                try: total = con.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+                except Exception: pass
+                try: covered = con.execute("SELECT COUNT(DISTINCT chunk_id) FROM chunk_attention_scores").fetchone()[0]
+                except Exception: pass
+                try: hyp = con.execute("SELECT COUNT(*) FROM context_hypotheses").fetchone()[0]
+                except Exception: pass
+                surv = part = weak = 0; thr = 0.0
+                try:
+                    r = con.execute("SELECT candidates_survived,candidates_participated,weakened,adaptive_threshold_avg FROM phase7d_slow_wave_cycles ORDER BY id DESC LIMIT 1").fetchone()
+                    if r: surv, part, weak, thr = r[0], r[1], r[2], (r[3] or 0.0)
+                except Exception: pass
+                safe = []
+                for t in ("facts", "relations", "questions"):
+                    try: safe.append(con.execute("SELECT COUNT(*) FROM " + t).fetchone()[0])
+                    except Exception: safe.append("?")
+                pct = (100.0 * covered / total) if total else 0.0
+                lines.append("Gelesene Chunks: %d / %d (%.1f%%)" % (covered, total, pct))
+                lines.append("Hypothesen gesamt: %d" % hyp)
+                lines.append("Dopamin %.3f | Serotonin %.3f | Glutamat %.3f | GABA %.3f | Noradrenalin %.3f | Acetylcholin %.3f" % (
+                    vals.get("dopamine", 0.0), vals.get("serotonin", 0.0), vals.get("glutamate", 0.0),
+                    vals.get("gaba", 0.0), vals.get("noradrenaline", 0.0), vals.get("acetylcholine", 0.0)))
+                lines.append("Adenosin %.3f | Endocannabinoide %.3f | Histamin %.3f | Orexin %.3f | BDNF %.3f | Cortisol %.3f" % (
+                    vals.get("adenosine", 0.0), vals.get("endocannabinoid", 0.0), vals.get("histamine", 0.0),
+                    vals.get("orexin", 0.0), vals.get("bdnf", 0.0), vals.get("cortisol", 0.0)))
+                lines.append("Regime -> Orexin: %s | BDNF: %s | Cortisol: %s | Histamin: %s" % (
+                    regimes.get("orexin", "n/a"), regimes.get("bdnf", "n/a"),
+                    regimes.get("cortisol", "n/a"), regimes.get("histamine", "n/a")))
+                lines.append("7d Slow-Wave -> Survivors %s | Participated %s | Weakened %s | Schwelle %.3f" % (surv, part, weak, float(thr)))
+                lines.append("SAFETY facts/relations/questions: %s" % safe)
+            finally:
+                con.close()
+        except Exception as e:
+            lines.append("(Diagnose nicht verfuegbar: " + str(e) + ")")
+        return "\n".join(lines)
     def progress(self, c, t, msg=""):
         if self.mode == "learn":
             return
@@ -492,8 +543,8 @@ class App(tk.Tk):
                 for step in range(5):
                     if self.auto_stop:
                         break
-                    r = self.auto_loop.cycle()
-                    self.println(json.dumps(r, ensure_ascii=False, indent=2))
+                    self.auto_loop.cycle()
+                    self.println(self._cycle_diag_text(n, step + 1))
                     self._set_cycle_bar(step + 1, 5)
                     self.refresh()
                 self.auto_loop = None
@@ -624,7 +675,12 @@ class App(tk.Tk):
             self.after(0, lambda: self.drift_status.configure(
                 text="Entzug-Zyklus %d | expl=%.3f ade=%.3f eff=%.4f" % (
                     n, snap.get("exploration_bias", 0.0), snap.get("adenosine", 0.0), snap.get("effectiveness", 0.0))))
-            self.after(0, self._drift_draw)
+            if n % 5 == 0:
+                self.after(0, self._drift_draw)
+            self.after(0, lambda: self._drift_log_line(
+                "Zyklus %d | expl %.3f | ade %.3f | plast %.3f | eff %.4f | hist %.3f" % (
+                    n, snap.get("exploration_bias", 0.0), snap.get("adenosine", 0.0),
+                    snap.get("plasticity_level", 0.0), snap.get("effectiveness", 0.0), snap.get("histamine", 0.0))))
         try:
             csv_name = "drift_log_" + time.strftime("%Y%m%d_%H%M%S") + ".csv"
             csv_path = str(root / csv_name)
@@ -640,6 +696,7 @@ class App(tk.Tk):
             except Exception: pass
             try: con.close()
             except Exception: pass
+            self.after(0, self._drift_draw)
             self._drift_finish()
     def _drift_finish(self):
         self.drift_running = False
@@ -653,24 +710,42 @@ class App(tk.Tk):
         w = int(c["width"]); h = int(c["height"]); pad = 12
         c.create_rectangle(pad, pad, w - pad, h - pad, outline="#dddddd")
         rows = self.drift_rows
-        if len(rows) < 2:
+        n = len(rows)
+        if n < 2:
             return
+        maxpts = 200
+        if n > maxpts:
+            step = n / float(maxpts)
+            idxs = [int(i * step) for i in range(maxpts)]
+            if idxs[-1] != n - 1:
+                idxs.append(n - 1)
+        else:
+            idxs = list(range(n))
+        m = len(idxs)
         series = [("exploration_bias", "#d62728"), ("adenosine", "#8c564b"),
                   ("plasticity_level", "#1f77b4"), ("effectiveness", "#2ca02c"), ("histamine", "#e377c2")]
-        nn = len(rows)
         for key, color in series:
             pts = []
-            for i, r in enumerate(rows):
-                v = r.get(key, 0.0)
+            for j, i in enumerate(idxs):
+                v = rows[i].get(key, 0.0)
                 try: v = float(v)
                 except Exception: v = 0.0
                 if v < 0.0: v = 0.0
                 if v > 1.0: v = 1.0
-                x = pad + (w - 2 * pad) * (i / max(1, nn - 1))
+                x = pad + (w - 2 * pad) * (j / max(1, m - 1))
                 y = (h - pad) - v * (h - 2 * pad)
                 pts.append((x, y))
-            for i in range(1, len(pts)):
-                c.create_line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], fill=color, width=2) 
+            for k in range(1, len(pts)):
+               c.create_line(pts[k - 1][0], pts[k - 1][1], pts[k][0], pts[k][1], fill=color, width=2)
+    def _drift_log_line(self, msg):
+        try:
+            self.drift_report.insert(tk.END, str(msg) + "\n")
+            total = int(self.drift_report.index("end-1c").split(".")[0])
+            if total > 200:
+                self.drift_report.delete("1.0", "%d.0" % (total - 200 + 1))
+            self.drift_report.see(tk.END)
+        except Exception:
+            pass
     def _refresh(self):
         try:
             covered, total, hypo = self._corpus_stats()
