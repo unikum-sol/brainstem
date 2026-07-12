@@ -94,7 +94,7 @@ In artificial sleep, excitation (glutamate) is throttled while inhibition (GABA)
 2. On contradiction/instability → `critic_rejected` + mathematical penalties (**hallucination protection**).
 3. After a successful replay cycle, `adenosine_level` is fully depleted.
 
-### Slow-Wave Sleep Substructure — `phase7d` *(new)*
+### Slow-Wave Sleep Substructure — `phase7d`
 
 Adds a true `<1 Hz` up/down-state substructure with **self-regulating down-selection**:
 
