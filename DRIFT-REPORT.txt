@@ -27,5 +27,23 @@ allostatic_load        0.0870   0.0870   0.0000   0.0000  stabil
 GESAMT: konvergenz
 ============================================================
 
+Analysiere: drift_log_20260711_134938.csv
+Datenzeilen: 1344
 
+Glutamat  min/max/mean: 0.6840 / 0.6917 / 0.6899
+2AG       min/max/mean: 0.0000 / 0.5531 / 0.0726  (std 0.1185)
+
+2AG-Spikes (>0.191): 225
+  durchschnittliche Spike-Hoehe: 0.3088
+  Spikes, bei denen Glutamat >= Vorwert: 140 / 225 (62%)
+
+Korrelation 2AG[t] vs Glutamat[t]     : 0.283
+Korrelation 2AG[t] vs Glutamat[t-1]   : 0.297  (Glutamat als Ausloeser?)
+Glutamat max: 0.6917  (naehert sich Obergrenze 0.72? nein)
+
+Orexin  first 0.8504 -> last 0.6582 | Schritte hoch/runter: 6 / 1319
+  -> monotone Selbst-Daempfung (gesund)
+
+=== VERDIKT ===
+2AG-Spikes ohne klaren Glutamat-Bezug -> im Code tracen (moeglicher Trigger woanders)
 
