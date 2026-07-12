@@ -47,3 +47,44 @@ Orexin  first 0.8504 -> last 0.6582 | Schritte hoch/runter: 6 / 1319
 === VERDIKT ===
 2AG-Spikes ohne klaren Glutamat-Bezug -> im Code tracen (moeglicher Trigger woanders)
 
+============================================================
+2-AG VOLLANALYSE  |  Datei: drift_log_20260711_134938.csv
+============================================================
+Datenzeilen: 1344
+
+[A] Korrelationen mit 2AG  (gleichzeitig | verzoegert sig[t-1]->2AG[t])
+  gaba                gleich +0.317 | lag +0.327 <==
+  exploration_bias    gleich +0.284 | lag +0.298 <==
+  glutamate           gleich +0.283 | lag +0.297 <==
+  noradrenaline       gleich +0.295 | lag +0.295 <==
+  orexin              gleich -0.290 | lag -0.289 <==
+  plasticity_level    gleich +0.272 | lag +0.288 <==
+  dopamine            gleich -0.229 | lag -0.247
+  effectiveness       gleich +0.017 | lag -0.036
+  histamine           gleich +0.020 | lag +0.023
+  reciprocal_gate     gleich +0.014 | lag +0.020
+  adenosine           gleich -0.010 | lag -0.018
+  adaptive_threshold  gleich +0.002 | lag -0.005
+  allostatic_load     gleich +0.000 | lag +0.000
+  cortisol            gleich -0.000 | lag +0.000
+
+[B] 2AG-Spikes (>0.191): 225 von 1344 Zyklen (16.7%)
+
+[C] Mittelwerte an Spike- vs Nicht-Spike-Zyklen (Top-Treiber):
+  gaba                Spike 0.4930 | sonst 0.4929 | Diff +0.0001
+  exploration_bias    Spike 0.8194 | sonst 0.8187 | Diff +0.0007
+  glutamate           Spike 0.6902 | sonst 0.6898 | Diff +0.0004
+  noradrenaline       Spike 0.8483 | sonst 0.8482 | Diff +0.0001
+  orexin              Spike 0.7274 | sonst 0.7592 | Diff -0.0318
+  plasticity_level    Spike 0.9338 | sonst 0.9333 | Diff +0.0005
+
+[D] Von 225 Spikes bei ueberdurchschnittlichem Adenosin: 171 (76%)
+
+============================================================
+DEUTUNG
+============================================================
+  Staerkster Treiber: gaba (|r|=0.327)
+  Glutamat-Lead (sig[t-1]->2AG): +0.297
+  -> 2AG reagiert primaer auf: gaba. Retrograde Bremse plausibel (FEATURE).
+============================================================
+
