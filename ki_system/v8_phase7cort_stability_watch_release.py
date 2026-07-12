@@ -25,6 +25,7 @@ WATCH_PARAMS = {
     "load_high": 0.6, "load_low": 0.15, "nudge_max": 0.05, "cycle_count": 0,
     "recent_tail": 3, "trig_drift": 0.4, "trig_survivor": 0.4, "trig_effectiveness": 0.3,
     "trig_oscillation": 0.4, "trig_saturation": 0.3, "effectiveness_scale": 10.0,
+    "stage": 1, "nudge_cap": 0.05, "cooldown": 3, "cooldown_left": 0,
 }
 
 def _now(): return int(time.time())
@@ -159,7 +160,29 @@ def _stress_components(sig, con):
     effectiveness_stress = _clamp(-eff * escale) if eff < 0 else 0.0
     return {"drift": drift_stress, "survivor": survivor_stress, "over": over, "explosion": explosion,
             "effectiveness": effectiveness_stress, "oscillation": sig["bias_oscillation"], "saturation": sig["ei_saturation"]}
-
+def _apply_stage2_nudges(con, recommended, allostatic_load):
+    stage = _to_int(_get_p(con, "stage", 1))
+    load_high = _get_p(con, "load_high", 0.6)
+    cooldown = _to_int(_get_p(con, "cooldown", 3))
+    cooldown_left = _to_int(_get_p(con, "cooldown_left", 0))
+    nudge_cap = _get_p(con, "nudge_cap", 0.05)
+    if cooldown_left > 0:
+        _set_p(con, "cooldown_left", cooldown_left - 1)
+    if stage != 2 or allostatic_load < load_high or cooldown_left > 0 or not recommended:
+        return False, []
+    if not _table_exists(con, "phase6a_neuromodulated_sleep_state"):
+        return False, []
+    st = _read_kv(con, "phase6a_neuromodulated_sleep_state")
+    changes = []
+    for k, delta in recommended.items():
+        d = max(-nudge_cap, min(nudge_cap, _to_float(delta)))
+        old = _clamp(_to_float(st.get(k), 0.5))
+        new = _clamp(old + d)
+        _kv_set(con, "phase6a_neuromodulated_sleep_state", k, round(new, 4))
+        changes.append((k, round(old, 4), round(new, 4)))
+    _set_p(con, "cooldown_left", cooldown)
+    con.commit()
+    return True, changes
 def run_stability_watch(con, cycle_index=None):
     con = resolve_db(con); ensure_schema(con)
     missing = _self_check_schema(con)
@@ -210,16 +233,63 @@ def run_stability_watch(con, cycle_index=None):
     _set_p(con, "cortisol_level", cortisol_level); _set_p(con, "cycle_count", cycle_index)
     _set_p(con, "last_regime", regime); _set_p(con, "last_allostatic_load", allostatic_load)
     con.commit()
+    _cort_applied, _cort_changes = _apply_stage2_nudges(con, rec, allostatic_load)
+
     return {"phase": PHASE, "phase_version": PHASE_VERSION, "neurotransmitter": NEUROTRANSMITTER,
             "cycle_index": cycle_index, "allostatic_load": round(allostatic_load, 4),
             "cortisol_level": round(cortisol_level, 4), "regime": regime, "dominant_signal": dominant, "elevated": bool(elevated),
             "signals": {k: round(v, 4) for k, v in sig.items()},
             "stress": {k: round(v, 4) for k, v in st.items()},
-            "recommended": rec, "applied": False,
+            "recommended": rec, "applied": _cort_applied,
             "safety": {"direct_fact_writes": "disabled", "direct_relation_writes": "disabled",
-                       "fact_promotion": "disabled", "no_word_blacklists": True, "stage": "observer_only"}}
-
+                       "fact_promotion": "disabled", "no_word_blacklists": True,
+                       "stage": _to_int(_get_p(con, "stage", 1)), "applied_changes": _cort_changes}}
 def register(AutonomousLoop):
     AutonomousLoop.phase7cort_stability_watch = True
     AutonomousLoop.cortisol_observer = True
+    return AutonomousLoop
+def _run_downstream_cycle(self, progress):
+    for mn in ("v8_phase7g_bdnf_growth_consolidation_release",
+               "v8_phase7f_orexin_wake_endurance_release",
+               "v8_phase7e_histamine_wake_arousal_release",
+               "v8_phase7d_slow_wave_sleep_substructure_release",
+               "v8_phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release"):
+        try:
+            m = __import__("ki_system." + mn, fromlist=["managed_cycle"])
+            if hasattr(m, "managed_cycle") and m.managed_cycle is not managed_cycle:
+                return m.managed_cycle(self, progress), mn
+        except Exception:
+            continue
+    return None, None
+
+def managed_cycle(self, progress=None):
+    downstream, dmod = _run_downstream_cycle(self, progress)
+    try:
+        db = resolve_db(self)
+        res = run_stability_watch(db)
+    except Exception as exc:
+        res = {"status": "phase7cort_error", "error": str(exc), "phase": PHASE}
+    return {"phase": PHASE, "downstream_module": dmod, "downstream_result": downstream, "phase7cort_result": res}
+
+def managed_run(self, cycles=1, progress=None):
+    res = []
+    try:
+        cycles = int(cycles or 1)
+    except Exception:
+        cycles = 1
+    for _ in range(max(1, cycles)):
+        res.append(managed_cycle(self, progress))
+    return {"phase": PHASE, "cycles": len(res), "results": res}
+
+def autoload(AutonomousLoop):
+    AutonomousLoop.cycle = managed_cycle
+    AutonomousLoop.run = managed_run
+    AutonomousLoop.phase7cort_stability_watch = True
+    AutonomousLoop.cortisol_observer = True
+    AutonomousLoop.cortisol_stage2 = True
+    for k, v in (("learning_mode", "context_hypotheses_with_neuromodulators"),
+                 ("fact_promotion", "disabled"), ("direct_fact_writes", "disabled"),
+                 ("direct_relation_writes", "disabled"), ("no_word_blacklists", True)):
+        if not hasattr(AutonomousLoop, k):
+            setattr(AutonomousLoop, k, v)
     return AutonomousLoop

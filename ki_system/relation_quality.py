@@ -8,48 +8,15 @@ LICENSE_TERMS = (
     'lizenz', 'license'
 )
 
-BAD_SUBJECTS = {
-    'der text','die text','das text','text','dabei','dadurch','darin','damit','dessen','deren',
-    'dieser','diese','dieses','diesen','diesem','dies','auch','hierbei','somit','außerdem','ausserdem',
-    'und','jedoch','aber','oder','sowie','wobei','während','waehrend','zudem','ferner','hierdurch',
-    'ergänzend','ergaenzend','montiert','einige davon','der verschluss','unten am wiegentrog',
-    'im kopf der granate','cover auf dem cover des albums','cover des albums','auf dem cover des albums',
-    'technische beschreibung der minenwerfer','german artillery of world',
-    'the encyclopedia of weapons of world','the encyclopedia of weapons of world war','german artillery of world war',
-    'cm-flak','cm-gebirgshaubitze 40','cm-gebirgshaubitze','cm-flak 40','gecs','days','reasons'
-}
+BAD_SUBJECTS = set()
 
-BAD_OBJECTS = {
-    'one','two','three','four','five','i','ii','iii','iv','v','vi','vii','viii','ix','x',
-    'da 02','da 20','da 2','da 02.','da 20.',
-    'sehr gering','damit sehr hoch','nur sehr schwer zu lokalisieren',
-    'verfügbar unter creative commons attribution-share alike 4',
-    'verfuegbar unter creative commons attribution-share alike 4',
-    'heute noch vorhanden, bzw','von den uhrenwerken gebr'
-}
+BAD_OBJECTS = set()
 
-BAD_SUBJECT_PREFIXES = (
-    'der text', 'die liste', 'diese liste', 'technische beschreibung', 'museale rezeption',
-    'an den enden ', 'auch die ', 'dadurch ', 'dabei ', 'hierbei ', 'somit ', 'zudem ',
-    'the encyclopedia of ', 'german artillery of ', 'world war ', 'modus die ', 'in zwei gruppen ',
-    'bei ', 'vor ', 'im ', 'in ', 'an ', 'auf ', 'aus ', 'mit ', 'für ', 'fuer ', 'von ', 'nach ', 'während ', 'waehrend ',
-    'unten ', 'oben ', 'ergänzend', 'ergaenzend', 'montiert', 'einige davon', 'der verschluss',
-    'cover auf dem cover', 'cover des albums', 'auf dem cover'
-)
+BAD_SUBJECT_PREFIXES = ()
 
-BAD_OBJECT_PREFIXES = (
-    'für ', 'fuer ', 'von ', 'an ', 'bei ', 'im ', 'in ', 'mit ', 'ohne ', 'nach ',
-    'es ', 'heute ', 'jeweils ', 'fast ', 'nur ', 'sehr ', 'als ', 'aus ', 'auf '
-)
+BAD_OBJECT_PREFIXES = ()
 
-BAD_TOPIC_OR_PHRASE_PARTS = (
-    'creative commons', 'attribution-share alike', 'verfügbar unter', 'verfuegbar unter',
-    'encyclopedia of weapons', 'german artillery of world', 'museale rezeption',
-    'modus die ', 'in zwei gruppen ', 'zu je 12 teams', 'heute noch vorhanden',
-    'horizontal gelagerte munition platziert', 'uhrenwerke gebr', 'zentrale plattform für die mannschaft',
-    'zentrale plattform fuer die mannschaft', 'begriffsklärungsseite', 'begriffsklaerungsseite',
-    'cover auf dem cover', 'auf dem cover des albums'
-)
+BAD_TOPIC_OR_PHRASE_PARTS = ()
 
 TITLE_FRAGMENT_WORDS = {'gecs','days','reasons','reason'}
 TYPE_HINTS = {
@@ -61,12 +28,7 @@ TYPE_HINTS = {
     'panzerzugdivision','rauschen','system','gerät','geraet','waffe','bauwerk','person','ort','objekt',
     'lied','bezeichnung','album','single','begriff','verfahren','prinzip','modell','software','sprache'
 }
-BAD_ISA_OBJECT_WORDS = {
-    'ausgeführt','ausgefuehrt','befestigt','stammende','einsatz','montiert','entwickelt','worden',
-    'einzustellen','abklappbar','bildeten','gebildet','platziert','angebracht','gebunden','vorhanden',
-    'eingeteilt','befindet','besitzt','hatte','hat','war','ist','wurde','wurden','öffnender','oeffnender',
-    'höhenrichten','hoehenrichten','rückstoß','rueckstoss','abgebildet'
-}
+BAD_ISA_OBJECT_WORDS = set()
 
 GOOD_SUBJECT_HINT_RE = re.compile(r'(\d|[A-ZÄÖÜ][a-zäöüß]+[- ][A-ZÄÖÜa-zäöüß0-9]|[A-ZÄÖÜ]{2,}|cm-|/)', re.U)
 ROMAN_RE = re.compile(r'^(?:[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)$', re.I)

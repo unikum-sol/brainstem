@@ -19,82 +19,14 @@ PATCH_ORDER = [
 ]
 
 # Consolidated subject blocks from 3d6m/n/o plus additions observed in latest logs.
-BAD_SUBJECT_EXACT = {
-    'darüber hinaus', 'darueber hinaus', 'leider', 'hierzu', 'hiervon', 'hierbei', 'hiermit', 'insofern',
-    'bislang', 'vielmehr', 'dagegen', 'dann', 'was', 'wie', 'wie gut', 'warum', 'wieso', 'wozu',
-    'wann', 'wer', 'welche', 'welcher', 'welches', 'daher', 'deshalb', 'damit', 'allerdings',
-    'zukunft', 'codierung', 'erweiterungen', 'dateisystem', 'nachfolger', 'neu', 'heute', 'bekannt',
-}
-BAD_SUBJECT_PREFIXES = (
-    # Question/evaluation starts
-    'wie gut ', 'wie funktioniert ', 'was ist ', 'was ', 'warum ', 'wieso ', 'welche ', 'welcher ', 'welches ',
-    # Frames and adverbials
-    'als ', 'laut ', 'aufgrund ', 'ohne ', 'neben ', 'zur ', 'zum ', 'im ', 'am ', 'bei ',
-    # Heading artifacts
-    'entwicklung die ', 'entwicklung der ', 'entwicklung das ', 'lokalisierung ', 'sicherheitsaspekte bei ',
-    'sicherheitsaspekte ', 'bit durch ', 'durch den externen ', 'durch die externe ', 'bekannte prozessoren ',
-    'evolution der sprache ', 'evolution des ', 'systeminformationen unter ', 'grundlegende konzepte ',
-    'haftung für ', 'haftung fuer ', 'vertreter unter anderem ', 'operationen mit ', 'videos und audiodateien ',
-    'anmerkungen ', 'präambel ', 'preambel ', 'problembehebung ', 'trivia ', 'logo ', 'technik ',
-    'technische einzelheiten ', 'leistung blockdiagramm ', 'leistung rückblickend ', 'leistung rueckblickend ',
-    # Observed recurring bad subjects
-    'die nutzung', 'der inhalt', 'das risiko', 'ein anderes problem', 'ein bekanntes problem', 'ein bekannter fall',
-    'ein bekannter subtyp', 'einführung', 'einfuehrung', 'marktstart ', 'lediglich ', 'm-programmen',
-    'wie bei ', 'operationen mit ', 'der algorithmus', 'algorithmus', 'der funktionsumfang', 'der pulse',
-    'bit-programme', 'upcoming', 'kommerzielle antivirensoftware', 'der verwaltungsrat', 'der code von ',
-    'das novum ', 'der pool', 'pooles identität ', 'pooles identitaet ', 'alle posts ', 'der begriff ',
-    'adolph ', 'oblivion ', 'bounty men ', 's bounty ', 'pc mit ', 'pcs mit ', 'halt datensymbole',
-    'google-freies smartphone ', 'der codename lautet ', 'codename lautet ', 'einziger markenname ',
-    'modelle mit angehängtem ', 'modelle mit angehaengtem ', 'das ergebnis', 'die drei hauptmodule',
-    'leistung rückblickend gesehen', 'leistung rueckblickend gesehen', 'die gpu nimmt ', 'nimmt fast ',
-    'stark dem ', 'stark ', 'pro taktzyklus ', 'stattr 16 ', 'statt 16 ', 'a leading voice ',
-)
-BAD_SUBJECT_CONTAINS = (
-    ' die folgenden ', ' folgende ', ' bekannten prozessoren ', ' anmerkungen ', ' lokalisierung ',
-    ' entwicklung die ', ' entwicklung der ', ' evolution der ', ' sicherheitsaspekte ', ' problembehebung ',
-    ' im vergleich ', ' bei der verwendung ', ' blockdiagramm ', ' technische einzelheiten ',
-)
-CLAUSE_SUBJECT_PREFIXES = (
-    'der effekt ', 'die erwartungen ', 'die verwendung ', 'die verbindung zum ', 'die cpu benötigt ', 'die cpu benoetigt ',
-    'eine weniger ', 'das dem menschen ', 'wenn der ', 'weil ', 'welcher ', 'ist sichtbar ', 'beschrieben ',
-    'verwenden ebenfalls ', 'fest dem ', 'der physische ', 'die dann ', 'das virus ', 'covering the ',
-    'ist ', 's ', 'se ', 'ser ', 'das ', 'die ', 'der ',
-)
+BAD_SUBJECT_EXACT = set()
+BAD_SUBJECT_PREFIXES = ()
+BAD_SUBJECT_CONTAINS = ()
+CLAUSE_SUBJECT_PREFIXES = ()
 
-BAD_OBJECT_EXACT = {
-    'kostenlos', 'anonym', 'vollständig', 'vollstaendig', 'optimal', 'vollständig und optimal', 'vollstaendig und optimal',
-    'verfügbar', 'verfuegbar', 'lauffähig', 'lauffaehig', 'kompatibel', 'inkompatibel', 'invertiert', 'monoton',
-    'zulässig', 'zulaessig', 'bekannt', 'selten', 'hoch', 'hiermit', 'zurück', 'zurueck', 'nutzdaten',
-    'variabel', 'geeignet', 'möglich', 'moeglich', 'erforderlich', 'notwendig', 'da', 'v3', '15',
-    '„amd“', 'amd', 'alu', 'kmu', 'termin', 'wcf',
-}
-BAD_OBJECT_PREFIXES = (
-    # Discourse/predicate prefixes
-    'auch verfügbar', 'auch verfuegbar', 'auch zulässig', 'auch zulaessig', 'auch möglich', 'auch moeglich',
-    'daher ', 'deshalb ', 'damit ', 'dabei ', 'jedoch ', 'allerdings ', 'leider ', 'nur ', 'noch ', 'nun ',
-    'völlig ', 'voellig ', 'vollständig ', 'vollstaendig ', 'optimal ', 'entscheidend für ', 'entscheidend fuer ',
-    'wesentlicher unterschied ', 'wesentlich ', 'verwandt mit ', 'ursprüngliche version', 'urspruengliche version',
-    'ab sofort ', 'zwischen ', 'zu diesem zeitpunkt ', 'je modell ', 'in der regel ', 'meist ', 'bereits ',
-    'abschließend betrachtet', 'abschliessend betrachtet', 'ausführlich ', 'ausfuehrlich ', 'frei erfunden',
-    'wegen ', 'bis zur ', 'über freie ', 'ueber freie ', 'gemessene ', 'vor allem ', 'speziell für ', 'speziell fuer ',
-    'laut ', 'theoretische ', 'zufällig ', 'zufaellig ', 'frei programmierbar', 'relativ ', 'erstes ergebnis ',
-    'erstes ', 'am ', 'e ', 's ', 'se ', 'ser ', 'ige ',
-)
-BAD_OBJECT_CONTAINS = (
-    ' nicht ', 'nicht ', ' nicht', 'nicht exakt definiert', 'nicht grundsätzlich', 'nicht grundsaetzlich',
-    'nicht plattformunabhängig', 'nicht plattformunabhaengig', 'nicht bekannt', 'nicht sichtbar', 'nicht betroffen',
-    'nicht notwendig', 'nicht möglich', 'nicht moeglich', 'nicht erforderlich', 'nicht kompatibel',
-    'nicht weiter betrachtet', 'daher case', 'case- in sensitive', 'case insensitive', 'case-insensitive',
-    'relativ problemlos möglich', 'relativ problemlos moeglich', 'gut geeignet', 'wenig überzeugt', 'wenig ueberzeugt',
-    'administratorrechte', 'kompatible prozessoren', 'bessere wahl', 'noch eingeschränkt', 'noch eingeschraenkt',
-    'entscheidend für die positionierung', 'entscheidend fuer die positionierung', 'für marketingzwecke', 'fuer marketingzwecke',
-    'für empfehlungssysteme', 'fuer empfehlungssysteme', 'fortlaufend nummeriert', 'geschlossen',
-    ' vor allem ', ' speziell für ', ' speziell fuer ', ' laut ', ' dafür ', ' dafuer ', 'frei programmierbar',
-    'zu beachten', 'für höhere taktraten', 'fuer hoehere taktraten', 'für server und workstations ausgelegt',
-    'fuer server und workstations ausgelegt', 'ausgelegt', 'verbreitet', 'zufällig angeordnet', 'zufaellig angeordnet',
-    'theoretische maximalwerte', 'im handel', 'direkt möglich', 'direkt moeglich', 'warenmarke', 'abkömmling des',
-    'abkoemmling des', 'zwischen israel und gaza',
-)
+BAD_OBJECT_EXACT = set()
+BAD_OBJECT_PREFIXES = ()
+BAD_OBJECT_CONTAINS = ()
 NOMINAL_HINTS = {
     'protokoll', 'schnittstelle', 'framework', 'software', 'programm', 'betriebssystem', 'prozessor', 'mikroprozessor',
     'dateiformat', 'format', 'standard', 'algorithmus', 'architektur', 'netzwerk', 'datenbank', 'programmiersprache',

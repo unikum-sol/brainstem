@@ -90,9 +90,10 @@ LOAD_ORDER = [
     {"module": "v8_phase7e_histamine_wake_arousal_release", "how": "autoload", "target": "LOOP", "label": "PHASE7E"},
     {"module": "v8_phase7f_orexin_wake_endurance_release", "how": "autoload", "target": "LOOP", "label": "PHASE7F"},
     {"module": "v8_phase7g_bdnf_growth_consolidation_release", "how": "autoload", "target": "LOOP", "label": "PHASE7G"},
+    {"module": "v8_phase7cort_stability_watch_release", "how": "autoload", "target": "LOOP", "label": "PHASE7CORT"},
 ]
 
-EXPECTED_TOP_MODULE = "v8_phase7g_bdnf_growth_consolidation_release"
+EXPECTED_TOP_MODULE = "v8_phase7cort_stability_watch_release"
 
 
 def _resolve_arg(target, autonomous_globals, AutonomousLoop):

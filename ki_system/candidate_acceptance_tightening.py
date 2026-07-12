@@ -5,43 +5,12 @@ WORD_RE = re.compile(r'[A-Za-zÄÖÜäöüß0-9][A-Za-zÄÖÜäöüß0-9+.#-]*')
 YEAR_RE = re.compile(r'\b(19|20)\d{2}\b')
 
 # Subjects that often looked entity-like due to capitalization but are actually discourse/adverbial frames.
-BAD_SUBJECT_EXACT = {
-    'darüber hinaus', 'darueber hinaus', 'leider', 'hierzu', 'insofern', 'zunächst', 'zunaechst',
-    'daher', 'deshalb', 'damit', 'allerdings', 'bislang', 'vielmehr', 'dagegen', 'upcoming',
-    'was', 'heute', 'neu', 'seitdem', 'mittlerweile', 'ursprünglich', 'urspruenglich', 'bekannt',
-    'als beispiele', 'beliebt', 'insbesondere', 'hierbei', 'zu ihnen', 'nachfolger'
-}
-BAD_SUBJECT_PREFIXES = (
-    'als ', 'laut ', 'aufgrund ', 'ohne ', 'innerhalb ', 'neben ', 'damit ', 'dabei ', 'darüber hinaus', 'darueber hinaus',
-    'leider ', 'hierzu ', 'insofern ', 'bislang ', 'vielmehr ', 'dagegen ', 'zu beginn', 'am anfang',
-    'die nutzung', 'der inhalt', 'das risiko', 'ein anderes problem', 'ein bekanntes problem', 'ein bekannter fall',
-    'ein bekannter subtyp', 'das novum', 'die güllegrube', 'die guellegrube', 'anlass der protestaktion',
-    'haftung für', 'haftung fuer', 'die letzte version', 'einige der', 'die folgenden', 'folgende ',
-    'präambel', 'preambel', 'vertreter unter anderem', 'probleme ähnlich', 'probleme aehnlich',
-    'oblivion ', 's bounty ', 'systeminformationen ', 'verbreitung nach offiziellen angaben',
-    'google-freies smartphone ', 'als kanadisches unternehmen', 'der pool', 'pooles identität', 'pooles identitaet',
-    'alle posts ', 'das design', 'die performance ', 'die acht redaktoren', 'kommerziell',
-)
+BAD_SUBJECT_EXACT = set()
+BAD_SUBJECT_PREFIXES = ()
 
-BAD_ISA_OBJECT_EXACT = {
-    'zurück', 'zurueck', 'kostenlos', 'anonym', 'hiermit', 'invertiert', 'verfügbar', 'verfuegbar',
-    'ähnlich', 'aehnlich', 'möglich', 'moeglich', 'interoperabel', 'mit', 'die', 'der', 'das', 'bei',
-    'casino', 'poker', 'sex', 'linux', 'broome', 'nutzdaten'
-}
-BAD_ISA_OBJECT_PREFIXES = (
-    'ab sofort ', 'zwischen ', 'nur ', 'version ', 'ende ', 'anfang ', 'mitte ', 'seit ', 'erst ab ',
-    'entscheidend für', 'entscheidend fuer', 'wesentlich ', 'dementsprechend ', 'noch selten',
-    'jedoch ', 'allerdings ', 'meist ', 'meisten ', 'auch nicht', 'auch für', 'auch fuer',
-    'nicht ', 'dabei ', 'damit ', 'deshalb ', 'hierbei ', 'zurück', 'zurueck', 'verfügbar und', 'verfuegbar und',
-    'frei erfunden', 'wegen ', 'bis zur ', 'über freie', 'ueber freie', 'gemessene ', 'e ', 's ', 'se ', 'ser ',
-)
-BAD_ISA_OBJECT_CONTAINS = (
-    ' nicht ', 'nicht ', ' nicht', ' nicht einwandfrei', 'nicht exakt definiert', 'nicht grundsätzlich', 'nicht grundsaetzlich',
-    'nicht plattformunabhängig', 'nicht plattformunabhaengig', 'nicht bekannt', 'nicht sichtbar',
-    'dabei ', 'damit ', 'deshalb ', 'und dass', 'und heute', 'zu nennen', 'ab sofort bestellbar',
-    'auch eine art qualitätsmerkmal', 'auch eine art qualitaetsmerkmal', 'administratorrechte',
-    'adminsitratorrechte', 'ausschließlich mit', 'ausschliesslich mit', 'gegenüber dem', 'gegenueber dem',
-)
+BAD_ISA_OBJECT_EXACT = set()
+BAD_ISA_OBJECT_PREFIXES = ()
+BAD_ISA_OBJECT_CONTAINS = ()
 
 SAFE_SHORT_OBJECT_HINTS = {
     'protokoll', 'framework', 'software', 'programm', 'betriebssystem', 'prozessor', 'mikroprozessor',

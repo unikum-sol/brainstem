@@ -82,7 +82,31 @@ def _bootstrap_phase_modules(con):
             errors.append((phase_name, "ensure_schema_error: " + str(exc)))
     con.commit()
     return bootstrapped, phase_reports, errors
+_PERF_INDEXES = [
+    ("hypothesis_learning_updates", "hypothesis_id", "idx_hlu_hyp"),
+    ("hypothesis_feedback", "hypothesis_id", "idx_hfb_hyp"),
+    ("hypothesis_error_events", "hypothesis_id", "idx_hee_hyp"),
+    ("hypothesis_stability_scores", "hypothesis_id", "idx_hss_hyp"),
+    ("phase5f_context_window_experiments", "target_chunk_id", "idx_p5f_tgt"),
+]
 
+def ensure_perf_indexes(con):
+    created = []
+    for table, col, name in _PERF_INDEXES:
+        try:
+            if not _table_exists(con, table):
+                continue
+            if col not in _columns(con, table):
+                continue
+            exists = con.execute("SELECT name FROM sqlite_master WHERE type='index' AND name=?", (name,)).fetchone()
+            if exists:
+                continue
+            con.execute("CREATE INDEX IF NOT EXISTS " + name + " ON " + table + "(" + col + ")")
+            created.append(name)
+        except Exception:
+            continue
+    con.commit()
+    return created
 def ensure_database_exists(db_path):
     p = Path(db_path)
     db_created = not p.exists()
@@ -94,8 +118,10 @@ def ensure_database_exists(db_path):
         except Exception: pass
         base_report = _apply_base_schema(con)
         bootstrapped, phase_reports, errors = _bootstrap_phase_modules(con)
+        perf_indexes = ensure_perf_indexes(con)
         con.commit()
         return {"db_created": db_created, "db_path": str(p.resolve()),
+                "perf_indexes_created": perf_indexes,
                 "base_tables_created": base_report["created_tables"],
                 "base_columns_added": base_report["added_columns"],
                 "phases_bootstrapped": bootstrapped,

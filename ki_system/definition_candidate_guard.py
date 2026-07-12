@@ -6,31 +6,10 @@ from collections import Counter
 
 WORD_RE = re.compile(r'[A-Za-zÄÖÜäöüß0-9][A-Za-zÄÖÜäöüß0-9+.#-]*')
 
-BAD_DEFINITION_SUBJECT_EXACT = {
-    'nachfolger','neu','heute','bekannt','was','allerdings','beliebt','insbesondere','zunächst','zunaechst',
-    'daher','deshalb','damit','zudem','insofern','als beispiele'
-}
-BAD_DEFINITION_SUBJECT_PREFIXES = (
-    'europaweit größter', 'europaweit groesster', 'weltweit größter', 'weltweit groesster', 'größter', 'groesster',
-    'einige der', 'einige ', 'die ursprüngliche domain', 'die urspruengliche domain', 'die ursprüngliche', 'die urspruengliche',
-    'die erste ', 'der erste ', 'das erste ', 'die folgenden ', 'folgende ', 'weitere ', 'generische begriffe ',
-    'ein wohnsitz ', 'eine niederlassung ', 'nur staatsbürger', 'nur staatsbuerger', 'eigenschaften ',
-    'einzig die veröffentlichung', 'einzig die veroeffentlichung', 'die verwendung ', 'die teuerste ', 'die einzige ',
-    'die empfohlene ', 'diese version', 'verbreitung nach offiziellen angaben', 'als eigenschaften',
-    'innerhalb dieses containers', 'ein typischer gattungsbegriff', 'treibende kraft ', 'systeminformationen ',
-    'ein beispiel dafür', 'ein beispiel dafuer', 'übliche zeichensatztabellen', 'uebliche zeichensatztabellen'
-)
-BAD_DEFINITION_OBJECT_EXACT = {
-    'poker','sex','linux','casino','broome','verfügbar','verfuegbar','möglich','moeglich','ähnlich','aehnlich',
-    'blau','rot','grün','gruen','gelb','schwarz','weiß','weiss', 'tor2web'
-}
-BAD_DEFINITION_OBJECT_PHRASES = (
-    'nicht erforderlich','nicht möglich','nicht moeglich','nicht notwendig','nicht zulässig','nicht zulaessig','nicht gestattet',
-    'nicht unumstritten','nicht dazu gedacht','nicht vorhanden','noch kein weg bekannt','zu beginn leer','zeit aktiv','seitdem gestattet',
-    'dabei ', 'damit ', 'deshalb ', 'und dass', 'und heute', 'also nicht', 'zu nennen', 'bisher nicht bekannt',
-    'offiziell notwendig','berechtigt, eine','gegenüber dem normalen','gegenueber dem normalen','dazu nicht zugelassen',
-    'anfang ', 'ende ', 'mitte ', 'seit ', 'erst ab ', 'ausschließlich mit', 'ausschliesslich mit'
-)
+BAD_DEFINITION_SUBJECT_EXACT = set()
+BAD_DEFINITION_SUBJECT_PREFIXES = ()
+BAD_DEFINITION_OBJECT_EXACT = set()
+BAD_DEFINITION_OBJECT_PHRASES = ()
 TECH_SUBJECT_HINTS = (
     'protokoll','framework','software','programm','betriebssystem','prozessor','mikroprozessor','dateiformat','format',
     'standard','algorithmus','architektur','netzwerk','datenbank','programmiersprache','sprache','bibliothek','schnittstelle',
