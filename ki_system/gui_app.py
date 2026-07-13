@@ -502,7 +502,7 @@ class App(tk.Tk):
                 total = 0; covered = 0; hyp = 0
                 try: total = con.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
                 except Exception: pass
-                try: covered = con.execute("SELECT COUNT(DISTINCT chunk_id) FROM chunk_attention_scores").fetchone()[0]
+                try: covered = con.execute("SELECT COUNT(*) FROM reading_queue WHERE COALESCE(read_count,0)>0").fetchone()[0]
                 except Exception: pass
                 try: hyp = con.execute("SELECT COUNT(*) FROM context_hypotheses").fetchone()[0]
                 except Exception: pass
@@ -552,7 +552,7 @@ class App(tk.Tk):
             r = con.execute("SELECT COUNT(*) FROM chunks").fetchone()
             total = r[0] if r else 0
             try:
-                r = con.execute("SELECT COUNT(DISTINCT chunk_id) FROM chunk_attention_scores").fetchone()
+                r = con.execute("SELECT COUNT(*) FROM reading_queue WHERE COALESCE(read_count,0)>0").fetchone()
                 covered = r[0] if r else 0
             except Exception:
                 covered = 0

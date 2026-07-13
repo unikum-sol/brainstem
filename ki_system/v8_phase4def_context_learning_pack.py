@@ -418,3 +418,99 @@ try:
 except Exception as _phase4def_fixed8_exc:
     print('[PHASE4DEF_SCHEMA_CANONICALIZER_FIXED8_AUTOLOAD_ERROR]', _phase4def_fixed8_exc)
 # <<< PHASE4DEF_SCHEMA_CANONICALIZER_FIXED8_AUTOLOAD <<<
+
+
+# >>> BRAINSTEM_DEPRIVATION_INPUT_GUARD_V1 >>>
+# Sensorischer Entzug sperrt nur neuen Textinput. Innere Statistik,
+# Konsolidierung und Botenstoffkette laufen weiter.
+_phase4def_input_cycle_without_deprivation_guard = safe_cycle
+
+
+def _phase4def_deprivation_active(db):
+    try:
+        if not _exists(db, "deprivation_state"):
+            return False
+        row = db.execute(
+            "SELECT value FROM deprivation_state WHERE key=?",
+            ("active",),
+        ).fetchone()
+        if not row:
+            return False
+        return str(row[0]).strip().strip('"').strip("'").lower() in (
+            "1", "true", "yes", "on", "active"
+        )
+    except Exception:
+        return False
+
+
+def safe_cycle(self, progress=None):
+    db = _db(self)
+    ensure_schema(db)
+    if not _phase4def_deprivation_active(db):
+        return _phase4def_input_cycle_without_deprivation_guard(self, progress)
+
+    nm = _nm(db)
+    update_stats(db)
+    consolidation = sleep(db, nm)
+    db.commit()
+    if progress:
+        try:
+            progress(0, 0, "phase4def deprivation: input skipped")
+        except Exception:
+            pass
+    return [{
+        "status": "phase4def_deprivation_no_input",
+        "message": "Sensorischer Entzug aktiv: kein Queue-Seeding, kein Chunk-Lesen, keine neuen Input-Hypothesen.",
+        "deprivation_active": True,
+        "direct_fact_writes": "disabled",
+        "direct_relation_writes": "disabled",
+        "fact_promotion": "disabled",
+        "question_generation": "disabled",
+        "no_word_blacklists": True,
+        "learning_mode": LEARNING_MODE,
+        "reading_queue_seed": {"seeded": 0, "reason": "sensory_deprivation"},
+        "totals": {"chunks_read": 0, "hypotheses_created_or_updated": 0},
+        "hypothesis_roles": {},
+        "sleep_consolidation": consolidation,
+    }]
+
+
+def safe_run(self, cycles=5, progress=None):
+    for attr in ("stop_requested", "cancel", "auto_stop"):
+        if hasattr(self, attr) and isinstance(getattr(self, attr), bool):
+            try:
+                setattr(self, attr, False)
+            except Exception:
+                pass
+    out = []
+    for _ in range(max(1, int(cycles or 1))):
+        if _stop(self):
+            out.append([{"status": "stopped", "message": "Stop-Anforderung erkannt."}])
+            break
+        out.append(safe_cycle(self, progress))
+    return out
+
+
+def patch_autonomous_loop(*args, **kwargs):
+    try:
+        loop_class = args[0] if args else kwargs.get("AutonomousLoop")
+        if loop_class is None:
+            from ki_system.autonomous import AutonomousLoop as loop_class
+        loop_class.cycle = safe_cycle
+        loop_class.run = safe_run
+        loop_class.phase4def_deprivation_input_guard_v1 = True
+        loop_class.no_word_blacklists = True
+        loop_class.fact_promotion = "disabled"
+        loop_class.direct_fact_writes = "disabled"
+        loop_class.direct_relation_writes = "disabled"
+        return True
+    except Exception as exc:
+        print("[PHASE4DEF_DEPRIVATION_INPUT_GUARD_ERROR]", exc)
+        return False
+
+
+try:
+    patch_autonomous_loop()
+except Exception as _phase4def_deprivation_guard_exc:
+    print("[PHASE4DEF_DEPRIVATION_INPUT_GUARD_AUTOLOAD_ERROR]", _phase4def_deprivation_guard_exc)
+# <<< BRAINSTEM_DEPRIVATION_INPUT_GUARD_V1 <<<

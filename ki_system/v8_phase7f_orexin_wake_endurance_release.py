@@ -125,8 +125,8 @@ def _corpus_unread_fraction(con):
     if not ch: return 0.5, 0, 0
     total = con.execute("SELECT COUNT(*) FROM " + ch).fetchone()[0]
     covered = 0
-    if _table_exists(con, "chunk_attention_scores") and "chunk_id" in set(_columns(con, "chunk_attention_scores")):
-        covered = con.execute("SELECT COUNT(DISTINCT chunk_id) FROM chunk_attention_scores").fetchone()[0]
+    if _table_exists(con, "reading_queue") and "read_count" in set(_columns(con, "reading_queue")):
+        covered = con.execute("SELECT COUNT(*) FROM reading_queue WHERE COALESCE(read_count,0)>0").fetchone()[0]
     unread = _clamp(1.0 - (covered / total)) if total > 0 else 0.5
     return unread, total, covered
 
