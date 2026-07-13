@@ -180,6 +180,6 @@ The ZIM import relies on `zimdump` to extract articles from the `.zim` archive. 
 ## Development Notes & Technical Context
 
 - **Codebase language:** Documentation is English; the source code (comments & internal naming) is **written in German**.
-- **AI-assisted engineering:** Developed with the collaborative assistance of advanced language models (**Claude 3.5/4 Opus, ChatGPT, Gemini**).
+- **AI-assisted engineering:** Developed with the collaborative assistance of advanced language models (**Claude 3.5/4 Opus, ChatGPT, Gemini, NoteBookLM**).
 - **Delivery & verification workflow:** Every module ships with idempotent schema management, self-checks, and a smoke test before integration; patches are validated with compile checks, backups, and automatic rollback.
 - **Project scale & status:** A massive, highly experimental testing system. Due to its scale and ongoing calibration of complex homeostatic loops, the architecture **has not yet been consolidated** — it remains a playground for heavy benchmarking and mathematical verification of neuromorphic concepts.
