@@ -7,7 +7,6 @@ import sqlite3
 from tkinter import ttk, filedialog
 from ki_system.memory import Memory
 from ki_system.ingest import import_file
-from ki_system import nlp
 from ki_system.autonomous import AutonomousLoop
 from ki_system.dialogue import DialogueManager
 from ki_system.search import semantic_search, answer
@@ -207,6 +206,12 @@ class App(tk.Tk):
         self.auto_stop = False
         self.auto_running = False
         self.auto_loop = None
+        self._closing = False
+        self._shutdown_poll_id = None
+        self._auto_thread = None
+        self._drift_thread = None
+        self._import_thread = None
+        self._reset_thread = None
         self.head = None
         self.mode = "idle"
         self._cov_cache = None
@@ -336,12 +341,93 @@ class App(tk.Tk):
     def _head_drag(self, event):
         self.head.geometry("+%d+%d" % (event.x_root - self._drag["x"], event.y_root - self._drag["y"]))
     def _on_close(self):
+        """Kooperativen Shutdown starten; Tk bleibt bis zum Worker-Ende aktiv."""
+        if self._closing:
+            return
+        self._closing = True
+        try:
+            self.protocol("WM_DELETE_WINDOW", lambda: None)
+        except Exception:
+            pass
+        self.cancel = True
+        self.auto_stop = True
+        self.drift_stop = True
+        if self.auto_loop is not None:
+            try:
+                self.auto_loop.stop()
+            except Exception:
+                pass
+        self._set_shutdown_status("Beenden angefordert. Laufender atomarer Schritt wird abgeschlossen ...")
+        self._poll_shutdown()
+
+    def _set_shutdown_status(self, text):
+        try:
+            if hasattr(self, "status"):
+                self.status.configure(text=text)
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "drift_status") and self.drift_running:
+                self.drift_status.configure(text=text)
+        except Exception:
+            pass
+
+    def _shutdown_threads(self):
+        out = []
+        for name in ("_auto_thread", "_drift_thread", "_import_thread", "_reset_thread"):
+            thread = getattr(self, name, None)
+            if thread is not None and thread.is_alive():
+                out.append((name, thread))
+        return out
+
+    def _poll_shutdown(self):
+        live = self._shutdown_threads()
+        if live or self.auto_running or self.drift_running or self.mode == "import":
+            names = ", ".join(name.replace("_", "") for name, _ in live) or "Worker"
+            self._set_shutdown_status("Sicheres Beenden. Warte auf: " + names)
+            try:
+                self._shutdown_poll_id = self.after(100, self._poll_shutdown)
+            except Exception:
+                pass
+            return
+        self._finalize_close()
+
+    def _finalize_close(self):
+        """Erst nach Worker-Ende DB und Fenster geordnet schliessen."""
+        for name in ("_auto_thread", "_drift_thread", "_import_thread", "_reset_thread"):
+            thread = getattr(self, name, None)
+            if thread is not None:
+                try:
+                    thread.join(timeout=0)
+                except Exception:
+                    pass
+                setattr(self, name, None)
+        try:
+            db = getattr(self.mem, "db", None)
+            if db is not None:
+                db.commit()
+        except Exception:
+            pass
+        try:
+            close_fn = getattr(self.mem, "close", None)
+            if callable(close_fn):
+                close_fn()
+            else:
+                db = getattr(self.mem, "db", None)
+                if db is not None:
+                    db.close()
+        except Exception:
+            pass
         try:
             if self.head is not None:
                 self.head.destroy()
+                self.head = None
         except Exception:
             pass
-        self.destroy()
+        try:
+            self.destroy()
+        except Exception:
+            pass
     def _safe_export_json(self):
         try:
             self.mem.export_json("export_ki_system.json")
@@ -393,7 +479,8 @@ class App(tk.Tk):
             except Exception as e:
                 self.println("Reset-FEHLER: " + str(e))
         import threading
-        threading.Thread(target=_worker, daemon=True).start()           
+        self._reset_thread = threading.Thread(target=_worker, name="brainstem-reset", daemon=False)
+        self._reset_thread.start()           
     def println(self, msg):
         def _do():
             try:
@@ -493,7 +580,8 @@ class App(tk.Tk):
         paths = filedialog.askopenfilenames(filetypes=[("Unterstuetzt", "*.txt *.pdf *.zim"), ("Alle", "*.*")])
         self.cancel = False
         if paths:
-            threading.Thread(target=self._import, args=(paths,), daemon=True).start()
+            self._import_thread = threading.Thread(target=self._import, args=(paths,), name="brainstem-import", daemon=False)
+            self._import_thread.start()
     def _import(self, paths):
         self.mode = "import"
         try:
@@ -506,8 +594,6 @@ class App(tk.Tk):
         finally:
             self.mode = "idle"
         self.refresh()
-    def learn(self):
-        threading.Thread(target=lambda: self.println("Lernen: " + str(nlp.learn_from_memory(self.mem, self.progress, lambda: self.cancel))), daemon=True).start()
     def _set_auto(self, r):
         def _apply():
             self.auto_start_btn.configure(state=tk.DISABLED if r else tk.NORMAL)
@@ -523,7 +609,8 @@ class App(tk.Tk):
         self.cancel = False
         self._set_auto(True)
         self.println("Autonomes Dauerlernen gestartet.")
-        threading.Thread(target=self._auto_worker, daemon=True).start()
+        self._auto_thread = threading.Thread(target=self._auto_worker, name="brainstem-auto", daemon=False)
+        self._auto_thread.start()
     def auto_stop_now(self):
         self.auto_stop = True
         self.cancel = True
@@ -646,7 +733,8 @@ class App(tk.Tk):
         self.drift_start_btn.configure(state=tk.DISABLED)
         self.drift_stop_btn.configure(state=tk.NORMAL)
         self.drift_report.delete("1.0", tk.END)
-        threading.Thread(target=self._drift_worker, daemon=True).start()
+        self._drift_thread = threading.Thread(target=self._drift_worker, name="brainstem-drift", daemon=False)
+        self._drift_thread.start()
     def _drift_worker(self):
         import importlib.util, pathlib, sqlite3
         root = pathlib.Path(__file__).resolve().parent.parent
