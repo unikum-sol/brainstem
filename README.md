@@ -9,6 +9,8 @@ An autonomous, biologically inspired AI system designed to **learn to model** th
 ![backend](https://img.shields.io/badge/backend-SQLite-lightgrey)
 ![stage](https://img.shields.io/badge/roadmap-Stage%20A%20complete-green)
 
+![Code txt exort on NotebookLM] (https://notebooklm.google.com/notebook/22f86efd-8cd6-447b-a43f-65f252259ab4?utm_source=nlmm_share)
+
 ## The Core Philosophy
 
 Traditional AI models and semantic databases often focus on memorizing and reproducing content (the "what"). **Brainstem takes a fundamentally different approach (the "how").** The system treats incoming data (such as massive text corpora or Wikipedia dumps) not as a static knowledge base to be memorized, but as a training substrate. Its goal is to analyze, comprehend, and model the **structural and semantic grammar of language**.
