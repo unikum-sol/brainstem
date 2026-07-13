@@ -9,7 +9,7 @@ An autonomous, biologically inspired AI system designed to **learn to model** th
 ![backend](https://img.shields.io/badge/backend-SQLite-lightgrey)
 ![stage](https://img.shields.io/badge/roadmap-Stage%20A%20complete-green)
 
-Code txt exort on NotebookLM, for Code review
+Code txt export on NotebookLM, for Code review
 https://notebooklm.google.com/notebook/22f86efd-8cd6-447b-a43f-65f252259ab4?utm_source=nlmm_share
 
 ## The Core Philosophy
