@@ -6,19 +6,6 @@ PKG = "ki_system"
 
 LOAD_ORDER = [
     # ---------------- Welt A: Legacy patches ----------------
-    {"module": "autonomous_brain_patch", "how": "apply_patch", "target": "LEARNER", "label": "PHASE3D6A", "dead_code": True},
-    {"module": "autonomous_brain_patch", "how": "apply_patch", "target": "LEARNER", "label": "PHASE3D6B", "dead_code": True},
-    {"module": "autonomous_brain_patch", "how": "apply_patch", "target": "LEARNER", "label": "PHASE3D6C", "dead_code": True},
-    {"module": "true_safe_brain", "how": "apply_patch", "target": "LEARNER", "label": "PHASE3D6D", "dead_code": True},
-    {"module": "true_safe_loop_patch", "how": "apply_patch", "target": "GLOBALS", "label": "PHASE3D6E"},
-    {"module": "true_safe_loop_patch", "how": "apply_patch", "target": "GLOBALS", "label": "PHASE3D6F"},
-    {"module": "true_safe_loop_patch", "how": "apply_patch", "target": "GLOBALS", "label": "PHASE3D6G"},
-    {"module": "true_safe_loop_patch", "how": "apply_patch", "target": "GLOBALS", "label": "PHASE3D6H"},
-    {"module": "true_safe_loop_patch", "how": "apply_patch", "target": "GLOBALS", "label": "PHASE3D6I"},
-    {"module": "true_safe_loop_patch", "how": "apply_patch", "target": "GLOBALS", "label": "PHASE3D6J"},
-    {"module": "true_safe_loop_patch", "how": "apply_patch", "target": "GLOBALS", "label": "PHASE3D6K1"},
-    {"module": "v8_phase3d8_to_3d6g_rollback_fixed2", "how": "apply_patch", "target": "NONE", "label": "PHASE3D8_ROLLBACK_FIXED2"},
-    {"module": "v8_phase3d9_cleanup_safe_core", "how": "apply_patch", "target": "NONE", "label": "PHASE3D9_FORCE_SAFE_CORE_FIXED5"},
     # ---------------- Welt B: Phase 4/5 ----------------
     {"module": "v8_phase4abc_context_learning_pack", "how": "patch_autonomous_loop", "target": "LOOP", "label": "PHASE4ABC"},
     {"module": "v8_phase4abc_context_learning_pack", "how": "patch_autonomous_loop", "target": "NONE", "label": "PHASE4ABC_FIXED1"},

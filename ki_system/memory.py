@@ -99,35 +99,14 @@ class Memory:
             for r in self.rows('SELECT subject,relation,value,confidence FROM facts'): w.writerow([r['subject'],r['relation'],r['value'],r['confidence']])
 
 
-# PHASE3D6C_EMERGENCY_NO_DIRECT_FACT_WRITES_FIXED3
-# Sicherheitsnetz: direkte add_fact-Schreibzugriffe werden in candidate_relations umgeleitet.
-try:
-    from ki_system.corpus_memory import ensure_corpus_schema as _p3d6c_ensure_corpus_schema
-    from ki_system.corpus_memory import insert_candidate as _p3d6c_insert_candidate
-    def _p3d6c_patch_add_fact_methods():
-        for _name, _obj in list(globals().items()):
-            if isinstance(_obj, type) and hasattr(_obj, 'add_fact'):
-                _orig = getattr(_obj, 'add_fact')
-                if getattr(_orig, '_phase3d6c_guarded', False):
-                    continue
-                def _guarded_add_fact(self, subject, relation, obj, confidence=0.0, source='', *args, __orig=_orig, **kwargs):
-                    try:
-                        _p3d6c_ensure_corpus_schema(self)
-                        scores = {'definition_score': float(confidence or 0.0), 'fragment_score': 0.0, 'license_score': 0.0, 'alignment_score': 0.0, 'novelty_score': 0.5}
-                        _p3d6c_insert_candidate(self, subject, relation, obj, confidence or 0.0, None, str(source or ''), str(source or ''), scores, 'candidate', None)
-                    except Exception:
-                        pass
-                    return False
-                _guarded_add_fact._phase3d6c_guarded = True
-                setattr(_obj, 'add_fact', _guarded_add_fact)
-    _p3d6c_patch_add_fact_methods()
-except Exception:
-    pass
+# BRAINSTEM_PURE_WRITE_GUARD
+# Technische Uebergangssperre: keine Klassifikation, keine Candidate-Umleitung.
+def _brainstem_blocked_write(self, *args, **kwargs):
+    return False
 
-
-# PHASE3D6D_NO_DIRECT_WRITES
-try:
-    from ki_system.no_direct_writes import apply_patch as _p3d6d_no_direct_writes
-    _p3d6d_no_direct_writes(globals())
-except Exception:
-    pass
+for _brainstem_name in (
+    "add_fact", "add_relation", "add_relations", "store_relation",
+    "insert_relation", "add_ontology"
+):
+    if hasattr(Memory, _brainstem_name):
+        setattr(Memory, _brainstem_name, _brainstem_blocked_write)
