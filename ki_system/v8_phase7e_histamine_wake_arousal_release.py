@@ -180,11 +180,18 @@ def _run_downstream_cycle(self, progress):
 
 def managed_cycle(self, progress=None):
     downstream, dmod = _run_downstream_cycle(self, progress)
+    observer = {"phase": "phase7d_workpoint_observer_v1", "status": "not_run", "applied": False}
+    try:
+        db = resolve_db(self)
+        from ki_system import v8_phase7d_workpoint_observer_v1 as _workpoint_observer
+        observer = _workpoint_observer.observe_cycle(db)
+    except Exception as exc:
+        observer = {"phase": "phase7d_workpoint_observer_v1", "status": "observer_error", "error": str(exc), "applied": False}
     try:
         db = resolve_db(self); p7e = run_phase7e_cycle(db)
     except Exception as exc:
         p7e = {"status": "phase7e_error", "error": str(exc), "phase": PHASE}
-    return {"phase": PHASE, "downstream_module": dmod, "downstream_result": downstream, "phase7e_result": p7e}
+    return {"phase": PHASE, "downstream_module": dmod, "downstream_result": downstream, "phase7d_workpoint_observer_v1": observer, "phase7e_result": p7e}
 
 def managed_run(self, cycles=1, progress=None):
     res = []

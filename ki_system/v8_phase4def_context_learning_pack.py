@@ -8,7 +8,6 @@ LEARNING_MODE='context_hypotheses_with_neuromodulators'
 
 _SENT_RE=re.compile(r'(?<=[.!?])\s+|\n+')
 _WS_RE=re.compile(r'\s+')
-_YEAR_RE=re.compile(r'\b(1[0-9]{3}|20[0-9]{2}|21[0-9]{2})\b')
 
 
 def _now(): return int(time.time())
@@ -67,41 +66,97 @@ def seed_queue(db,target=2000):
 
 def _nm(db): return {'dopamine':0.5,'serotonin':0.6,'glutamate':0.4,'gaba':0.4,'noradrenaline':0.3,'acetylcholine':0.5}
 
-def _sentences(text,limit=4): return [p.strip() for p in _SENT_RE.split(_norm(text,3000)) if len(p.strip())>20][:limit]
+def _sentences(text, limit=None):
+    """Rohe nichtleere Textsegmente ohne Wort- oder Laengenfilter liefern."""
+    parts = [part.strip() for part in _SENT_RE.split(_norm(text, 3000)) if part.strip()]
+    return parts
 
-def classify(s,title=''):
-    s=_norm(s); low=s.lower(); words=s.split(); subj=' '.join(words[:min(6,len(words))]); obj=' '.join(words[min(6,len(words)):])[:350]; rel='context'
-    for m in [' ist ',' sind ',' war ',' waren ',' wird ',' werden ',' bedeutet ',' bezeichnet ',' enthält ',' umfasst ',' besteht ',' dient ',' ermöglicht ',' erfordert ',' benötigt ']:
-        i=low.find(m)
-        if i>0: subj=s[:i].strip(' :;,-'); obj=s[i+len(m):].strip(' :;,-')[:350]; rel=m.strip(); break
-    role='raw_hypothesis'; conf=0.35; unc=0.65
-    if _YEAR_RE.search(s) or re.search(r'\b(seit|bis|jahr)\b',low): role,conf,unc='temporal_hypothesis',0.48,0.52
-    if rel in ('ist','sind','war','waren','bedeutet','bezeichnet') and len(obj.split())>=3: role,conf,unc='definition_hypothesis',0.55,0.45
-    if rel in ('ermöglicht','erfordert','benötigt','dient'): role,conf,unc='requirement_hypothesis',0.50,0.50
-    if re.search(r'\bbeispiel\b|\betwa\b',low): role,conf,unc='example_hypothesis',0.50,0.50
-    if re.search(r'\b(verfügbar|kompatibel|geeignet|möglich|notwendig|erforderlich|frei|aktiv|inaktiv|fertig)\b',obj.lower()): role,conf,unc='state_hypothesis',0.48,0.52
-    if rel in ('enthält','umfasst','besteht'): role,conf,unc='relation_hypothesis',0.52,0.48
-    if len(words)>45 or len(subj.split())>14: role,conf,unc='context_fragment',0.30,0.70
-    if conf<0.40: role='uncertain_hypothesis'
-    return {'role':role,'subject':subj[:180],'relation_hint':rel,'object':obj,'text_excerpt':s,'confidence':conf,'uncertainty':unc}
+def classify(sentence, title=''):
+    """Eine rohe Beobachtung erzeugen, ohne Sprache semantisch vorzuklassifizieren."""
+    observed = _norm(sentence)
+    return {
+        'role': 'uncertain_hypothesis',
+        'subject': observed[:180],
+        'relation_hint': '',
+        'object': '',
+        'text_excerpt': observed,
+        'confidence': 0.0,
+        'uncertainty': 1.0,
+    }
 
 def _sig(h):
     b='|'.join([h['role'],h['subject'].lower()[:80],h['relation_hint'],h['object'].lower()[:120],h['text_excerpt'].lower()[:160]])
     return hashlib.sha1(b.encode('utf-8','ignore')).hexdigest()
 
-def insert_h(db,cid,s,title,nm):
-    h=classify(s,title); sig=_sig(h); now=_now()
-    ex=db.execute('SELECT id,evidence_count,confidence,uncertainty FROM context_hypotheses WHERE signature=? LIMIT 1',(sig,)).fetchone()
-    if ex:
-        hid,ev,cf,un=ex; db.execute('UPDATE context_hypotheses SET evidence_count=?, confidence=?, uncertainty=?, updated_at=? WHERE id=?',((ev or 1)+1,min(.95,(cf or h['confidence'])+.02),max(.05,(un or h['uncertainty'])-.02),now,hid)); evtype='hypothesis_reobserved'
+def insert_h(db, cid, sentence, title, nm):
+    """Rohe Beobachtung speichern; Lernen bleibt nachgelagerten Phasen vorbehalten."""
+    hypothesis = classify(sentence, title)
+    signature = _sig(hypothesis)
+    now = _now()
+    existing = db.execute(
+        'SELECT id,evidence_count FROM context_hypotheses WHERE signature=? LIMIT 1',
+        (signature,),
+    ).fetchone()
+    if existing:
+        hypothesis_id = existing[0]
+        evidence_count = int(existing[1] or 1) + 1
+        db.execute(
+            'UPDATE context_hypotheses SET evidence_count=?, updated_at=? WHERE id=?',
+            (evidence_count, now, hypothesis_id),
+        )
+        event_type = 'raw_observation_reobserved'
     else:
-        cur=db.execute("INSERT INTO context_hypotheses(chunk_id,role,subject,relation_hint,object,text_excerpt,source_title,confidence,uncertainty,status,dopamine,serotonin,glutamate,gaba,noradrenaline,acetylcholine,signature,evidence_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(cid,h['role'],h['subject'],h['relation_hint'],h['object'],h['text_excerpt'],title,h['confidence'],h['uncertainty'],'active',nm['dopamine'],nm['serotonin'],nm['glutamate'],nm['gaba'],nm['noradrenaline'],nm['acetylcholine'],sig,1,now,now)); hid=cur.lastrowid; evtype='hypothesis_created'
-    db.execute("INSERT INTO context_learning_events(hypothesis_id,event_type,role,details,dopamine,serotonin,glutamate,gaba,noradrenaline,acetylcholine,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",(hid,evtype,h['role'],_json({'chunk_id':cid,'signature':sig}),nm['dopamine'],nm['serotonin'],nm['glutamate'],nm['gaba'],nm['noradrenaline'],nm['acetylcholine'],now))
-    signal=h['confidence']-h['uncertainty']; db.execute("INSERT INTO hypothesis_feedback(hypothesis_id,feedback_type,signal,reason,details,created_at) VALUES(?,?,?,?,?,?)",(hid,'initial_self_assessment',round(signal,3),'neuromodulated_uncertainty_estimate',_json({'role':h['role']}),now))
-    if h['uncertainty']-h['confidence']>.25: db.execute("INSERT INTO hypothesis_error_events(hypothesis_id,error_type,severity,reason,details,created_at) VALUES(?,?,?,?,?,?)",(hid,'high_uncertainty',round(h['uncertainty']-h['confidence'],3),'uncertainty_exceeds_confidence',_json({'role':h['role']}),now))
-    nov=0.25 if ex else 1.0; rew=max(0,h['confidence']-.45); fat=max(0,h['uncertainty']-.65)
-    db.execute("INSERT INTO neuromodulated_attention_events(chunk_id,hypothesis_id,attention_reason,novelty,uncertainty,reward,fatigue,dopamine,serotonin,glutamate,gaba,noradrenaline,acetylcholine,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(cid,hid,'hypothesis_attention_signal',nov,h['uncertainty'],rew,fat,nm['dopamine'],nm['serotonin'],nm['glutamate'],nm['gaba'],nm['noradrenaline'],nm['acetylcholine'],now))
-    return hid,h
+        cursor = db.execute(
+            "INSERT INTO context_hypotheses("
+            "chunk_id,role,subject,relation_hint,object,text_excerpt,source_title,"
+            "confidence,uncertainty,status,dopamine,serotonin,glutamate,gaba,"
+            "noradrenaline,acetylcholine,signature,evidence_count,created_at,updated_at"
+            ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                cid,
+                hypothesis['role'],
+                hypothesis['subject'],
+                hypothesis['relation_hint'],
+                hypothesis['object'],
+                hypothesis['text_excerpt'],
+                title,
+                hypothesis['confidence'],
+                hypothesis['uncertainty'],
+                'active',
+                nm['dopamine'],
+                nm['serotonin'],
+                nm['glutamate'],
+                nm['gaba'],
+                nm['noradrenaline'],
+                nm['acetylcholine'],
+                signature,
+                1,
+                now,
+                now,
+            ),
+        )
+        hypothesis_id = cursor.lastrowid
+        event_type = 'raw_observation_created'
+    db.execute(
+        "INSERT INTO context_learning_events("
+        "hypothesis_id,event_type,role,details,dopamine,serotonin,glutamate,gaba,"
+        "noradrenaline,acetylcholine,created_at"
+        ") VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            hypothesis_id,
+            event_type,
+            hypothesis['role'],
+            _json({'chunk_id': cid, 'signature': signature, 'input_mode': 'raw_observation'}),
+            nm['dopamine'],
+            nm['serotonin'],
+            nm['glutamate'],
+            nm['gaba'],
+            nm['noradrenaline'],
+            nm['acetylcholine'],
+            now,
+        ),
+    )
+    return hypothesis_id, hypothesis
 
 def _chunks(db,limit=32):
     if not _exists(db,'chunks'): return []
