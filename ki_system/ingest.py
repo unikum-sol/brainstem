@@ -44,7 +44,7 @@ def list_zim_titles(path,max_articles,progress=None,cancel=None):
                 for line in out.splitlines():
                     if cancel and cancel(): break
                     t=line.strip()
-                    if len(t)>2 and not t.lower().endswith(MEDIA): titles.append(t)
+                    if t and not t.lower().endswith(MEDIA): titles.append(t)
                     if len(titles)>=max_articles: break
                 return titles
         except Exception: pass
