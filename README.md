@@ -1,5 +1,7 @@
 # BrainStem
 
+update 13.07.2026
+
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
 [![Backend: SQLite](https://img.shields.io/badge/backend-SQLite-lightgrey)](#database-initialization)
