@@ -1,185 +1,280 @@
-# Brainstem
+# BrainStem
 
-A biologically-inspired, neuro-symbolic cognitive architecture for lifelong learning.
-Digital **neuromodulators** regulate learning, hypothesis tracking, and memory consolidation over an SQLite backend.
-An autonomous, biologically inspired AI system designed to **learn to model** the underlying mechanics, structures, and rules of language and text—rather than just memorizing facts.
+[![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
+[![Backend: SQLite](https://img.shields.io/badge/backend-SQLite-lightgrey)](#database-initialization)
+[![Roadmap: Stage A complete](https://img.shields.io/badge/roadmap-Stage%20A%20complete-green)](#current-development-and-testing-status)
 
-![status](https://img.shields.io/badge/status-experimental-orange)
-![python](https://img.shields.io/badge/python-3.11-blue)
-![backend](https://img.shields.io/badge/backend-SQLite-lightgrey)
-![stage](https://img.shields.io/badge/roadmap-Stage%20A%20complete-green)
+A biologically inspired, neuro-symbolic cognitive architecture for lifelong learning.
 
-[Code export on NotebookLM, for Code review](https://notebooklm.google.com/notebook/22f86efd-8cd6-447b-a43f-65f252259ab4?utm_source=nlmm_share)
+BrainStem is an autonomous experimental system designed to learn models of the structures and dynamics of language and text rather than merely storing isolated facts. Digital neuromodulators regulate hypothesis formation, uncertainty, revision, exploration, inhibition, memory consolidation, sleep pressure, and system stability over an SQLite backend.
 
-## The Core Philosophy
+[Open the code export in NotebookLM for review](https://notebooklm.google.com/notebook/22f86efd-8cd6-447b-a43f-65f252259ab4?utm_source=nlmm_share)
 
-Traditional AI models and semantic databases often focus on memorizing and reproducing content (the "what"). **Brainstem takes a fundamentally different approach (the "how").** The system treats incoming data (such as massive text corpora or Wikipedia dumps) not as a static knowledge base to be memorized, but as a training substrate. Its goal is to analyze, comprehend, and model the **structural and semantic grammar of language**.
+> [!IMPORTANT]
+> BrainStem is a research and calibration system, not a production-ready assistant. Permanent fact, relation, and question writes remain locked while the learning core is being validated.
 
-- **Structural Learning:** Brainstem learns how subjects, relations, and objects interact, mapping how meaning is built dynamically.
-- **Noise Filtering via Sleep Cycles:** By mimicking biological sleep phases (such as slow-wave sleep and consolidation), the system constantly prunes weak or chaotic connections to crystalize the core rules of language.
+## Core Philosophy
+
+Traditional semantic systems often focus on the **what**: storing and retrieving content. BrainStem focuses on the **how**: learning how context, uncertainty, evidence, contradiction, revision, and consolidation interact over time.
+
+A corpus is treated as training substrate rather than as a static knowledge base. The current learning path creates and revises context hypotheses, preserves errors as learning material, and delays permanent knowledge promotion until consolidation and safety gates are ready.
+
+Core principles:
+
+- **Learning before rules:** fixed lexical blacklists and hand-authored word-role mappings are not part of the active learning path.
+- **Errors remain evidence:** unresolved and contradicted hypotheses stay available for later revision.
+- **Consolidation before promotion:** permanent fact promotion remains closed until the staged write-gating design is validated.
+- **Neuromodulation governs the whole process:** learning rate, confidence, error weighting, exploration, inhibition, revision, attention, stabilization, and consolidation are state-dependent.
+- **Measure before changing:** long runs, drift tests, call-stack audits, database diagnostics, and shadow-mode experiments precede active control changes.
 
 ## Overview
 
-**brainstem** (Test Version 8) does not store data statically. Instead it simulates the dynamics of a biological brainstem: a homeostatic network of **12 digital neurotransmitters** regulates data-processing rates, evaluates uncertainty, forms context hypotheses, and consolidates knowledge during simulated **sleep cycles**.
+BrainStem Test Version 8 operates as a layered autonomous cycle over a relational SQLite database. The current system uses **12 digital neuromodulators**:
 
-The system extracts logical relations from unstructured text and incrementally builds a probabilistic world model in a relational **SQLite** database. Learning rate, exploration, error weighting, consolidation, and sleep–wake regulation are controlled autonomously — the system is designed to *learn how to learn*, not to be told the rules.
+1. Dopamine
+2. Serotonin
+3. Glutamate
+4. GABA
+5. Noradrenaline
+6. Acetylcholine
+7. Adenosine
+8. Endocannabinoids
+9. Cortisol
+10. Histamine
+11. Orexin
+12. BDNF
+
+The system pre-parses a text corpus into chunks before autonomous learning begins. During learning, it forms context hypotheses, tracks uncertainty and outcomes, revisits unresolved material, performs sleep replay, and applies slow-wave down-selection. Permanent facts and relations are intentionally not generated during the current calibration stage.
 
 ## Architecture
 
 ### Two-Stage Data Pipeline
 
 | Stage | Name | Description |
-|-------|------|-------------|
-| **1** | Inference-Free Pre-Parsing | The raw corpus (e.g. Wikipedia `.zim`) is fully read, structured, and partitioned into a high-performance chunk store **before** learning begins (GUI: *"ZIM Einlesen"*). |
-| **2** | Autonomous Learning | The `AutonomousLoop` processes prepared chunks in bite-sized portions, so neuromodulation reacts purely to data semantics — undisturbed by disk I/O latency. |
+|---|---|---|
+| 1 | Inference-Free Pre-Parsing | A raw corpus such as a Wikipedia ZIM file is extracted, structured, and partitioned into the chunk store before learning begins. |
+| 2 | Autonomous Learning | `AutonomousLoop` processes prepared chunks while the neuromodulatory and consolidation chain reacts to the system's evolving internal state. |
 
 ### Central Phase Registry
 
-Phases are layered sequentially (4x → 5x → 6a–6d → 7a–7g → 7cort). Loading is handled by a single **declarative registry** (`ki_system/phase_registry.py`):
+Runtime phases are loaded through `ki_system/phase_registry.py`. The registry defines load order, isolates module-loading failures, and verifies that the managed cycle terminates at the expected top phase.
 
-- Defines the **exact load order** in one place
-- Isolates each entry with its own error handling + machine-readable load report
-- Runs a **post-load self-check** (verifies the cycle chain terminates at the correct top phase and that all safety flags are set)
+Current processing chain, top to bottom:
 
-**Processing chain (top → down):**
-`Cortisol (7cort) → 7g BDNF → 7f Orexin → 7e Histamine → 7d Slow-Wave → 7c → 7b1 → 7b → 7a → 6d → 6c → 6b → 6a`
+`7cort Cortisol → 7g BDNF → 7f Orexin → 7e Histamine → 7d Slow-Wave → 7c E/I → 7b1 Wake-Chain Bridge → 7b Endocannabinoids → 7a Adenosine → 6d → 6c → 6b → 6a`
 
-## The Digital Neurotransmitter Cockpit
+A recent call-stack audit found nested predecessor calls that caused the complete Phase-6a sleep-replay path to run three times per global cycle. The chain was cleaned so that Phase 7b1 is the orchestrator and each normal global cycle now produces exactly one Phase-6a replay cycle, one Phase-7c E/I event, one Phase-7d cycle, and one workpoint-observer event.
 
-Each cycle computes **12** self-regulating chemical messengers. Every level is derived from the system's *own* internal state (progress, uncertainty, sleep pressure, consolidation consistency, reading coverage) via **data-dependent dynamics on top of fixed biophysical constants** (hard bounds `[0.0, 1.0]`, decay rates, homeostatic set-points) — analogous to how biology combines fixed physiology with adaptive regulation. All values are normalized to `[0.0, 1.0]`.
+## Digital Neuromodulator Cockpit
+
+All levels are normalized to `[0.0, 1.0]`. Values are derived from internal system state on top of bounded biological-style dynamics and homeostatic constraints.
 
 ### Core Learning Modulators
 
-| # | Neurotransmitter | System Role |
-|---|------------------|-------------|
-| 1 | **Dopamine (DA)** | Success & reward metric — signals *gap closure*, stabilizes validated pathways. |
-| 2 | **Serotonin (5-HT)** | Consolidation & stability — protects established knowledge from being overwritten (*consolidation bias*). |
-| 3 | **Glutamate (Glu)** | Excitatory exploration — drives new-hypothesis generation, raises plasticity (*exploration bias*). |
-| 4 | **GABA** | Inhibitory noise filter — dampens redundant pathways, prevents saturation; reciprocal Glu–GABA E/I balance. |
-| 5 | **Acetylcholine (ACh)** | Novelty detector — controls attention & structural revision when data deviates from the model (*revision bias*). |
-| 6 | **Noradrenaline (NA)** | Stress & error signal — reacts to chronic blockage (`persistent_pressure`), forces strategy switches. |
+| Neuromodulator | Current system role |
+|---|---|
+| **Dopamine (DA)** | Outcome and gap-closure signal; contributes to stabilization of useful pathways. |
+| **Serotonin (5-HT)** | Consolidation and stability signal; contributes to protection against uncontrolled revision. |
+| **Glutamate (Glu)** | Excitatory drive associated with exploration and learning activity. |
+| **GABA** | **Global inhibition and E/I-balance signal.** GABA currently regulates system-level inhibition; it does **not** identify or suppress individual words, relations, or extraction errors. |
+| **Acetylcholine (ACh)** | Novelty, attention, and structural-revision signal. |
+| **Noradrenaline (NA)** | Error, alarm, and persistent-pressure signal. |
 
-### Homeostatic & Gain-Control Modulators
+### Homeostatic and Gain-Control Modulators
 
-| # | Neurotransmitter | System Role |
-|---|------------------|-------------|
-| 7 | **Adenosine** `phase7a` | Sleep-pressure homeostat — accumulates while awake, forces sleep-replay at max, depletes after replay. |
-| 8 | **Endocannabinoids** `phase7b` | Retrograde gain control — 2-AG / Anandamide dampening & LTD of over-excited pathways. |
+| Neuromodulator | Phase | Current system role |
+|---|---:|---|
+| **Adenosine** | 7a | Sleep-pressure homeostat. |
+| **Endocannabinoids** | 7b | Retrograde gain control using 2-AG and anandamide dynamics. |
 
-### Regulatory & Growth Modulators
+### Regulatory and Growth Modulators
 
-| # | Neurotransmitter | System Role |
-|---|------------------|-------------|
-| 9 | **Cortisol / HPA** `phase7cort` | Global **stability watcher & regulator**. Measures *allostatic load* (threshold drift, survivor collapse, effectiveness depression, oscillation, E/I saturation). Runs as a **Stage-2 active regulator** at the top of the cycle chain: applies small, capped neuromodulator nudges (±0.05 per cycle, with cooldown, self-limiting) when allostatic load is high, and stays silent when the system is calm. |
-| 10 | **Histamine** `phase7e` | Wake / arousal — reciprocal antagonist of adenosine; together they form the emergent **sleep–wake switch**. |
-| 11 | **Orexin** `phase7f` | Reading-endurance & **curiosity drive** — motivates continued reading while unread corpus *and* progress remain; self-attenuates when satiated (`curious_drive` / `balanced` / `satiated`). |
-| 12 | **BDNF** `phase7g` | Activity-dependent **growth & consolidation** substrate — rises on consistent, progressing consolidation (`growth`), else `maintenance` / `low_plasticity`. |
+| Neuromodulator | Phase | Current system role |
+|---|---:|---|
+| **Cortisol / HPA** | 7cort | Top-level stability watcher. The current database calibration remains in **Stage 1 observer mode**; it measures allostatic load and recommendations but does not apply Stage-2 nudges. |
+| **Histamine** | 7e | Wake and arousal signal interacting with sleep pressure. |
+| **Orexin** | 7f | Reading-endurance and curiosity-related drive. |
+| **BDNF** | 7g | Activity-dependent growth and consolidation substrate. |
 
-## Sleep, Consolidation & Slow-Wave Substructure
+## Sleep, Consolidation, and Slow-Wave Selection
 
-### Sleep Replay & Critic Gate — `phase6a` & `phase6b`
+### Sleep Replay and Critic Gate — Phases 6a and 6b
 
-In artificial sleep, excitation (glutamate) is throttled while inhibition (GABA) and consolidation (serotonin) dominate. Before hypotheses are strengthened, they pass the **`_critic_gate`**:
+Phase 6a performs offline-style replay after the wake path. Phase 6b evaluates replay effectiveness and plasticity adjustments. The critic gate evaluates whether a hypothesis has sufficient consistency to be strengthened; rejected or unstable material remains available as error and revision evidence.
 
-- Computes `anchor_consistency` of new relations against stable anchor data.
-- On contradiction/instability → `critic_rejected` + mathematical penalties (**hallucination protection**).
-- After a successful replay cycle, `adenosine_level` is fully depleted.
+The chain-cleanup audit now enforces one complete Phase-6a replay per global cycle. Existing historical replay rows are retained because they represent real executions, although older history must not be interpreted as one replay row per global cycle.
 
-### Slow-Wave Sleep Substructure — `phase7d`
+### Slow-Wave Substructure — Phase 7d
 
-Adds a true `<1 Hz` up/down-state substructure with **self-regulating down-selection**:
+Phase 7d adds sub-1-Hz up/down-state processing with:
 
-- **Stochastic reactivation** (weighted sampling without replacement) — participation varies across oscillations, so *consistency* can be measured; only repeatedly, robustly active hypotheses survive.
-- **Adaptive selection threshold** derived from the system's own activity distribution and its GABA/Glutamate-derived *selection pressure* — **no hard-coded cut-off**.
-- **Anchor interleaving** as an anti-hallucination reality check.
+- stochastic reactivation
+- adaptive thresholds
+- activity-dependent participation
+- survivor and weakening statistics
+- anchor interleaving
+- self-regulating down-selection
 
-This replaces the earlier "reinforce-everything" no-op with genuine, biologically-plausible consolidation (a small survivor fraction is reinforced, the majority weakened).
+A passive **Phase-7d Workpoint Observer** now records longitudinal E/I state, activity, survivor ratios, reference movement, and virtual adjustment proposals. The observer remains non-applying: `applied = false`.
 
-## Learning Dynamics & Progress Measurement
+## E/I Drive, Active State, and Shadow Recurrence
 
-Because the knowledge base grows continuously, a **marginal progress metric** assesses learning honestly (the raw global average is diluted by accumulated mass). Comparing newest-vs-oldest cohorts reveals the true learning curve:
+The E/I path was recently separated into distinct semantic roles:
 
-- Uncertainty falls from **~0.99** (earliest hypotheses) toward **~0.68** (most recent)
-- The share of undifferentiated `uncertain_hypothesis` roles **decreases over time**
+- **Phase-6a drive:** `glutamate_drive` and `gaba_drive`
+- **Active Phase-7c state:** `glutamate_state` and `gaba_state`
+- **Shared compatibility mirror:** the active state remains mirrored to the legacy `glutamate` and `gaba` keys for existing readers and GUI components
+- **Shadow recurrence:** a non-applying recurrent candidate is evaluated in `phase7c_ei_shadow_events`
 
-Old, unresolved hypotheses are **never discarded** — they form a growing *review pool*, re-examined as more context is read.
+This separation prevents Phase 6a from overwriting the Phase-7c state on the next cycle.
 
-> **Core principle:** nothing is thrown away — everything stays open for re-evaluation as knowledge grows.
+### Shadow-Recurrent Candidate Result
 
-## Current Development & Testing Status
+The first recurrent candidate was evaluated passively. During a 20-cycle constant-drive run:
 
-- **Own Test corpus:** Wikipedia category *"Computer"* (German) (~102k chunks, fully pre-parsed as a ZIM import). You must bring your own ZIM file.
-- **Reading coverage:** Learning is corpus-bounded; observed plateaus correspond to *not-yet-read* material rather than true stagnation. Coverage is tracked explicitly and rises as cycles run.
-- **Safety mode (Stage A lock):** During calibration of phases 6 & 7, permanent writes (`fact_promotion`, `direct_fact_writes`, `direct_relation_writes`) are explicitly **disabled**, and **no word blacklists are used in the active learning path** (legacy phase3d extraction filters are inactive / being removed). Learning happens purely in transient metaplasticity/hypothesis states to verify stability and convergence over hundreds of cycles.
-- **Roadmap:** Stage A (stabilize the learning core) is **complete** and its stability has been empirically verified via the sensory-deprivation drift test (no harmful drift under input removal). **Stage B** — controlled, consolidation-gated opening of the write locks (with a warm-up dampening of the first promotions to avoid overfitting on the earliest references) — is the next major milestone.
-- **Future:** switch to a vector database.
+- the active path remained stable at `Glu = 0.527` and `GABA = 0.389`
+- the Shadow path never applied any value
+- Shadow Glutamate reached the lower boundary at cycle 12 of the test window and remained there
+- the candidate was therefore rejected for active use
+
+The failed candidate remains valuable negative learning material. It is not promoted into Phase 7d or the Cortisol watcher.
+
+## Learning Dynamics and Progress Measurement
+
+BrainStem tracks marginal rather than purely global progress because a growing hypothesis population can dilute global averages. Older unresolved hypotheses remain in a review pool and can be re-evaluated when later context becomes available.
+
+The project does not claim that every current hypothesis is meaningful or that the system already understands language at human level. The current objective is to stabilize the mechanisms by which hypotheses are formed, challenged, revised, inhibited, and consolidated.
+
+## Current Development and Testing Status
+
+### Completed
+
+- **Stage A — learning-core stabilization**
+- sensory-deprivation drift test over **1,344 cycles**
+- removal of legacy CorpusReader / Phase-3d word-role and filter paths
+- removal of the obsolete `nlp.py` path; the modern Phase-7cort chain is the only learning path
+- repository audit showing no active word-blacklist/filter implementation in the learning path
+- graceful GUI shutdown that waits cooperatively for workers
+- performance indexes and bounded pruning for approved history tables
+- Phase-7d passive workpoint observer
+- Phase-6a/6c/6d chain cleanup: one replay per global cycle
+- separation of E/I drive, active state, and Shadow state
+- safe rejection of the first recurrent E/I candidate through a non-applying 20-cycle Shadow run
+
+### Safety Locks
+
+The following remain disabled during the transition to Stage B:
+
+- direct fact writes
+- direct relation writes
+- permanent fact promotion
+
+The active learning path forms and revises hypotheses only. There are no word blacklists in the active learning architecture.
+
+### Next Major Milestone — Stage B
+
+Stage B will open write capabilities gradually, not all at once. The planned sequence is:
+
+1. retain the Cortisol stability watcher as a safety layer
+2. validate the controlled regulator path before enabling it
+3. graduate `uncertain_hypothesis` to `stable_hypothesis` only through consolidation and critic gates
+4. require at least **three survived Phase-7d consolidations** before a hypothesis is eligible
+5. begin with a promotion budget of **one per cycle** and warm-up dampening
+6. keep the permanent `facts` table closed during the first hypothesis-graduation stage
+7. enable true fact promotion only after the graduation path is stable
+
+### Open Engineering Items
+
+- mark and stop the rejected recurrent Shadow candidate while preserving its history
+- introduce separately identified Shadow candidates with independently tracked parameters
+- do not reuse a single parameter for both drive integration and reciprocal E/I coupling
+- integrate approved history pruning as a periodic autonomous maintenance job
+- preserve the distinction between global GABA inhibition and any future hypothesis-specific error-damping mechanism
 
 ## Database Initialization
 
-The system uses a single **SQLite** database (`ki_memory.sqlite3`) in the project root.
+BrainStem uses `ki_memory.sqlite3` in the project root.
 
-**No manual setup is required.** If the database file does not exist on startup, it is **created automatically**:
+The database is created automatically when absent. Phase modules carry idempotent schema setup and schema self-checks. Performance indexes are ensured during bootstrap.
 
-- The core schema (documents, chunks, hypotheses, settings, etc.) is initialized on first launch.
-- Every phase module carries its own schema and applies it idempotently via `ensure_schema()` at the start of each cycle — missing tables are created and missing columns are added automatically (self-healing schema).
-- Performance indexes are ensured on every start (idempotent), and a built-in `_self_check_schema()` verifies all required columns exist before any writes occur.
+### Corpus-Preserving Learning Reset
 
-As a result, you can simply run the GUI on a clean checkout; the database and all required tables/columns are provisioned on demand.
+The learning state can be reset without re-importing the corpus.
 
-### Learning Reset (Corpus-Preserving)
+Preserved content includes:
 
-For calibration and repeatable experiments, the learning state can be reset **without** re-importing the corpus. Available as a GUI button in **Export/Konfig** ("Lernsystem zuruecksetzen (Korpus bleibt)") and as a standalone script (`reset_learning.py`).
+- documents
+- chunks and FTS data
+- import state
+- configuration
 
-- **KEEP (preserved):** chunks, chunks_fts*, documents, settings/config, import_state, sqlite internals — i.e. the full imported ZIM corpus stays intact.
-- **WIPE (cleared):** all learning-generated tables (context_hypotheses, chunk_attention_scores, all phase* state/event/cycle tables, cortisol/neuromodulator states, reading queue, gaps, etc.).
-- **Safety:** dry-run by default (`python reset_learning.py` shows the plan, changes nothing); the real reset (`--apply` or the GUI button) makes an automatic timestamped DB backup first, then DELETEs rows (tables/schema are never dropped) and VACUUMs.
-- **GUI guard:** the reset button is only active while autonomous learning is stopped, and asks for confirmation.
+Learning-generated state can be cleared after a dry run. The reset workflow creates a timestamped database backup before applying changes and does not drop the schema.
 
-This lets the system be returned to a clean "just-imported" state in seconds, after which it re-seeds all neurotransmitters to their baselines on the first cycle and starts learning from zero.
+## Sensory Deprivation and Drift Report
 
-### Sensory Deprivation & Drift Report
+The GUI includes a sensory-deprivation mode that skips new wake/read input while internal replay, consolidation, and neuromodulatory dynamics continue.
 
-A GUI-controlled **sensory-deprivation mode** (tab "Drift-Report") for homeostatic calibration: the wake/read step is skipped (no new chunks, no new hypotheses) while the inner dynamics — sleep replay, consolidation and all 12 neuromodulators — keep running. This isolates the system's **self-regulation** from input noise and answers a single question: *does anything drift when no input arrives?*
+The mode provides:
 
-- **Controls:** Start/Stop, plus an optional cycle-limit field (up to 9999). With the limit checkbox off, the run continues until Stop; with it on, it stops after N cycles — Stop always remains effective.
-- **Per-cycle CSV log:** every deprivation cycle is written to `drift_log_<timestamp>.csv` in the project root (all 12 neurotransmitters + exploration_bias, plasticity, adaptive_threshold, survivors/participated/weakened, effectiveness, reciprocal_gate, allostatic_load).
-- **Live graphs:** key signals (exploration_bias, adenosine, plasticity, effectiveness, histamine) are plotted live on a canvas.
-- **Drift report:** for each signal — first/last/delta/span and a verdict (stabil / konvergiert / DIVERGIERT); count-signals (survivors etc.) are judged relative to their mean, normalized signals by absolute thresholds. Overall verdict: kein_drift / konvergenz / DIVERGENZ-WARNUNG. Appended to the CSV as a comment block.
-- **Fail-safe:** the deprivation flag is always cleared on stop/finish (finally), so the system can never remain stuck in deprivation.
+- start and stop controls
+- optional cycle limits
+- per-cycle CSV diagnostics
+- live bounded/downsampled graphs
+- signal-level and overall drift verdicts
+- a fail-safe that clears deprivation mode on completion or interruption
 
-Result so far: over 1300 input-free cycles the regulated signals (neuromodulators, exploration_bias, plasticity) stay within a very tight band — the system is homeostatically stable and does not drift under input removal.
+The completed 1,344-cycle test supported the Stage-A stability decision under no-input conditions.
 
 ## Running the System
 
-The GUI is launched from the project root:
+From the project root:
 
-```bash
+```cmd
 python main.py --gui
 ```
 
 ### Workflow
 
-| Step | GUI Action | Purpose |
-|------|-----------|---------|
-| 1 | **Export/Konfig** | Set the **maximum number of articles** for the ZIM import (**must** be configured before importing). |
-| 2 | **Import & Jobs → ZIM Einlesen** | Stage 1 — pre-parse & import the corpus into the chunk store (run once). |
-| 3 | **Import & Jobs → Autonom dauerhaft starten** | Stage 2 — start the autonomous learning loop; each GUI cycle runs several internal chain passes. |
-| 4 | **Import & Jobs → Autonom stoppen** | Stop the loop cleanly. |
-| 5 | ⚠️ **DO NOT** close the GUI while a cycle is running | Possible database damage. |
+| Step | GUI action | Purpose |
+|---:|---|---|
+| 1 | **Export/Konfig** | Configure the maximum number of articles before import. |
+| 2 | **Import & Jobs → ZIM Einlesen** | Extract and pre-parse the corpus. |
+| 3 | **Import & Jobs → Autonom dauerhaft starten** | Start autonomous learning. |
+| 4 | **Import & Jobs → Autonom stoppen** | Stop autonomous learning cooperatively. |
+| 5 | Close the GUI normally | The GUI now waits for active workers instead of terminating daemon workers abruptly. |
 
-**Note on the GUI:** This is an experimental testing interface. Currently the **Import & Jobs**, **Export/Konfig** and **Drift-Report** tabs are functional — the remaining tabs are placeholders. *Import & Jobs* shows a live 12-neurotransmitter dashboard (with tooltips and legend), two progress bars (total corpus coverage + current GUI-cycle step), and a small floating "mood head" window that mirrors the system state (curious / growing / sleeping / stressed) and auto-closes with the GUI.
+### GUI Status
 
-The **maximum article count** for the ZIM import is configured in **Export/Konfig** and must be set before running *ZIM Einlesen*.
+The GUI is an experimental testing interface. Current functional areas include:
 
-### Prerequisites for ZIM Import
+- Import and Jobs
+- Export and Configuration
+- Drift Report
+- live 12-neuromodulator display
+- corpus-coverage and cycle-progress indicators
+- bounded diagnostic logs and graphs
+- graceful worker shutdown
 
-**Required:** `zimdump` for Windows (the **`.exe`** together with its required **`.dll`** files) must be placed in the **project root directory**. Without it, the *ZIM Einlesen* function will not work.
+Other areas may remain experimental or incomplete.
 
-The ZIM import relies on `zimdump` to extract articles from the `.zim` archive. Make sure the executable and all accompanying DLLs sit next to `main.py` in the root folder before running Stage 1.
+## Prerequisites for ZIM Import
 
-## Development Notes & Technical Context
+A Windows `zimdump.exe` build and all required DLL files must be placed in the project root next to `main.py`. Users must provide their own ZIM corpus.
 
-- **Codebase language:** Documentation is English; the source code (comments & internal naming) is **written in German**.
-- **AI-assisted engineering:** Developed with the collaborative assistance of advanced language models (**Claude 3.5/4 Opus, ChatGPT, Gemini, NoteBookLM**).
-- **Delivery & verification workflow:** Every module ships with idempotent schema management, self-checks, and a smoke test before integration; patches are validated with compile checks, backups, and automatic rollback.
-- **Project scale & status:** A massive, highly experimental testing system. Due to its scale and ongoing calibration of complex homeostatic loops, the architecture **has not yet been consolidated** — it remains a playground for heavy benchmarking and mathematical verification of neuromorphic concepts.
+The current development corpus is the German Wikipedia category **Computer**, imported into roughly 102,000 chunks.
+
+## Development Notes
+
+- **Package name:** the Python package remains `ki_system`.
+- **Project folder:** the current local development folder is `BrainStem`.
+- **Documentation language:** English.
+- **Primary runtime:** Python 3.11 on Windows with SQLite.
+- **Patch discipline:** backups, compile checks, schema self-checks, smoke tests, and automatic rollback are used for structural changes.
+- **Database discipline:** full backups are taken before major changes and experiments.
+- **Project status:** highly experimental and undergoing mathematical and architectural validation.
+- **AI-assisted engineering:** development has included collaborative assistance from Claude, ChatGPT, Gemini, and NotebookLM.
+
+## Disclaimer
+
+BrainStem is an experimental cognitive-architecture research project. Biological terminology is used as an engineering analogy and design inspiration; the software is not a biological simulation and does not claim neuroscientific equivalence.
