@@ -301,8 +301,8 @@ def _read_neuromodulators(con):
         "serotonin":     _clamp(_to_float(st.get("serotonin"),     0.5)),
         "noradrenaline": _clamp(_to_float(st.get("noradrenaline"), 0.5)),
         "acetylcholine": _clamp(_to_float(st.get("acetylcholine"), 0.5)),
-        "glutamate":     _clamp(_to_float(st.get("glutamate"),     0.5)),
-        "gaba":          _clamp(_to_float(st.get("gaba"),          0.3)),
+        "glutamate":     _clamp(_to_float(st.get("glutamate_drive", st.get("glutamate")), 0.5)),
+        "gaba":          _clamp(_to_float(st.get("gaba_drive", st.get("gaba")), 0.3)),
     }
 
 
@@ -623,7 +623,7 @@ def run_phase6d_cycle(db_or_obj=None, cycle_index=None):
     phase6c_result = None
     try:
         from ki_system import v8_phase6c_bias_persistence_and_self_regulating_meta_release as p6c
-        phase6c_result = p6c.run_phase6c_cycle(con)
+        phase6c_result = {'status': 'phase6c_already_completed_by_phase7b1', 'skipped': True}
     except Exception as exc:
         phase6c_result = {"phase6c_error": str(exc)}
 

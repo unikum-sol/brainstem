@@ -470,11 +470,12 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
     nm = {
         "dopamine": round(dopamine, 6),
         "serotonin": round(serotonin, 6),
-        "glutamate": round(glutamate, 6),
-        "gaba": round(gaba, 6),
+        "glutamate_drive": round(glutamate, 6),
+        "gaba_drive": round(gaba, 6),
         "noradrenaline": round(noradrenaline, 6),
         "acetylcholine": round(acetylcholine, 6),
     }
+    # BRAINSTEM_EI_DRIVE_STATE_SPLIT_V1: Phase6a emits drive, not persistent E/I state.
 
     replayed = 0
     for c in candidates:

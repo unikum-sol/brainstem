@@ -379,8 +379,8 @@ def _read_neuromodulators(con: sqlite3.Connection) -> Dict[str, float]:
         "serotonin":     _clamp(_to_float(st.get("serotonin"),     0.5)),
         "noradrenaline": _clamp(_to_float(st.get("noradrenaline"), 0.5)),
         "acetylcholine": _clamp(_to_float(st.get("acetylcholine"), 0.5)),
-        "glutamate":     _clamp(_to_float(st.get("glutamate"),     0.5)),
-        "gaba":          _clamp(_to_float(st.get("gaba"),          0.3)),
+        "glutamate":     _clamp(_to_float(st.get("glutamate_drive", st.get("glutamate")), 0.5)),
+        "gaba":          _clamp(_to_float(st.get("gaba_drive", st.get("gaba")), 0.3)),
     }
 
 
@@ -989,7 +989,7 @@ def run_phase6c_cycle(db_or_obj=None, cycle_index=None):
     base6a_result = None
     try:
         from ki_system import v8_phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release as p6a
-        base6a_result = p6a.sleep_replay_and_meta_plasticity(con)
+        base6a_result = {'status': 'phase6a_replay_already_completed_by_phase7b1', 'skipped': True}
     except Exception as exc:
         base6a_result = {"phase6a_error": str(exc)}
 

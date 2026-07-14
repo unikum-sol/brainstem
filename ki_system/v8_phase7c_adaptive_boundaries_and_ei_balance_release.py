@@ -22,7 +22,7 @@ import json, math, os, sqlite3, time
 from pathlib import Path
 
 PHASE = "phase7c_adaptive_boundaries_and_ei_balance_release"
-PHASE_VERSION = "phase7c_v1"
+PHASE_VERSION = "phase7c_v1_shadow_recurrence"
 LEARNING_MODE = "context_hypotheses_with_neuromodulators"
 
 SCHEMA_TABLES = {
@@ -41,12 +41,21 @@ SCHEMA_TABLES = {
         ("id","INTEGER PRIMARY KEY AUTOINCREMENT"),("created_at","INTEGER"),("cycle_index","INTEGER"),
         ("glu_pre","REAL"),("glu_post","REAL"),("gaba_pre","REAL"),("gaba_post","REAL"),
         ("gamma","REAL"),("alpha","REAL"),("reason","TEXT")],
+    "phase7c_ei_shadow_events": [
+        ("id","INTEGER PRIMARY KEY AUTOINCREMENT"),("created_at","INTEGER"),("cycle_index","INTEGER"),
+        ("drive_glutamate","REAL"),("drive_gaba","REAL"),
+        ("active_glu_pre","REAL"),("active_glu_post","REAL"),
+        ("active_gaba_pre","REAL"),("active_gaba_post","REAL"),
+        ("shadow_glu_pre","REAL"),("shadow_glu_post","REAL"),
+        ("shadow_gaba_pre","REAL"),("shadow_gaba_post","REAL"),
+        ("gamma","REAL"),("alpha","REAL"),("applied","INTEGER DEFAULT 0"),("reason","TEXT")],
 }
 
 SCHEMA_INDEXES = [
     ("idx_phase7c_boundary_cyc","phase7c_boundary_events","cycle_index"),
     ("idx_phase7c_boundary_key","phase7c_boundary_events","parameter_key"),
     ("idx_phase7c_ei_cyc","phase7c_ei_balance_events","cycle_index"),
+    ("idx_phase7c_ei_shadow_cyc","phase7c_ei_shadow_events","cycle_index"),
 ]
 
 BOUNDARY_PARAMS = {
@@ -337,29 +346,63 @@ def _apply_ei_balance(con, cycle_index, neuromod):
     gamma = _get_bp(con, "ei_gamma", 0.15)
     alpha = _get_bp(con, "ei_alpha", 0.12)
     softness = _get_bp(con, "sigmoid_softness", 0.08)
-    glu_pre = neuromod["glutamate"]
-    gaba_pre = neuromod["gaba"]
-    # bidirectional, time-delayed (each uses the other's pre value)
-    gaba_post = _soft_clamp(gaba_pre + alpha * glu_pre, 0.0, 1.0, softness)   # Glu -> GABA (feedforward)
-    glu_post = _soft_clamp(glu_pre - gamma * gaba_pre, 0.0, 1.0, softness)    # GABA -| Glu (feedback)
+    shared = _read_kv(con, "phase6a_neuromodulated_sleep_state")
+    state = _read_kv(con, "phase7c_state")
+    drive_glu = _clamp(_to_float(shared.get("glutamate_drive", shared.get("glutamate")), neuromod["glutamate"]))
+    drive_gaba = _clamp(_to_float(shared.get("gaba_drive", shared.get("gaba")), neuromod["gaba"]))
 
-    _kv_set(con, "phase6a_neuromodulated_sleep_state", "glutamate", round(glu_post, 6))
-    _kv_set(con, "phase6a_neuromodulated_sleep_state", "gaba", round(gaba_post, 6))
+    # BRAINSTEM_PHASE7C_SHADOW_RECURRENCE_V1
+    # Active path: known one-cycle E/I transform from the current Phase6a drive.
+    active_glu_pre = drive_glu
+    active_gaba_pre = drive_gaba
+    active_gaba_post = _soft_clamp(active_gaba_pre + alpha * active_glu_pre, 0.0, 1.0, softness)
+    active_glu_post = _soft_clamp(active_glu_pre - gamma * active_gaba_pre, 0.0, 1.0, softness)
+
+    # Shadow path: recurrent candidate is observed only and never controls downstream phases.
+    shadow_glu_state = _clamp(_to_float(state.get("shadow_glutamate_state", active_glu_post), active_glu_post))
+    shadow_gaba_state = _clamp(_to_float(state.get("shadow_gaba_state", active_gaba_post), active_gaba_post))
+    shadow_glu_pre = _soft_clamp(shadow_glu_state + alpha * (drive_glu - shadow_glu_state), 0.0, 1.0, softness)
+    shadow_gaba_pre = _soft_clamp(shadow_gaba_state + alpha * (drive_gaba - shadow_gaba_state), 0.0, 1.0, softness)
+    shadow_gaba_post = _soft_clamp(shadow_gaba_pre + alpha * shadow_glu_pre, 0.0, 1.0, softness)
+    shadow_glu_post = _soft_clamp(shadow_glu_pre - gamma * shadow_gaba_pre, 0.0, 1.0, softness)
+
+    _kv_set(con, "phase7c_state", "glutamate_state", round(active_glu_post, 6))
+    _kv_set(con, "phase7c_state", "gaba_state", round(active_gaba_post, 6))
+    _kv_set(con, "phase7c_state", "shadow_glutamate_state", round(shadow_glu_post, 6))
+    _kv_set(con, "phase7c_state", "shadow_gaba_state", round(shadow_gaba_post, 6))
+    _kv_set(con, "phase7c_state", "last_glutamate_drive", round(drive_glu, 6))
+    _kv_set(con, "phase7c_state", "last_gaba_drive", round(drive_gaba, 6))
+    _kv_set(con, "phase7c_state", "shadow_recurrence_applied", False)
+    _kv_set(con, "phase7c_state", "ei_mode", "active_one_cycle_shadow_recurrence")
+    _kv_set(con, "phase6a_neuromodulated_sleep_state", "glutamate", round(active_glu_post, 6))
+    _kv_set(con, "phase6a_neuromodulated_sleep_state", "gaba", round(active_gaba_post, 6))
     if _table_exists(con, "phase6a_meta_plasticity_state"):
-        mp = set(_columns(con, "phase6a_meta_plasticity_state"))
-        # only write if these keys already exist as rows (state table) - it's key/value, safe to upsert
-        _kv_set(con, "phase6a_meta_plasticity_state", "glutamate", round(glu_post, 6))
-        _kv_set(con, "phase6a_meta_plasticity_state", "gaba", round(gaba_post, 6))
+        _kv_set(con, "phase6a_meta_plasticity_state", "glutamate", round(active_glu_post, 6))
+        _kv_set(con, "phase6a_meta_plasticity_state", "gaba", round(active_gaba_post, 6))
 
     con.execute(
         "INSERT INTO phase7c_ei_balance_events(created_at,cycle_index,glu_pre,glu_post,gaba_pre,gaba_post,gamma,alpha,reason) "
         "VALUES(?,?,?,?,?,?,?,?,?)",
-        (_now(), int(cycle_index), float(glu_pre), float(glu_post), float(gaba_pre), float(gaba_post),
-         float(gamma), float(alpha), "reciprocal_ei_coupling_soft"))
+        (_now(), int(cycle_index), float(active_glu_pre), float(active_glu_post),
+         float(active_gaba_pre), float(active_gaba_post), float(gamma), float(alpha),
+         "active_one_cycle_from_phase6a_drive"))
+    con.execute(
+        "INSERT INTO phase7c_ei_shadow_events(created_at,cycle_index,drive_glutamate,drive_gaba,"
+        "active_glu_pre,active_glu_post,active_gaba_pre,active_gaba_post,"
+        "shadow_glu_pre,shadow_glu_post,shadow_gaba_pre,shadow_gaba_post,gamma,alpha,applied,reason) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (_now(), int(cycle_index), float(drive_glu), float(drive_gaba),
+         float(active_glu_pre), float(active_glu_post), float(active_gaba_pre), float(active_gaba_post),
+         float(shadow_glu_pre), float(shadow_glu_post), float(shadow_gaba_pre), float(shadow_gaba_post),
+         float(gamma), float(alpha), 0, "shadow_recurrence_observer_no_apply"))
     _set_bp(con, "total_ei_couplings", int(_get_bp(con, "total_ei_couplings", 0)) + 1)
     con.commit()
-    return {"glu_pre": glu_pre, "glu_post": glu_post, "gaba_pre": gaba_pre, "gaba_post": gaba_post,
-            "gamma": gamma, "alpha": alpha}
+    return {"glu_pre": active_glu_pre, "glu_post": active_glu_post,
+            "gaba_pre": active_gaba_pre, "gaba_post": active_gaba_post,
+            "glutamate_drive": drive_glu, "gaba_drive": drive_gaba,
+            "shadow_glu_pre": shadow_glu_pre, "shadow_glu_post": shadow_glu_post,
+            "shadow_gaba_pre": shadow_gaba_pre, "shadow_gaba_post": shadow_gaba_post,
+            "shadow_applied": False, "gamma": gamma, "alpha": alpha}
 
 
 def run_phase7c_cycle(db_or_obj=None, cycle_index=None):

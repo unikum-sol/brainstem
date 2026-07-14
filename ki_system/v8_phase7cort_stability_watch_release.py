@@ -127,7 +127,11 @@ def _read_recent(con, table, col, limit=10):
 
 def _read_neuromod(con):
     st = _read_kv(con, "phase6a_neuromodulated_sleep_state")
-    return {k: _clamp(_to_float(st.get(k), d)) for k, d in [("glutamate", 0.5), ("gaba", 0.5)]}
+    ei = _read_kv(con, "phase7c_state")
+    return {
+        "glutamate": _clamp(_to_float(ei.get("glutamate_state", st.get("glutamate")), 0.5)),
+        "gaba": _clamp(_to_float(ei.get("gaba_state", st.get("gaba")), 0.5)),
+    }
 
 def compute_signals(con):
     tail = int(_get_p(con, "recent_tail", 3))
@@ -173,12 +177,20 @@ def _apply_stage2_nudges(con, recommended, allostatic_load):
     if not _table_exists(con, "phase6a_neuromodulated_sleep_state"):
         return False, []
     st = _read_kv(con, "phase6a_neuromodulated_sleep_state")
+    ei = _read_kv(con, "phase7c_state")
     changes = []
     for k, delta in recommended.items():
         d = max(-nudge_cap, min(nudge_cap, _to_float(delta)))
-        old = _clamp(_to_float(st.get(k), 0.5))
-        new = _clamp(old + d)
-        _kv_set(con, "phase6a_neuromodulated_sleep_state", k, round(new, 4))
+        if k in ("glutamate", "gaba") and _table_exists(con, "phase7c_state"):
+            state_key = k + "_state"
+            old = _clamp(_to_float(ei.get(state_key, st.get(k)), 0.5))
+            new = _clamp(old + d)
+            _kv_set(con, "phase7c_state", state_key, round(new, 4))
+            _kv_set(con, "phase6a_neuromodulated_sleep_state", k, round(new, 4))
+        else:
+            old = _clamp(_to_float(st.get(k), 0.5))
+            new = _clamp(old + d)
+            _kv_set(con, "phase6a_neuromodulated_sleep_state", k, round(new, 4))
         changes.append((k, round(old, 4), round(new, 4)))
     _set_p(con, "cooldown_left", cooldown)
     con.commit()

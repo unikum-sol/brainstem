@@ -131,8 +131,15 @@ def _read_kv(con, table):
 
 def _read_neuromod(con):
     st = _read_kv(con, "phase6a_neuromodulated_sleep_state")
-    return {k: _clamp(_to_float(st.get(k), d)) for k, d in [
-        ("dopamine", 0.5), ("serotonin", 0.5), ("noradrenaline", 0.5), ("acetylcholine", 0.5), ("glutamate", 0.5), ("gaba", 0.3)]}
+    ei = _read_kv(con, "phase7c_state")
+    return {
+        "dopamine": _clamp(_to_float(st.get("dopamine"), 0.5)),
+        "serotonin": _clamp(_to_float(st.get("serotonin"), 0.5)),
+        "noradrenaline": _clamp(_to_float(st.get("noradrenaline"), 0.5)),
+        "acetylcholine": _clamp(_to_float(st.get("acetylcholine"), 0.5)),
+        "glutamate": _clamp(_to_float(ei.get("glutamate_state", st.get("glutamate")), 0.5)),
+        "gaba": _clamp(_to_float(ei.get("gaba_state", st.get("gaba")), 0.3)),
+    }
 
 def initialize_slow_wave_parameters(con):
     ensure_schema(con); ins = []
