@@ -7,8 +7,6 @@ PKG = "ki_system"
 LOAD_ORDER = [
     # ---------------- Welt A: Legacy patches ----------------
     # ---------------- Welt B: Phase 4/5 ----------------
-    {"module": "v8_phase4abc_context_learning_pack", "how": "patch_autonomous_loop", "target": "LOOP", "label": "PHASE4ABC"},
-    {"module": "v8_phase4abc_context_learning_pack", "how": "patch_autonomous_loop", "target": "NONE", "label": "PHASE4ABC_FIXED1"},
     {"module": "v8_phase4def_context_learning_pack", "how": "patch_autonomous_loop", "target": "NONE", "label": "PHASE4DEF_PACK"},
     {"module": "v8_phase4def_context_learning_pack", "how": "patch_autonomous_loop", "target": "LOOP", "label": "PHASE4DEF_FIXED2"},
     {"module": "v8_phase4def_context_learning_pack", "how": "patch_autonomous_loop", "target": "LOOP", "label": "PHASE4DEF_FIXED3",
