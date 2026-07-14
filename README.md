@@ -5,7 +5,7 @@ update 13.07.2026
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
 [![Backend: SQLite](https://img.shields.io/badge/backend-SQLite-lightgrey)](#database-initialization)
-[![Roadmap: Stage A complete -> validating](https://img.shields.io/badge/roadmap-Stage%20A%20complete-green)](#current-development-and-testing-status)
+[![Roadmap: Stage A complete -> validating](https://img.shields.io/badge/roadmap-Stage%20A%20complete%20->%20validating-green)](#current-development-and-testing-status)
 
 A biologically inspired, neuro-symbolic cognitive architecture for lifelong learning.
 
