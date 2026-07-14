@@ -28,14 +28,45 @@ class Memory:
         CREATE TABLE IF NOT EXISTS import_state(path TEXT PRIMARY KEY,last_article INTEGER,last_chunk INTEGER,status TEXT,updated_at INTEGER);
         CREATE TABLE IF NOT EXISTS topic_context(id INTEGER PRIMARY KEY CHECK(id=1),topic TEXT,user_text TEXT,last_sources_json TEXT,updated_at INTEGER);"""
         with self.lock: self.db.executescript(sql); self.db.commit()
+        self._ensure_core_import_schema()
+        self._self_check_core_import_schema()
+    # BRAINSTEM_CORE_IMPORT_SCHEMA_V1
+    CORE_IMPORT_SCHEMA = {
+        "documents": (("kind", "TEXT"), ("metadata_json", "TEXT"), ("source_score", "REAL DEFAULT 1")),
+        "chunks": (("chunk_index", "INTEGER"), ("token_count", "INTEGER"), ("metadata_json", "TEXT"), ("import_key", "TEXT")),
+    }
+    def _core_columns(self, table):
+        return {row[1] for row in self.db.execute("PRAGMA table_info(" + table + ")").fetchall()}
+    def _ensure_core_import_schema(self):
+        with self.lock:
+            for table, columns in self.CORE_IMPORT_SCHEMA.items():
+                existing = self._core_columns(table)
+                for name, spec in columns:
+                    if name not in existing:
+                        self.db.execute("ALTER TABLE " + table + " ADD COLUMN " + name + " " + spec)
+            self.db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_chunks_import_key ON chunks(import_key)")
+            self.db.commit()
+    def _self_check_core_import_schema(self):
+        missing = []
+        with self.lock:
+            for table, columns in self.CORE_IMPORT_SCHEMA.items():
+                existing = self._core_columns(table)
+                for name, _spec in columns:
+                    if name not in existing:
+                        missing.append(table + "." + name)
+        if missing:
+            raise RuntimeError("Core import schema missing: " + ", ".join(missing))
+        return True
     def rows(self,sql,params=()):
         with self.lock: return list(self.db.execute(sql,params))
     def add_document(self,path,title,kind,metadata=None,score=1.0):
         if self.readonly: raise PermissionError('readonly')
+        self._ensure_core_import_schema(); self._self_check_core_import_schema()
         with self.lock:
             cur=self.db.execute('INSERT INTO documents(path,title,kind,metadata_json,source_score,created_at) VALUES(?,?,?,?,?,?)',(str(path),title,kind,self._json(metadata or {}),score,int(time.time()))); self.db.commit(); return cur.lastrowid
     def add_chunk(self,doc_id,idx,text,metadata=None,import_key=None):
         if self.readonly: raise PermissionError('readonly')
+        self._ensure_core_import_schema(); self._self_check_core_import_schema()
         with self.lock:
             cur=self.db.execute('INSERT OR IGNORE INTO chunks(document_id,chunk_index,text,token_count,metadata_json,import_key) VALUES(?,?,?,?,?,?)',(doc_id,idx,text,len(text.split()),self._json(metadata or {}),import_key))
             if cur.rowcount:

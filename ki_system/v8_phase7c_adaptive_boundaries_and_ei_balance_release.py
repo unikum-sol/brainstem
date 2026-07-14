@@ -358,22 +358,24 @@ def _apply_ei_balance(con, cycle_index, neuromod):
     active_gaba_post = _soft_clamp(active_gaba_pre + alpha * active_glu_pre, 0.0, 1.0, softness)
     active_glu_post = _soft_clamp(active_glu_pre - gamma * active_gaba_pre, 0.0, 1.0, softness)
 
-    # Shadow path: recurrent candidate is observed only and never controls downstream phases.
+    # BRAINSTEM_PHASE7C_REJECTED_SHADOW_CANDIDATE_V1
+    # The first recurrent candidate was falsified in a passive 20-cycle run.
+    # Preserve its last state and history, but do not evolve or apply it again.
     shadow_glu_state = _clamp(_to_float(state.get("shadow_glutamate_state", active_glu_post), active_glu_post))
     shadow_gaba_state = _clamp(_to_float(state.get("shadow_gaba_state", active_gaba_post), active_gaba_post))
-    shadow_glu_pre = _soft_clamp(shadow_glu_state + alpha * (drive_glu - shadow_glu_state), 0.0, 1.0, softness)
-    shadow_gaba_pre = _soft_clamp(shadow_gaba_state + alpha * (drive_gaba - shadow_gaba_state), 0.0, 1.0, softness)
-    shadow_gaba_post = _soft_clamp(shadow_gaba_pre + alpha * shadow_glu_pre, 0.0, 1.0, softness)
-    shadow_glu_post = _soft_clamp(shadow_glu_pre - gamma * shadow_gaba_pre, 0.0, 1.0, softness)
+    shadow_glu_pre = shadow_glu_state
+    shadow_glu_post = shadow_glu_state
+    shadow_gaba_pre = shadow_gaba_state
+    shadow_gaba_post = shadow_gaba_state
 
     _kv_set(con, "phase7c_state", "glutamate_state", round(active_glu_post, 6))
     _kv_set(con, "phase7c_state", "gaba_state", round(active_gaba_post, 6))
-    _kv_set(con, "phase7c_state", "shadow_glutamate_state", round(shadow_glu_post, 6))
-    _kv_set(con, "phase7c_state", "shadow_gaba_state", round(shadow_gaba_post, 6))
     _kv_set(con, "phase7c_state", "last_glutamate_drive", round(drive_glu, 6))
     _kv_set(con, "phase7c_state", "last_gaba_drive", round(drive_gaba, 6))
     _kv_set(con, "phase7c_state", "shadow_recurrence_applied", False)
-    _kv_set(con, "phase7c_state", "ei_mode", "active_one_cycle_shadow_recurrence")
+    _kv_set(con, "phase7c_state", "shadow_candidate_status", "rejected_glutamate_floor_collapse")
+    _kv_set(con, "phase7c_state", "shadow_candidate_active", False)
+    _kv_set(con, "phase7c_state", "ei_mode", "active_one_cycle_shadow_rejected")
     _kv_set(con, "phase6a_neuromodulated_sleep_state", "glutamate", round(active_glu_post, 6))
     _kv_set(con, "phase6a_neuromodulated_sleep_state", "gaba", round(active_gaba_post, 6))
     if _table_exists(con, "phase6a_meta_plasticity_state"):
@@ -386,15 +388,6 @@ def _apply_ei_balance(con, cycle_index, neuromod):
         (_now(), int(cycle_index), float(active_glu_pre), float(active_glu_post),
          float(active_gaba_pre), float(active_gaba_post), float(gamma), float(alpha),
          "active_one_cycle_from_phase6a_drive"))
-    con.execute(
-        "INSERT INTO phase7c_ei_shadow_events(created_at,cycle_index,drive_glutamate,drive_gaba,"
-        "active_glu_pre,active_glu_post,active_gaba_pre,active_gaba_post,"
-        "shadow_glu_pre,shadow_glu_post,shadow_gaba_pre,shadow_gaba_post,gamma,alpha,applied,reason) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (_now(), int(cycle_index), float(drive_glu), float(drive_gaba),
-         float(active_glu_pre), float(active_glu_post), float(active_gaba_pre), float(active_gaba_post),
-         float(shadow_glu_pre), float(shadow_glu_post), float(shadow_gaba_pre), float(shadow_gaba_post),
-         float(gamma), float(alpha), 0, "shadow_recurrence_observer_no_apply"))
     _set_bp(con, "total_ei_couplings", int(_get_bp(con, "total_ei_couplings", 0)) + 1)
     con.commit()
     return {"glu_pre": active_glu_pre, "glu_post": active_glu_post,
@@ -402,7 +395,9 @@ def _apply_ei_balance(con, cycle_index, neuromod):
             "glutamate_drive": drive_glu, "gaba_drive": drive_gaba,
             "shadow_glu_pre": shadow_glu_pre, "shadow_glu_post": shadow_glu_post,
             "shadow_gaba_pre": shadow_gaba_pre, "shadow_gaba_post": shadow_gaba_post,
-            "shadow_applied": False, "gamma": gamma, "alpha": alpha}
+            "shadow_applied": False, "shadow_candidate_active": False,
+            "shadow_candidate_status": "rejected_glutamate_floor_collapse",
+            "gamma": gamma, "alpha": alpha}
 
 
 def run_phase7c_cycle(db_or_obj=None, cycle_index=None):
