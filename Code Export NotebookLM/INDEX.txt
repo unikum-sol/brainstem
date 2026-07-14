@@ -1,0 +1,91 @@
+PROJEKT-EXPORT INDEX
+Root: Z:\Temp\Ki_System\System
+Dateien gesamt: 80
+Groesse gesamt: 1212658 bytes
+
+--- Verteilung ---
+part1.txt :    37 Dateien,       397322 bytes
+part2.txt :    20 Dateien,       403059 bytes
+part3.txt :    23 Dateien,       418790 bytes
+
+--- Dateiliste ---
+part1.txt |       5464 B | add_indexes.py
+part1.txt |       3700 B | analyze_2ag_drift_log.py
+part1.txt |       2996 B | analyze_drift_log.py
+part1.txt |        150 B | ki_system\__init__.py
+part1.txt |        975 B | ki_system\autonomous.py
+part1.txt |       4321 B | ki_system\chunk_affect.py
+part1.txt |       8712 B | ki_system\db_bootstrap.py
+part1.txt |        811 B | ki_system\dialogue.py
+part1.txt |        212 B | ki_system\document_structure.py
+part1.txt |      40979 B | ki_system\gui_app.py
+part1.txt |       8784 B | ki_system\gui_phase6a_dashboard_helpers.py
+part1.txt |       3997 B | ki_system\ingest.py
+part1.txt |       9444 B | ki_system\memory.py
+part1.txt |      12709 B | ki_system\neuromodulators.py
+part1.txt |      12046 B | ki_system\phase_registry.py
+part1.txt |       5028 B | ki_system\search.py
+part1.txt |       1144 B | ki_system\text_utils.py
+part1.txt |       1934 B | ki_system\user_gui.py
+part1.txt |       9747 B | ki_system\v8_deprivation_runner.py
+part1.txt |       6158 B | ki_system\v8_perf0_runtime_acceleration_release.py
+part1.txt |       1472 B | ki_system\v8_perf3_connection_accelerator.py
+part1.txt |      14912 B | ki_system\v8_phase4_schema_manager_canonicalization.py
+part1.txt |       2495 B | ki_system\v8_phase4_schema_manager_mem_alias_fix.py
+part1.txt |      17844 B | ki_system\v8_phase4_schema_runtime_guard_fixed10.py
+part1.txt |      17206 B | ki_system\v8_phase4_schema_runtime_guard_fixed11.py
+part1.txt |      11640 B | ki_system\v8_phase4_schema_runtime_guard_fixed12.py
+part1.txt |      18675 B | ki_system\v8_phase4_schema_runtime_guard_fixed9.py
+part1.txt |      16642 B | ki_system\v8_phase4abc_context_learning_pack.py
+part1.txt |      35086 B | ki_system\v8_phase4def_context_learning_pack.py
+part1.txt |      12786 B | ki_system\v8_phase4def_schema_canonicalizer_fixed8.py
+part1.txt |       9910 B | ki_system\v8_phase4def_schema_status_fix.py
+part1.txt |      30556 B | ki_system\v8_phase4g_neuromodulated_attention_queue_activation.py
+part1.txt |       7716 B | ki_system\v8_phase4g_neuromodulated_learning_control.py
+part1.txt |      19991 B | ki_system\v8_phase4h_self_evaluation_and_revision_core.py
+part1.txt |      19248 B | ki_system\v8_phase4i_long_term_memory_and_pattern_stability.py
+part1.txt |      12306 B | ki_system\v8_phase4i_runtime_autoload_and_periodic_consolidation_fix.py
+part1.txt |       9526 B | ki_system\v8_phase4i_runtime_schema_guard_fixed1.py
+part2.txt |      22812 B | ki_system\v8_phase4i_runtime_schema_guard_fixed2.py
+part2.txt |      22164 B | ki_system\v8_phase4i_runtime_schema_guard_fixed3.py
+part2.txt |      22580 B | ki_system\v8_phase4j_internal_learning_questions_and_gap_detection.py
+part2.txt |      22694 B | ki_system\v8_phase4k_gap_driven_rereading_and_learning_strategy.py
+part2.txt |      12265 B | ki_system\v8_phase4l_gap_cluster_planning_and_strategy_balance.py
+part2.txt |      22174 B | ki_system\v8_phase4m_active_learning_loop_controller.py
+part2.txt |      18746 B | ki_system\v8_phase4n_learning_progress_evaluation_and_adaptive_strategy.py
+part2.txt |      11405 B | ki_system\v8_phase4o_schema_guard_fixed1.py
+part2.txt |      12793 B | ki_system\v8_phase4o_schema_guard_fixed2.py
+part2.txt |      20003 B | ki_system\v8_phase4o_strategy_effectiveness_feedback_loop.py
+part2.txt |      21995 B | ki_system\v8_phase4p_gap_resolution_and_learning_outcome_tracking.py
+part2.txt |      18172 B | ki_system\v8_phase5a_integrated_self_improving_learning_release.py
+part2.txt |      28979 B | ki_system\v8_phase5b_integrated_strategy_refinement_release.py
+part2.txt |      15058 B | ki_system\v8_phase5b_schema_guard_fixed1.py
+part2.txt |      17381 B | ki_system\v8_phase5c_learning_outcome_closure_and_question_cluster_resolution.py
+part2.txt |      22326 B | ki_system\v8_phase5d_integrated_observation_and_strategy_memory_release.py
+part2.txt |      18613 B | ki_system\v8_phase5e_context_expansion_and_gap_closure_release.py
+part2.txt |      26963 B | ki_system\v8_phase5f_context_expansion_effectiveness_and_adaptive_windowing_release.py
+part2.txt |      23070 B | ki_system\v8_phase5g_context_strategy_selection_and_experiment_memory_release.py
+part2.txt |      22866 B | ki_system\v8_phase5h_schema_guard_fixed1.py
+part3.txt |      17754 B | ki_system\v8_phase5h_schema_guard_fixed2.py
+part3.txt |      30405 B | ki_system\v8_phase5h_strategy_experiment_outcome_learning_release.py
+part3.txt |      23563 B | ki_system\v8_phase5i_outcome_driven_context_strategy_diversification_release.py
+part3.txt |      31119 B | ki_system\v8_phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release.py
+part3.txt |      42034 B | ki_system\v8_phase6b_sleep_replay_effectiveness_and_plasticity_adjustment_release.py
+part3.txt |      49379 B | ki_system\v8_phase6c_bias_persistence_and_self_regulating_meta_release.py
+part3.txt |      28166 B | ki_system\v8_phase6d_saturation_homeostasis_and_meta_metaplasticity_release.py
+part3.txt |      25813 B | ki_system\v8_phase7a_adenosine_homeostat_release.py
+part3.txt |       5924 B | ki_system\v8_phase7b1_wake_chain_bridge_release.py
+part3.txt |      25068 B | ki_system\v8_phase7b_endocannabinoid_retrograde_gain_control_release.py
+part3.txt |      24829 B | ki_system\v8_phase7c_adaptive_boundaries_and_ei_balance_release.py
+part3.txt |      16646 B | ki_system\v8_phase7cort_stability_watch_release.py
+part3.txt |      20236 B | ki_system\v8_phase7d_slow_wave_sleep_substructure_release.py
+part3.txt |      19742 B | ki_system\v8_phase7d_workpoint_observer_v1.py
+part3.txt |      10933 B | ki_system\v8_phase7e_histamine_wake_arousal_release.py
+part3.txt |      11362 B | ki_system\v8_phase7f_orexin_wake_endurance_release.py
+part3.txt |      11245 B | ki_system\v8_phase7g_bdnf_growth_consolidation_release.py
+part3.txt |       2656 B | ki_system\v8_sensory_deprivation.py
+part3.txt |        853 B | ki_system\wiki_quality.py
+part3.txt |        486 B | main.py
+part3.txt |       7580 B | prune_history.py
+part3.txt |       3125 B | reset_learning.py
+part3.txt |       9872 B | systemtest.py
