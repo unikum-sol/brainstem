@@ -158,7 +158,7 @@ def _get_adenosine_level(con):
     return _to_float(r[0], 0.0) if r else 0.0
 
 def _build_candidate_pool(con, pool_size, anchor_ratio):
-    # BRAINSTEM_PHASE7D_POOL_FALLBACK_V1
+    # BRAINSTEM_PHASE7D_ROTATING_FALLBACK_SAMPLER_V1
     n_anchor = int(pool_size * anchor_ratio)
     n_novel = pool_size - n_anchor
     out = []
@@ -188,12 +188,33 @@ def _build_candidate_pool(con, pool_size, anchor_ratio):
 
     remaining = max(0, n_novel - len(novel))
     if remaining > 0 and _table_exists(con, "context_hypotheses"):
-        used_ids = {item["source_id"] for item in novel if item["source_table"] == "context_hypotheses"}
-        for r in con.execute("SELECT id FROM context_hypotheses ORDER BY id LIMIT ?", (remaining,)).fetchall():
-            source_id = _to_int(r[0])
-            if source_id not in used_ids:
-                novel.append({"source_table": "context_hypotheses", "source_id": source_id,
-                              "is_anchor": False, "base_score": 0.5})
+        state = _read_kv(con, "phase7d_state")
+        cursor = _to_int(state.get("context_fallback_cursor"), 0)
+        if cursor <= 0 and _table_exists(con, "phase7d_up_state_events"):
+            prior = con.execute(
+                "SELECT MAX(source_id) FROM phase7d_up_state_events "
+                "WHERE source_table='context_hypotheses'"
+            ).fetchone()
+            cursor = _to_int(prior[0], 0) if prior else 0
+
+        ids = [r[0] for r in con.execute(
+            "SELECT id FROM context_hypotheses WHERE id>? ORDER BY id LIMIT ?",
+            (cursor, remaining),
+        ).fetchall()]
+        if len(ids) < remaining:
+            ids.extend(r[0] for r in con.execute(
+                "SELECT id FROM context_hypotheses WHERE id<=? ORDER BY id LIMIT ?",
+                (cursor, remaining - len(ids)),
+            ).fetchall())
+
+        for source_id in ids:
+            novel.append({"source_table": "context_hypotheses", "source_id": _to_int(source_id),
+                          "is_anchor": False, "base_score": 0.5})
+        if ids:
+            _kv_set(con, "phase7d_state", "context_fallback_cursor", _to_int(ids[-1]))
+            _kv_set(con, "phase7d_state", "context_fallback_sampler", "rotating_id_cursor_v1")
+            _kv_set(con, "phase7d_state", "context_fallback_batch_size", len(ids))
+
     out.extend(novel)
     return out
 
