@@ -99,7 +99,7 @@ def _read_kv(con, table):
     if not _table_exists(con, table): return {}
     tc = set(_columns(con, table))
     if "key" not in tc or "value" not in tc: return {}
-    return {r[0]: r[1] for r in con.execute("SELECT key,value FROM " + table).fetchall()}
+    return dict(con.execute("SELECT key,value FROM " + table).fetchall())
 
 def initialize_watch_params(con):
     ensure_schema(con); ins = []
@@ -134,12 +134,15 @@ def _read_neuromod(con):
     }
 
 def compute_signals(con):
+    # BRAINSTEM_CORTISOL_NO_POPULATION_V1
     tail = int(_get_p(con, "recent_tail", 3))
     thr = _read_recent(con, "phase7d_slow_wave_cycles", "adaptive_threshold_avg", 10)
     threshold_drift = _clamp(0.5 + (thr[-1] - thr[0])) if len(thr) >= 2 else 0.0
     surv = _read_recent(con, "phase7d_slow_wave_cycles", "candidates_survived", 10)
     part = _read_recent(con, "phase7d_slow_wave_cycles", "candidates_participated", 10)
-    ratios = [surv[i] / max(1.0, part[i]) for i in range(min(len(surv), len(part)))]
+    pairs = [(surv[i], part[i]) for i in range(min(len(surv), len(part))) if part[i] > 0]
+    ratios = [s / p for s, p in pairs]
+    population_available = bool(ratios)
     survivor_ratio = _clamp(sum(ratios) / len(ratios)) if ratios else 0.5
     recent = ratios[-tail:] if ratios else []
     survivor_ratio_recent = _clamp(sum(recent) / len(recent)) if recent else survivor_ratio
@@ -150,20 +153,26 @@ def compute_signals(con):
     nm = _read_neuromod(con); glu, gaba = nm["glutamate"], nm["gaba"]
     ei_saturation = _clamp(max(abs(glu - 0.5), abs(gaba - 0.5)) * 2 - 0.6)
     return {"threshold_drift": threshold_drift, "survivor_ratio": survivor_ratio,
-            "survivor_ratio_recent": survivor_ratio_recent, "effectiveness": effectiveness,
-            "bias_oscillation": bias_oscillation, "ei_saturation": ei_saturation}
+            "survivor_ratio_recent": survivor_ratio_recent, "population_available": population_available,
+            "effectiveness": effectiveness, "bias_oscillation": bias_oscillation,
+            "ei_saturation": ei_saturation}
 
 def _stress_components(sig, con):
     escale = _get_p(con, "effectiveness_scale", 10.0)
     drift_stress = _clamp((sig["threshold_drift"] - 0.5) * 2)
     r = sig["survivor_ratio_recent"]
-    over = _clamp(max(0.0, 0.15 - r) / 0.15)
-    explosion = _clamp(max(0.0, r - 0.85) / 0.15)
+    if sig.get("population_available", False):
+        over = _clamp(max(0.0, 0.15 - r) / 0.15)
+        explosion = _clamp(max(0.0, r - 0.85) / 0.15)
+    else:
+        over = 0.0
+        explosion = 0.0
     survivor_stress = max(over, explosion)
     eff = sig["effectiveness"]
     effectiveness_stress = _clamp(-eff * escale) if eff < 0 else 0.0
     return {"drift": drift_stress, "survivor": survivor_stress, "over": over, "explosion": explosion,
-            "effectiveness": effectiveness_stress, "oscillation": sig["bias_oscillation"], "saturation": sig["ei_saturation"]}
+            "effectiveness": effectiveness_stress, "oscillation": sig["bias_oscillation"],
+            "saturation": sig["ei_saturation"]}
 def _apply_stage2_nudges(con, recommended, allostatic_load):
     stage = _to_int(_get_p(con, "stage", 1))
     load_high = _get_p(con, "load_high", 0.6)

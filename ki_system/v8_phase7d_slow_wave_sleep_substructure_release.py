@@ -127,7 +127,7 @@ def _read_kv(con, table):
     if not _table_exists(con, table): return {}
     tc = set(_columns(con, table))
     if "key" not in tc or "value" not in tc: return {}
-    return {r[0]: r[1] for r in con.execute("SELECT key,value FROM " + table).fetchall()}
+    return dict(con.execute("SELECT key,value FROM " + table).fetchall())
 
 def _read_neuromod(con):
     st = _read_kv(con, "phase6a_neuromodulated_sleep_state")
@@ -158,22 +158,43 @@ def _get_adenosine_level(con):
     return _to_float(r[0], 0.0) if r else 0.0
 
 def _build_candidate_pool(con, pool_size, anchor_ratio):
-    n_anchor = int(pool_size * anchor_ratio); n_novel = pool_size - n_anchor
+    # BRAINSTEM_PHASE7D_POOL_FALLBACK_V1
+    n_anchor = int(pool_size * anchor_ratio)
+    n_novel = pool_size - n_anchor
     out = []
     if _table_exists(con, "phase6b_anchor_pool"):
-        for r in con.execute("SELECT id,stability_score FROM phase6b_anchor_pool WHERE active=1 ORDER BY stability_score DESC LIMIT ?", (n_anchor,)).fetchall():
-            out.append({"source_table": "phase6b_anchor_pool", "source_id": _to_int(r[0]), "is_anchor": True, "base_score": _clamp(_to_float(r[1], 0.5))})
-    if _table_exists(con, "phase5g_experiment_outcomes"):
+        rows = con.execute(
+            "SELECT id,stability_score FROM phase6b_anchor_pool "
+            "WHERE active=1 ORDER BY stability_score DESC LIMIT ?",
+            (n_anchor,),
+        ).fetchall()
+        for r in rows:
+            out.append({"source_table": "phase6b_anchor_pool", "source_id": _to_int(r[0]),
+                        "is_anchor": True, "base_score": _clamp(_to_float(r[1], 0.5))})
+
+    novel = []
+    if n_novel > 0 and _table_exists(con, "phase5g_experiment_outcomes"):
         c = set(_columns(con, "phase5g_experiment_outcomes"))
         sc = "effectiveness_score" if "effectiveness_score" in c else ("outcome_score" if "outcome_score" in c else None)
         idc = "id" if "id" in c else "rowid"
-        sql = "SELECT " + idc + ((", " + sc) if sc else "") + " FROM phase5g_experiment_outcomes " + (("ORDER BY " + sc + " ASC ") if sc else "") + "LIMIT ?"
+        sql = "SELECT " + idc + ((", " + sc) if sc else "") + " FROM phase5g_experiment_outcomes "
+        if sc:
+            sql += "ORDER BY " + sc + " ASC "
+        sql += "LIMIT ?"
         for r in con.execute(sql, (n_novel,)).fetchall():
             base = _clamp(1.0 - _to_float(r[1], 0.5)) if sc else 0.5
-            out.append({"source_table": "phase5g_experiment_outcomes", "source_id": _to_int(r[0]), "is_anchor": False, "base_score": base})
-    elif _table_exists(con, "context_hypotheses"):
-        for r in con.execute("SELECT id FROM context_hypotheses LIMIT ?", (n_novel,)).fetchall():
-            out.append({"source_table": "context_hypotheses", "source_id": _to_int(r[0]), "is_anchor": False, "base_score": 0.5})
+            novel.append({"source_table": "phase5g_experiment_outcomes", "source_id": _to_int(r[0]),
+                          "is_anchor": False, "base_score": base})
+
+    remaining = max(0, n_novel - len(novel))
+    if remaining > 0 and _table_exists(con, "context_hypotheses"):
+        used_ids = {item["source_id"] for item in novel if item["source_table"] == "context_hypotheses"}
+        for r in con.execute("SELECT id FROM context_hypotheses ORDER BY id LIMIT ?", (remaining,)).fetchall():
+            source_id = _to_int(r[0])
+            if source_id not in used_ids:
+                novel.append({"source_table": "context_hypotheses", "source_id": source_id,
+                              "is_anchor": False, "base_score": 0.5})
+    out.extend(novel)
     return out
 
 def _run_slow_wave_sleep(con, cycle_index, neuromod, adenosine_level):
