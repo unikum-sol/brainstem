@@ -338,16 +338,13 @@ def _kv_set(con: sqlite3.Connection, table: str, key: str, value: Any) -> None:
         )
 
 
-def _read_kv(con: sqlite3.Connection, table: str) -> Dict[str, str]:
+def _read_kv(con, table):
     if not _table_exists(con, table):
         return {}
-    tcols = set(_columns(con, table))
-    if "key" not in tcols or "value" not in tcols:
+    tc = set(_columns(con, table))
+    if "key" not in tc or "value" not in tc:
         return {}
-    out = {}
-    for r in con.execute("SELECT key, value FROM " + table).fetchall():
-        out[r[0]] = r[1]
-    return out
+    return dict(con.execute("SELECT key,value FROM " + table).fetchall())
 
 
 def _read_recent_cycles(con: sqlite3.Connection, n: int = 20) -> List[Dict[str, Any]]:
@@ -380,86 +377,75 @@ def _neuromodulators(sleep_state: Dict[str, Any]) -> Dict[str, float]:
 
 
 def _promote_anchors(con: sqlite3.Connection,
-                     min_replay_count: int = 3,
+                     min_survived_cycles: int = 3,
                      target_limit: int = 400) -> Dict[str, Any]:
-    """Option a: automatically promote stable context_hypotheses and
-    phase5h_strategy_outcome_memory entries into phase6b_anchor_pool."""
-    promoted = {"context_hypotheses": 0, "phase5h_strategy_outcome_memory": 0,
-                "updated": 0}
+    # BRAINSTEM_PHASE6B_SURVIVOR_ANCHOR_V1
+    promoted = {"context_hypotheses": 0, "updated": 0, "eligible": 0,
+                "checkpoint_id": 0, "mode": "phase7d_survivor_n3_post_rotation"}
     now = _now()
+    if not _table_exists(con, "phase7d_consolidation_survivors"):
+        return promoted
+    if not _table_exists(con, "phase6b_anchor_pool"):
+        return promoted
 
-    if _table_exists(con, "context_hypotheses"):
-        cols = set(_columns(con, "context_hypotheses"))
-        needed = {"phase6a_sleep_replay_count", "phase6a_replay_weight"}
-        if needed.issubset(cols):
-            id_col = "id" if "id" in cols else "rowid"
-            sql = ("SELECT " + id_col + " AS sid, "
-                   "COALESCE(phase6a_sleep_replay_count,0) AS rc, "
-                   "COALESCE(phase6a_replay_weight,0.0)   AS rw, "
-                   "COALESCE(phase6a_last_replayed_at,0)  AS lr "
-                   "FROM context_hypotheses "
-                   "WHERE COALESCE(phase6a_sleep_replay_count,0) >= ? "
-                   "ORDER BY phase6a_replay_weight DESC, phase6a_sleep_replay_count DESC "
-                   "LIMIT ?")
-            rows = con.execute(sql, (int(min_replay_count), int(target_limit))).fetchall()
-            for r in rows:
-                sid = _to_int(r[0]); rc = _to_int(r[1])
-                rw = _to_float(r[2]); lr = _to_int(r[3])
-                stability = _clamp(0.4 + 0.6 * math.tanh(rc / 5.0))
-                akey = "context_hypotheses:" + str(sid)
-                existing = con.execute(
-                    "SELECT id FROM phase6b_anchor_pool WHERE anchor_key=?",
-                    (akey,),
-                ).fetchone()
-                if existing is None:
-                    con.execute(
-                        "INSERT INTO phase6b_anchor_pool "
-                        "(source_table, source_id, anchor_key, stability_score, "
-                        " replay_count, last_replayed_at, overlap_score_avg, "
-                        " outcome_score_avg, promoted_from, active, created_at, updated_at) "
-                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                        ("context_hypotheses", sid, akey, stability,
-                         rc, lr, 1.0, rw, "auto_from_phase6a_stability",
-                         1, now, now),
-                    )
-                    promoted["context_hypotheses"] += 1
-                else:
-                    con.execute(
-                        "UPDATE phase6b_anchor_pool "
-                        "SET stability_score=?, replay_count=?, last_replayed_at=?, "
-                        "    outcome_score_avg=?, updated_at=?, active=1 "
-                        "WHERE id=?",
-                        (stability, rc, lr, rw, now, existing[0]),
-                    )
-                    promoted["updated"] += 1
+    state = _read_kv(con, "phase6b_state")
+    checkpoint = _to_int(state.get("phase7d_survivor_anchor_checkpoint_id"), 0)
+    if checkpoint <= 0:
+        row = con.execute(
+            "SELECT COALESCE(MAX(id),0) FROM phase7d_consolidation_survivors"
+        ).fetchone()
+        checkpoint = _to_int(row[0] if row else 0, 0)
+        _kv_set(con, "phase6b_state", "phase7d_survivor_anchor_checkpoint_id", checkpoint)
+        _kv_set(con, "phase6b_state", "phase7d_survivor_anchor_mode", "phase7d_survivor_n3_post_rotation")
+        _kv_set(con, "phase6b_state", "phase7d_survivor_anchor_min_cycles", int(min_survived_cycles))
+        con.commit()
+        promoted["checkpoint_id"] = checkpoint
+        promoted["initialized_checkpoint"] = True
+        return promoted
 
-    if _table_exists(con, "phase5h_strategy_outcome_memory"):
-        cols = set(_columns(con, "phase5h_strategy_outcome_memory"))
-        id_col = "id" if "id" in cols else "rowid"
-        rows = con.execute(
-            "SELECT " + id_col + " FROM phase5h_strategy_outcome_memory LIMIT ?",
-            (int(target_limit),),
-        ).fetchall()
-        for r in rows:
-            sid = _to_int(r[0])
-            akey = "phase5h_strategy_outcome_memory:" + str(sid)
-            existing = con.execute(
-                "SELECT id FROM phase6b_anchor_pool WHERE anchor_key=?",
-                (akey,),
-            ).fetchone()
-            if existing is None:
-                con.execute(
-                    "INSERT INTO phase6b_anchor_pool "
-                    "(source_table, source_id, anchor_key, stability_score, "
-                    " replay_count, last_replayed_at, overlap_score_avg, "
-                    " outcome_score_avg, promoted_from, active, created_at, updated_at) "
-                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                    ("phase5h_strategy_outcome_memory", sid, akey, 0.9,
-                     0, 0, 1.0, 1.0, "gold_standard_strategy_outcome",
-                     1, now, now),
-                )
-                promoted["phase5h_strategy_outcome_memory"] += 1
+    promoted["checkpoint_id"] = checkpoint
+    rows = con.execute(
+        "SELECT source_table,source_id,COUNT(DISTINCT cycle_index) AS survived_cycles,"
+        "AVG(final_consistency) AS avg_consistency,MIN(final_consistency) AS min_consistency,"
+        "AVG(up_states_survived) AS avg_up_states "
+        "FROM phase7d_consolidation_survivors "
+        "WHERE id>? AND reinforced=1 AND source_table='context_hypotheses' "
+        "GROUP BY source_table,source_id "
+        "HAVING COUNT(DISTINCT cycle_index)>=? "
+        "ORDER BY survived_cycles DESC,avg_consistency DESC LIMIT ?",
+        (int(checkpoint), int(min_survived_cycles), int(target_limit)),
+    ).fetchall()
+    promoted["eligible"] = len(rows)
 
+    for source_table, source_id, survived_cycles, avg_consistency, min_consistency, avg_up_states in rows:
+        sid = _to_int(source_id)
+        cycles = _to_int(survived_cycles)
+        stability = _clamp(_to_float(avg_consistency, 0.0))
+        akey = str(source_table) + ":" + str(sid)
+        existing = con.execute(
+            "SELECT id FROM phase6b_anchor_pool WHERE anchor_key=?", (akey,)
+        ).fetchone()
+        if existing is None:
+            con.execute(
+                "INSERT INTO phase6b_anchor_pool "
+                "(source_table,source_id,anchor_key,stability_score,replay_count,"
+                "last_replayed_at,delta_variance,overlap_score_avg,outcome_score_avg,"
+                "promoted_from,active,created_at,updated_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (str(source_table), sid, akey, stability, 0, 0, 0.0, 0.0, 0.0,
+                 "phase7d_survivor_n3_post_rotation", 1, now, now),
+            )
+            promoted["context_hypotheses"] += 1
+        else:
+            con.execute(
+                "UPDATE phase6b_anchor_pool SET stability_score=?,promoted_from=?,"
+                "active=1,updated_at=? WHERE id=?",
+                (stability, "phase7d_survivor_n3_post_rotation", now, existing[0]),
+            )
+            promoted["updated"] += 1
+
+    _kv_set(con, "phase6b_state", "phase7d_survivor_anchor_last_scan_at", now)
+    _kv_set(con, "phase6b_state", "phase7d_survivor_anchor_last_eligible", len(rows))
     con.commit()
     return promoted
 
