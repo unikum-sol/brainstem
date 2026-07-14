@@ -134,32 +134,57 @@ def _read_neuromod(con):
     }
 
 def compute_signals(con):
-    # BRAINSTEM_CORTISOL_NO_POPULATION_V1
+    # BRAINSTEM_CORTISOL_THRESHOLD_POPULATION_V1
     tail = int(_get_p(con, "recent_tail", 3))
-    thr = _read_recent(con, "phase7d_slow_wave_cycles", "adaptive_threshold_avg", 10)
-    threshold_drift = _clamp(0.5 + (thr[-1] - thr[0])) if len(thr) >= 2 else 0.0
-    surv = _read_recent(con, "phase7d_slow_wave_cycles", "candidates_survived", 10)
-    part = _read_recent(con, "phase7d_slow_wave_cycles", "candidates_participated", 10)
-    pairs = [(surv[i], part[i]) for i in range(min(len(surv), len(part))) if part[i] > 0]
-    ratios = [s / p for s, p in pairs]
+
+    valid_rows = []
+    if _table_exists(con, "phase7d_slow_wave_cycles"):
+        cols = set(_columns(con, "phase7d_slow_wave_cycles"))
+        required = {"adaptive_threshold_avg", "candidates_participated"}
+        if required.issubset(cols):
+            idc = "id" if "id" in cols else "rowid"
+            reason_filter = " AND reason='self_regulating_slow_wave_sleep'" if "reason" in cols else ""
+            valid_rows = con.execute(
+                "SELECT adaptive_threshold_avg,candidates_survived,candidates_participated "
+                "FROM phase7d_slow_wave_cycles WHERE candidates_participated>0" + reason_filter +
+                " ORDER BY " + idc + " DESC LIMIT 10"
+            ).fetchall()
+            valid_rows.reverse()
+
+    thresholds = [_to_float(row[0]) for row in valid_rows if row[0] is not None]
+    threshold_drift_available = len(thresholds) >= 2
+    threshold_drift = _clamp(0.5 + (thresholds[-1] - thresholds[0])) if threshold_drift_available else 0.5
+
+    ratios = []
+    for row in valid_rows:
+        survived = _to_float(row[1])
+        participated = _to_float(row[2])
+        if participated > 0:
+            ratios.append(survived / participated)
     population_available = bool(ratios)
     survivor_ratio = _clamp(sum(ratios) / len(ratios)) if ratios else 0.5
     recent = ratios[-tail:] if ratios else []
     survivor_ratio_recent = _clamp(sum(recent) / len(recent)) if recent else survivor_ratio
+
     eff_vals = _read_recent(con, "phase6b_effectiveness_events", "effectiveness_score", 5)
     effectiveness = (sum(eff_vals) / len(eff_vals)) if eff_vals else 0.0
     bias_vals = _read_recent(con, "phase6c_bias_history", "exploration_bias", 6)
     bias_oscillation = _clamp(statistics.pstdev(bias_vals) * 2) if len(bias_vals) >= 2 else 0.0
     nm = _read_neuromod(con); glu, gaba = nm["glutamate"], nm["gaba"]
     ei_saturation = _clamp(max(abs(glu - 0.5), abs(gaba - 0.5)) * 2 - 0.6)
-    return {"threshold_drift": threshold_drift, "survivor_ratio": survivor_ratio,
-            "survivor_ratio_recent": survivor_ratio_recent, "population_available": population_available,
-            "effectiveness": effectiveness, "bias_oscillation": bias_oscillation,
+    return {"threshold_drift": threshold_drift,
+            "threshold_drift_available": threshold_drift_available,
+            "valid_threshold_count": len(thresholds),
+            "survivor_ratio": survivor_ratio,
+            "survivor_ratio_recent": survivor_ratio_recent,
+            "population_available": population_available,
+            "effectiveness": effectiveness,
+            "bias_oscillation": bias_oscillation,
             "ei_saturation": ei_saturation}
 
 def _stress_components(sig, con):
     escale = _get_p(con, "effectiveness_scale", 10.0)
-    drift_stress = _clamp((sig["threshold_drift"] - 0.5) * 2)
+    drift_stress = _clamp((sig["threshold_drift"] - 0.5) * 2) if sig.get("threshold_drift_available", False) else 0.0
     r = sig["survivor_ratio_recent"]
     if sig.get("population_available", False):
         over = _clamp(max(0.0, 0.15 - r) / 0.15)
