@@ -158,19 +158,82 @@ def _get_adenosine_level(con):
     return _to_float(r[0], 0.0) if r else 0.0
 
 def _build_candidate_pool(con, pool_size, anchor_ratio):
-    # BRAINSTEM_PHASE7D_ROTATING_FALLBACK_SAMPLER_V1
-    n_anchor = int(pool_size * anchor_ratio)
-    n_novel = pool_size - n_anchor
+    # BRAINSTEM_PHASE7D_THREE_TRACK_REACTIVATION_V1
+    n_anchor_target = int(pool_size * anchor_ratio)
+    n_novel = pool_size - n_anchor_target
     out = []
+    used_context_ids = set()
+
+    anchor_rows = []
     if _table_exists(con, "phase6b_anchor_pool"):
-        rows = con.execute(
+        anchor_rows = con.execute(
             "SELECT id,stability_score FROM phase6b_anchor_pool "
-            "WHERE active=1 ORDER BY stability_score DESC LIMIT ?",
-            (n_anchor,),
+            "WHERE active=1 ORDER BY stability_score DESC,last_replayed_at ASC LIMIT ?",
+            (n_anchor_target,),
         ).fetchall()
-        for r in rows:
-            out.append({"source_table": "phase6b_anchor_pool", "source_id": _to_int(r[0]),
-                        "is_anchor": True, "base_score": _clamp(_to_float(r[1], 0.5))})
+        for row in anchor_rows:
+            out.append({"source_table": "phase6b_anchor_pool",
+                        "source_id": _to_int(row[0]),
+                        "is_anchor": True,
+                        "base_score": _clamp(_to_float(row[1], 0.5))})
+
+    state = _read_kv(con, "phase7d_state")
+    phase6b_state = _read_kv(con, "phase6b_state")
+    current_cycle = _to_int(state.get("cycle_count"), 0) + 1
+    checkpoint = _to_int(phase6b_state.get("phase7d_survivor_anchor_checkpoint_id"), 0)
+    reactivation_capacity = max(0, n_anchor_target - len(anchor_rows))
+    reactivated = []
+
+    if (reactivation_capacity > 0 and checkpoint > 0 and
+            _table_exists(con, "phase7d_consolidation_survivors")):
+        active_anchor_sources = set()
+        if _table_exists(con, "phase6b_anchor_pool"):
+            active_anchor_sources = {
+                _to_int(row[0]) for row in con.execute(
+                    "SELECT source_id FROM phase6b_anchor_pool "
+                    "WHERE active=1 AND source_table='context_hypotheses'"
+                ).fetchall()
+            }
+
+        candidates_by_level = {2: [], 1: []}
+        rows = con.execute(
+            "SELECT source_id,COUNT(DISTINCT cycle_index) AS survived_cycles,"
+            "MAX(cycle_index) AS last_cycle "
+            "FROM phase7d_consolidation_survivors "
+            "WHERE id>? AND reinforced=1 AND source_table='context_hypotheses' "
+            "GROUP BY source_id "
+            "HAVING COUNT(DISTINCT cycle_index) IN (1,2) AND MAX(cycle_index)<?",
+            (checkpoint, current_cycle),
+        ).fetchall()
+        for source_id, survived_cycles, last_cycle in rows:
+            sid = _to_int(source_id)
+            level = _to_int(survived_cycles)
+            if sid not in active_anchor_sources and level in candidates_by_level:
+                candidates_by_level[level].append((sid, _to_int(last_cycle)))
+
+        slots_left = reactivation_capacity
+        for level in (2, 1):
+            if slots_left <= 0:
+                break
+            candidates = sorted(candidates_by_level[level], key=lambda item: item[0])
+            if not candidates:
+                continue
+            cursor_key = "survivor_reactivation_cursor_n" + str(level)
+            cursor = _to_int(state.get(cursor_key), 0)
+            ordered = [item for item in candidates if item[0] > cursor]
+            ordered.extend(item for item in candidates if item[0] <= cursor)
+            chosen = ordered[:slots_left]
+            for sid, last_cycle in chosen:
+                reactivated.append({"source_table": "context_hypotheses",
+                                    "source_id": sid,
+                                    "is_anchor": False,
+                                    "base_score": 0.5})
+                used_context_ids.add(sid)
+            if chosen:
+                _kv_set(con, "phase7d_state", cursor_key, chosen[-1][0])
+            slots_left -= len(chosen)
+
+    out.extend(reactivated)
 
     novel = []
     if n_novel > 0 and _table_exists(con, "phase5g_experiment_outcomes"):
@@ -181,14 +244,15 @@ def _build_candidate_pool(con, pool_size, anchor_ratio):
         if sc:
             sql += "ORDER BY " + sc + " ASC "
         sql += "LIMIT ?"
-        for r in con.execute(sql, (n_novel,)).fetchall():
-            base = _clamp(1.0 - _to_float(r[1], 0.5)) if sc else 0.5
-            novel.append({"source_table": "phase5g_experiment_outcomes", "source_id": _to_int(r[0]),
-                          "is_anchor": False, "base_score": base})
+        for row in con.execute(sql, (n_novel,)).fetchall():
+            base = _clamp(1.0 - _to_float(row[1], 0.5)) if sc else 0.5
+            novel.append({"source_table": "phase5g_experiment_outcomes",
+                          "source_id": _to_int(row[0]),
+                          "is_anchor": False,
+                          "base_score": base})
 
     remaining = max(0, n_novel - len(novel))
     if remaining > 0 and _table_exists(con, "context_hypotheses"):
-        state = _read_kv(con, "phase7d_state")
         cursor = _to_int(state.get("context_fallback_cursor"), 0)
         if cursor <= 0 and _table_exists(con, "phase7d_up_state_events"):
             prior = con.execute(
@@ -197,25 +261,46 @@ def _build_candidate_pool(con, pool_size, anchor_ratio):
             ).fetchone()
             cursor = _to_int(prior[0], 0) if prior else 0
 
-        ids = [r[0] for r in con.execute(
-            "SELECT id FROM context_hypotheses WHERE id>? ORDER BY id LIMIT ?",
-            (cursor, remaining),
-        ).fetchall()]
-        if len(ids) < remaining:
-            ids.extend(r[0] for r in con.execute(
-                "SELECT id FROM context_hypotheses WHERE id<=? ORDER BY id LIMIT ?",
-                (cursor, remaining - len(ids)),
-            ).fetchall())
+        max_row = con.execute("SELECT COALESCE(MAX(id),0) FROM context_hypotheses").fetchone()
+        max_id = _to_int(max_row[0] if max_row else 0, 0)
+        ids = []
+        scan_cursor = cursor
+        wrapped = False
+        examined = 0
+        while len(ids) < remaining and max_id > 0 and examined < max_id:
+            row = con.execute(
+                "SELECT id FROM context_hypotheses WHERE id>? ORDER BY id LIMIT 1",
+                (scan_cursor,),
+            ).fetchone()
+            if row is None:
+                if wrapped:
+                    break
+                scan_cursor = 0
+                wrapped = True
+                continue
+            sid = _to_int(row[0])
+            scan_cursor = sid
+            examined += 1
+            if sid not in used_context_ids:
+                ids.append(sid)
+                used_context_ids.add(sid)
 
-        for source_id in ids:
-            novel.append({"source_table": "context_hypotheses", "source_id": _to_int(source_id),
-                          "is_anchor": False, "base_score": 0.5})
+        for sid in ids:
+            novel.append({"source_table": "context_hypotheses",
+                          "source_id": sid,
+                          "is_anchor": False,
+                          "base_score": 0.5})
         if ids:
-            _kv_set(con, "phase7d_state", "context_fallback_cursor", _to_int(ids[-1]))
+            _kv_set(con, "phase7d_state", "context_fallback_cursor", ids[-1])
             _kv_set(con, "phase7d_state", "context_fallback_sampler", "rotating_id_cursor_v1")
             _kv_set(con, "phase7d_state", "context_fallback_batch_size", len(ids))
 
     out.extend(novel)
+    _kv_set(con, "phase7d_state", "three_track_pool", "anchor_survivor_novel_v1")
+    _kv_set(con, "phase7d_state", "reactivation_capacity", reactivation_capacity)
+    _kv_set(con, "phase7d_state", "reactivation_selected", len(reactivated))
+    _kv_set(con, "phase7d_state", "novel_selected", len(novel))
+    _kv_set(con, "phase7d_state", "anchor_selected", len(anchor_rows))
     return out
 
 def _run_slow_wave_sleep(con, cycle_index, neuromod, adenosine_level):
