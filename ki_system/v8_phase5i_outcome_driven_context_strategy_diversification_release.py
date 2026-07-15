@@ -126,7 +126,7 @@ def apply_diversification(obj=None,limit_gaps=120):
 def managed_cycle(self,progress=None):
     base=None
     try:
-        from ki_system import v8_phase5h_schema_guard_fixed2 as b
+        from ki_system import v8_phase5h_strategy_experiment_outcome_learning_release as b
         base=b.managed_cycle(self,progress)
     except Exception as e: base={'base_warning':repr(e)}
     return {'phase':PHASE,'base':base,'phase5i':apply_diversification(self)}
