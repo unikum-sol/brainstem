@@ -19,7 +19,7 @@ BrainStem is a biologically inspired, neuro-symbolic cognitive architecture for 
 ### Completed
 
 - **Stage A — learning-core stabilization**
-- sensory-deprivation drift test over **1,344 cycles**
+- For an earlier development version, a sensory-deprivation drift test covering 1,344 cycles was successfully completed. Since that test, substantial architectural, bootstrap, and legacy-related changes have   been made. Therefore, the stability of the current system version has not yet been fully revalidated.
 - Legacy Cleanup large slices **A–C**
 - removal of historical and unused learning paths
 - removal of the obsolete `nlp.py` path and the legacy CorpusReader / Phase-3d word-role and filter path
