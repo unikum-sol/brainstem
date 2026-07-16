@@ -1,0 +1,873 @@
+BrainStem – Auswertung dreier wissenschaftlicher Arbeiten auf mögliche Projekt-Relevanz
+Arbeitsdokument
+
+Projekt: BrainStem
+ Gegenstand: Prüfung dreier wissenschaftlicher Dokumente auf biologisch, mathematisch oder methodisch verwertbare Inhalte
+ Projektstand: Modern Gap Candidate Bridge + Bootstrap Shadow V1 ist installiert und im realen Laufzeitpfad abgenommen
+ Nächster technischer Schritt nach dieser Paper-Auswertung: read-only Modern Gap Candidate Signal Distribution Audit V1
+ Weiterhin gesperrt: produktive Gap-Erzeugung, Attention-Writes, Phase-5f-/5g-/5i-Experimente, Facts-, Relations- und Questions-Writes
+
+1. Untersuchte Dokumente
+
+Homeostatic structural plasticity – a key to neuronal network formation and repair
+ Markus Butz und Arjen van Ooyen, BMC Neuroscience, 2014.
+
+Nonlinear Time Series Classification Using Bispectrum-based Deep Convolutional Neural Networks
+ Paul A. Parker, Scott H. Holan und Nalini Ravishanker, arXiv, 2020.
+
+Supplementary Materials for “A molecule with half-Möbius topology”
+ Igor Rončević et al.; Supplementary Materials mit experimentellen, quantenchemischen und quantenalgorithmischen Details.
+
+2. Gesamturteil
+
+Von den drei Arbeiten ist die Arbeit zur homeostatischen strukturellen Plastizität inhaltlich am unmittelbarsten für BrainStem relevant. Sie liefert ein biologisch plausibles Modell dafür, wie ein System aus lokalem Ungleichgewicht einen strukturellen Bedarf entwickeln kann, ohne dass eine zentrale Instanz konkrete Verbindungen vorgibt. Besonders wertvoll ist die Trennung zwischen einem lokal entstehenden Bedarf, freien Strukturelementen und einer erst später entstehenden tatsächlichen Verbindung.
+
+Die Arbeit zur bispektralen Analyse nichtlinearer Zeitreihen ist vor allem methodisch relevant. Sie zeigt, dass gewöhnliche Mittelwerte, Autokorrelationen und Spektren zweiter Ordnung für nichtlineare Zeitreihen unzureichend sein können. Höhere Spektren können zusätzliche Wechselwirkungen sichtbar machen. Für BrainStem betrifft dies insbesondere zeitliche Kopplungen zwischen Botenstoffen, Replay, Stability, Confidence, Exploration und Inhibition.
+
+Die Arbeit zum Half-Möbius-Molekül besitzt kaum direkten Nutzen für das Sprach- und Kontextlernen. Methodisch relevant sind jedoch drei Punkte: randomisiertes Sampling sehr großer Zustandsräume, nachträgliche Erweiterung eines ausgewählten Teilraums und die Beobachtung, dass schnelle Zustandswechsel durch begrenzte Messbandbreite als geglätteter Zustand erscheinen können.
+
+Keine der drei Arbeiten rechtfertigt eine sofortige Öffnung der produktiven Gap-Sperre. Sie liefern jedoch starke Anregungen dafür, welche Verläufe und Wechselwirkungen BrainStem zunächst im Shadow-Modus messen sollte.
+
+3. Dokument 1: Homeostatische strukturelle Plastizität
+3.1 Kernaussage der Arbeit
+
+Die Arbeit erweitert die klassische Vorstellung homeostatischer Plastizität. Homöostase wird nicht nur als Anpassung der Gewichte bestehender Synapsen verstanden. Auch die Verbindungsstruktur eines neuronalen Netzwerks kann sich verändern: Verbindungen können entstehen, verschwinden oder neu organisiert werden.
+
+Im beschriebenen Modell besteht eine Synapse nicht einfach aus einer gewichteten Kante. Sie setzt sich aus zwei getrennt entstehenden Strukturelementen zusammen:
+
+einem axonalen Element,
+einem dendritischen Element.
+
+Beide Elemente entwickeln sich lokal in Abhängigkeit von der durchschnittlichen elektrischen Aktivität ihres jeweiligen Neurons. Freie axonale und dendritische Elemente können sich anschließend verbinden. Diese Verbindung erfolgt im Modell zufällig, jedoch mit einer distanzabhängigen Wahrscheinlichkeit. Wird später eines der beteiligten Elemente entfernt, kann die Verbindung wieder zerfallen.
+
+Damit trennt das Modell drei Vorgänge:
+
+Ein lokaler Zustand weicht vom homöostatischen Bereich ab.
+Daraus entsteht lokal ein strukturelles Angebot oder ein struktureller Bedarf.
+Erst später entsteht daraus möglicherweise eine konkrete Verbindung.
+
+Diese Trennung ist für BrainStem besonders wichtig.
+
+3.2 Lokale Regeln können globale Reparatur erzeugen
+
+Das Modell wurde auf eine Situation mit lokalem Inputverlust angewendet. Zunächst erzeugten Neuronen am Rand des betroffenen Gebiets einen Bedarf nach zusätzlichen horizontalen Eingängen. Neuronen aus der intakten Umgebung stellten neue axonale Elemente bereit. Nachdem der Randbereich sein Aktivitätsniveau wiederhergestellt hatte, verlagerte sich die Grenze zwischen normaler und niedriger Aktivität weiter in das geschädigte Gebiet hinein. Dadurch entstand eine geordnete Reparatur von außen nach innen.
+
+Die Autoren betonen, dass diese räumlich und zeitlich geordnete Reorganisation aus lokalen Regeln hervorging. Es war keine zentrale Instanz erforderlich, die eine Reparaturreihenfolge vorgab. In dem beschriebenen Modell war für diese Reorganisation außerdem weder STDP noch eine andere Hebb-artige Plastizität notwendig.
+
+Übertragung auf BrainStem
+
+BrainStem sollte später möglichst nicht zentral entscheiden:
+
+welche Hypothese eine Lernlücke ist,
+welcher Kontext sie lösen muss,
+welche Verbindung dauerhaft bleibt,
+oder welche Strategie generell richtig ist.
+
+Stattdessen sollte jede Hypothese aus ihrem eigenen Verlauf heraus einen lokalen Bedarf entwickeln können. Geeignete Kontextangebote sollten ebenfalls lokal aus beobachteter Nutzung, Wiederbeobachtung, Replay und Konsolidierung hervorgehen.
+
+Der globale Lernfortschritt dürfte dann aus vielen lokalen Bedarf-Angebot-Verknüpfungen entstehen.
+
+3.3 Bedarf ist noch keine Verbindung
+
+Die wichtigste übertragbare Idee lautet:
+
+Ein festgestellter Bedarf ist noch keine neue Struktur.
+
+Für BrainStem sollte deshalb eine zukünftige Verarbeitungskette nicht direkt lauten:
+
+unsichere Hypothese → internal_learning_gaps
+
+Eine biologisch sauberere Architektur wäre:
+
+Rohhypothese → beobachteter Verlauf → lokaler struktureller Bedarf → freies Gap-Bedarfselement → Konsolidierungsprüfung → Kontextangebot → Verbindung oder Verwerfung
+
+Mögliche spätere Zustände könnten konzeptionell sein:
+
+observed_only
+homeostatic_deviation_observed
+structural_demand_pending
+context_offer_pending
+pairing_under_observation
+consolidation_candidate
+stable_connection
+connection_released
+
+Diese Zustände sind vorerst nur Architekturbegriffe. Sie sollten nicht als produktive Zustandsmaschine eingebaut werden, bevor die zugrunde liegenden Verläufe empirisch gemessen sind.
+
+Die derzeitige Tabelle modern_gap_candidate_shadow erfüllt bereits den ersten Teil dieser Trennung: Sie speichert beobachtbare Signale, erklärt aber ausdrücklich noch keinen Datensatz zu einer Lernlücke.
+
+3.4 Homöostase sollte selbstbezogen statt global sein
+
+Das biologische Modell reguliert Aktivität in Richtung eines homöostatischen Bereichs. Für BrainStem sollte daraus nicht vorschnell eine globale feste Sollwertregel abgeleitet werden.
+
+Eine globale Regel wie:
+
+Stability muss größer als 0,2 sein,
+Uncertainty muss kleiner als 0,5 sein,
+Replay Count muss mindestens 3 sein,
+
+würde individuelle Hypothesenverläufe ignorieren.
+
+Eine passendere spätere BrainStem-Idee wäre ein individueller homöostatischer Erwartungsbereich pro Hypothese oder Hypothesengruppe. Dieser könnte aus der eigenen Historie entstehen:
+
+typische Stability-Entwicklung nach einer Erstbeobachtung,
+typische Confidence-Änderung nach Wiederbeobachtung,
+übliche Replay-Anzahl bis zu einer messbaren Veränderung,
+übliche Schwankungsbreite der Neuromodulatorwerte,
+erwartete Veränderung bei zusätzlicher Evidenz,
+normale Dauer bis zur Stabilisierung oder Revision.
+
+Ein struktureller Bedarf würde dann nicht aus einem absoluten Wert entstehen, sondern aus einer anhaltenden Abweichung vom eigenen erlernten Verlauf.
+
+Beispiel:
+
+Eine Hypothese erhält mehrfach neue Evidenz und Replay, zeigt aber wiederholt keine Veränderung in Stability, Confidence, Revision oder Kontextunterstützung. Das wäre ein stärkeres Bedarfssignal als eine einmalig hohe Uncertainty.
+
+3.5 Strukturveränderung ist mehr als Gewichtsanpassung
+
+BrainStem verändert oder beobachtet bereits zahlreiche skalare Größen:
+
+Confidence,
+Uncertainty,
+Stability,
+Attention,
+Priority,
+Replay Weight,
+Meta-Plasticity,
+Exploration Pressure,
+Inhibition Level,
+Revision Pressure,
+Consolidation Gain,
+Strategy Score.
+
+Das Paper macht deutlich, dass Plastizität nicht nur aus der Veränderung solcher Gewichte bestehen muss. Eine spätere strukturelle Plastizität in BrainStem könnte zusätzlich umfassen:
+
+neue Kontextverbindungen anlegen,
+alternative Kontextangebote zulassen,
+unproduktive Verbindungen wieder freigeben,
+dauerhaft ungenutzte Verbindungen abbauen,
+lokale Kontextnachbarschaften erweitern,
+wiederholt erfolglose Kontextregionen vorübergehend hemmen,
+verschiedene Kontextrouten parallel beobachten,
+eine bewährte Verbindung erst nach Konsolidierung stabilisieren.
+
+Das passt zum bestehenden Etappe-B-Grundsatz: produktive Änderungen dürfen erst nach wiederholtem konsolidiertem Überleben und weiteren Gates möglich werden.
+
+3.6 Langsame und schnelle Plastizität trennen
+
+Die Autoren ordnen strukturelle Plastizität längeren Zeitskalen zu, die bei Entwicklung und Reparatur wichtig sind.
+
+Für BrainStem ergibt sich daraus eine klare Trennung:
+
+Schnelle Vorgänge
+Rohbeobachtung,
+kurzfristige Attention,
+aktuelle Neuromodulatorantwort,
+einmalige Uncertainty,
+Queue-Auswahl,
+kurzfristige Exploration,
+momentaner Read Outcome.
+Mittlere Vorgänge
+Wiederbeobachtung,
+Evidence-Wachstum,
+Stability-Änderung,
+Replay-Auswahl,
+Strategievariation,
+Kontextvergleich,
+Revisionstendenz.
+Langsame strukturelle Vorgänge
+Entstehung eines strukturellen Lernbedarfs,
+Verbindung eines Bedarfs mit einem Kontextangebot,
+Stabilisierung einer wiederholt hilfreichen Verbindung,
+Abbau einer dauerhaft nutzlosen Verbindung,
+gradueller Übergang in produktive Wissensstrukturen.
+
+Eine produktive Gap-Erzeugung sollte deshalb nicht in der schnellen Beobachtungsphase stattfinden.
+
+3.7 Vorsicht bei der Distanzfunktion
+
+Das Modell verwendet eine Gauß-förmige Kernel-Funktion, durch die räumlich benachbarte Neuronen wahrscheinlicher verbunden werden als weiter entfernte. Interessanterweise entstanden beim Annähern an ein homöostatisches Gleichgewicht auch längere Verbindungen.
+
+Für BrainStem sollte diese konkrete Distanzregel nicht direkt übernommen werden.
+
+Eine fest kodierte sprachliche oder semantische Distanz würde wieder ein vorgegebenes Sprachmodell einführen. Kontextnähe sollte stattdessen möglichst aus realer Nutzung entstehen, beispielsweise aus:
+
+gemeinsamer Beobachtung,
+wiederholtem Auftreten im selben Kontext,
+erfolgreicher gegenseitiger Stabilisierung,
+gemessener Closure-Verbesserung,
+konsistenter Replay-Kopplung,
+tatsächlicher Dialognützlichkeit.
+4. Dokument 2: Bispektrum und nichtlineare Zeitreihen
+4.1 Kernaussage der Arbeit
+
+Das Paper beschäftigt sich mit der Klassifikation nichtlinearer Zeitreihen. Die Autoren argumentieren, dass viele Verfahren überwiegend Eigenschaften erster und zweiter Ordnung verwenden und deshalb bestimmte nichtlineare Prozesse nicht ausreichend unterscheiden können. Als zusätzliche Darstellung verwenden sie höhere Spektralanalyse, insbesondere das Bispektrum, das auf Momenten dritter Ordnung beruht.
+
+Das Bispektrum beschreibt nicht nur die Stärke einzelner Frequenzen, sondern Wechselwirkungen zwischen Frequenzpaaren. Dadurch können nichtlineare Kopplungen sichtbar werden, die im gewöhnlichen Leistungsspektrum nicht enthalten sind.
+
+Die bispektralen Darstellungen werden als zweidimensionale Eingaben für ein Convolutional Neural Network verwendet. Das CNN übernimmt gleichzeitig Merkmalsextraktion, Dimensionsreduktion und Klassifikation.
+
+4.2 Relevanz für die digitalen Botenstoffe
+
+BrainStem besitzt zwölf aktive digitale Botenstoffe:
+
+Dopamin,
+Serotonin,
+Noradrenalin,
+Acetylcholin,
+Glutamat,
+GABA,
+Adenosin,
+Endocannabinoide,
+Cortisol,
+Histamin,
+Orexin,
+BDNF.
+
+Die Wirkung dieser Regler sollte nicht nur über einzelne Mittelwerte betrachtet werden. Relevante Systemzustände können aus zeitlichen Wechselwirkungen entstehen, zum Beispiel:
+
+Glutamat steigt und GABA folgt verzögert,
+Adenosin steigt, während Orexin und Histamin sinken,
+Cortisol erhöht kurzfristig Inhibition oder senkt Exploration,
+BDNF steigt erst nach erfolgreichem Replay,
+Endocannabinoide wirken verzögert auf vorherige Aktivität zurück,
+Replay Weight und Meta-Plasticity verändern sich gemeinsam,
+Confidence steigt erst nach mehreren Evidenz-Replay-Zyklen.
+
+Das Paper liefert keinen Beleg, dass eine konkrete dieser BrainStem-Kopplungen existiert. Es liefert aber eine Methode, mit der nichtlineare Frequenzkopplungen grundsätzlich untersucht werden können.
+
+4.3 Mögliche spätere Analysefelder
+
+Ein späteres rein analytisches BrainStem-Werkzeug könnte Zeitreihen untersuchen aus:
+
+Neuromodulatorwerten pro Zyklus,
+Stability-Verläufen,
+Confidence-Verläufen,
+Uncertainty-Verläufen,
+Replay Count,
+Replay Weight,
+Meta-Plasticity,
+Exploration Pressure,
+Inhibition Level,
+Revision Pressure,
+Consolidation Gain,
+Gap-Candidate-Signalhäufigkeit,
+Drift-Metriken,
+Schlaf-/Wachzuständen.
+
+Mögliche Fragestellungen:
+
+Existieren wiederkehrende Oszillationen?
+Gibt es Phasenverschiebungen zwischen aktivierenden und hemmenden Reglern?
+Reagiert GABA zeitlich passend auf steigendes Glutamat?
+Koppeln Adenosin, Histamin und Orexin unterschiedlich in Wach- und Schlafphasen?
+Geht eine Driftphase einer veränderten Frequenzkopplung voraus?
+Unterscheiden sich erfolgreiche und erfolglose Replay-Phasen in ihren nichtlinearen Kopplungsmustern?
+Ist ein scheinbar stabiler Mittelwert tatsächlich das Ergebnis starker gegensätzlicher Schwingungen?
+4.4 Keine sofortige CNN-Integration
+
+Das Paper arbeitet mit überwachten Klassen. Für BrainStem existieren aktuell keine ausreichend validierten Labels für:
+
+echte Lernlücke,
+produktive Unsicherheit,
+falsche Hypothese,
+hilfreicher Replay,
+erfolgreiche Kontextverbindung,
+erfolglose Kontextstrategie.
+
+Ein CNN könnte deshalb momentan nur:
+
+künstlich erzeugte Labels,
+heuristisch festgelegte Klassen,
+oder selbstreferenzielle Ergebnisse
+
+lernen.
+
+Das wäre nicht mit dem Projektprinzip vereinbar.
+
+Die sinnvolle Reihenfolge ist:
+
+Rohzeitreihen vollständig erfassen.
+Verteilungen und einfache Zusammenhänge prüfen.
+Zeitverzögerte Zusammenhänge prüfen.
+Lineare und nichtlineare Baselines vergleichen.
+Optional Spektral- und Bispektralanalyse als externes Diagnosewerkzeug testen.
+Erst bei realen Outcomes über ein lernendes Modell nachdenken.
+4.5 Dropout als Unsicherheitsverteilung
+
+Das Paper verwendet Dropout während Training und Vorhersage. Wiederholte Vorhersagen liefern dadurch eine Verteilung statt nur eines einzelnen Klassifikationswertes. Die Autoren nutzen dies zur Unsicherheitsquantifizierung.
+
+Die übertragbare Idee für BrainStem lautet nicht zwingend „Dropout einbauen“, sondern:
+
+Eine Entscheidung sollte möglichst aus einer Verteilung wiederholter, leicht unterschiedlicher Beobachtungen oder Auswertungen entstehen.
+
+Mögliche spätere BrainStem-Anwendung:
+
+dieselbe Hypothese in mehreren Replay-Konfigurationen prüfen,
+verschiedene Kontextfenster vergleichen,
+unterschiedliche Botenstofflagen berücksichtigen,
+nicht nur den Mittelwert, sondern Streuung und Stabilität der Ergebnisse speichern,
+eine Entscheidung nur dann festigen, wenn sie über mehrere Varianten hinweg robust bleibt.
+
+Das passt konzeptionell zu:
+
+_critic_gate,
+Konsolidierungs-Gates,
+Warm-up-Dämpfung,
+wiederholtem Überleben,
+Confidence-Verteilungen,
+Exploration vor Stabilisierung.
+4.6 Erklärbarkeit durch Aktivierungskarten
+
+Das Paper verwendet Class Activation Maps, um jene Bereiche der bispektralen Darstellung sichtbar zu machen, die für eine Klassifikation besonders relevant waren.
+
+Für BrainStem wäre eine übertragbare Anforderung:
+
+Jede spätere nichtlineare Analyse sollte nicht nur ein Ergebnis liefern, sondern auch zeigen:
+
+welche Zeitfenster relevant waren,
+welche Botenstoffpaare beteiligt waren,
+welche Frequenzbereiche auffällig waren,
+welche Replay- oder Schlafphasen das Ergebnis geprägt haben,
+ob das Ergebnis von wenigen Extremereignissen oder einem stabilen Verlauf getragen wird.
+
+Ein nicht erklärbarer Klassifikator sollte nicht unmittelbar produktive Lernentscheidungen steuern.
+
+4.7 Stationarität als Risiko
+
+Die Autoren weisen darauf hin, dass ihr aktueller Ansatz eine Form von Stationarität voraussetzt und nennen zeitvariable Bispektren beziehungsweise rekurrente Strukturen als mögliche Erweiterung.
+
+BrainStem ist wahrscheinlich stark nichtstationär:
+
+neue Chunks verändern die Datenpopulation,
+Schlaf und Wachphase unterscheiden sich,
+Botenstoffe ändern ihre Regelwirkung,
+Warm-up und Langlauf sind verschieden,
+Etappe B verändert die Systemdynamik,
+Cortisol Stufe 2 würde den Regelkreis verändern.
+
+Eine spätere Spektralanalyse sollte deshalb nicht einfach einen vollständigen Langlauf als homogene Zeitreihe behandeln.
+
+Sinnvoll wären getrennte Fenster:
+
+Warm-up,
+stabiler Wachbetrieb,
+Schlafübergang,
+Slow-Wave-Phase,
+Aufwachphase,
+sensorischer Entzug,
+Drift-Test,
+normaler Corpuslauf.
+5. Dokument 3: Half-Möbius-Topologie und SqDRIFT
+5.1 Direkte Projekt-Relevanz
+
+Der Hauptgegenstand ist ein molekulares System mit Half-Möbius-Topologie. Das Dokument beschreibt:
+
+STM- und AFM-Messungen,
+Tight-Binding-Rechnungen,
+Multireferenzrechnungen,
+DFT-Berechnungen,
+Aromatizität,
+elektronische Zustände,
+Zustandswechsel,
+quantenchemische Samplingverfahren.
+
+Die molekulare Topologie selbst sollte nicht als Modell für BrainStem übernommen werden. Eine direkte Analogie zwischen Möbius-Topologie und Sprachverständnis wäre nicht wissenschaftlich begründet.
+
+5.2 Randomisiertes Sampling eines großen Zustandsraums
+
+Im Dokument wird SqDRIFT beschrieben. Der elektronische Hamiltonoperator wird in elementare Terme zerlegt. Für jede randomisierte Approximation wird nur eine Stichprobe dieser Terme verwendet. Die Auswahlwahrscheinlichkeit hängt von den Koeffizienten der Terme ab. Aus vielen randomisierten Schaltungen werden relevante Determinanten gesammelt. Anschließend wird der Hamiltonoperator in dem ausgewählten Unterraum klassisch diagonalisiert.
+
+Die methodische Grundidee lautet:
+
+Ein riesiger Zustandsraum wird nicht vollständig durchsucht. Stattdessen werden durch wiederholtes gewichtetes Sampling relevante Zustände identifiziert und anschließend in einem begrenzten Teilraum genauer ausgewertet.
+
+Mögliche BrainStem-Relevanz
+
+Der aktuelle 512er-Checkpoint ist für den ersten vollständigen Shadow-Durchlauf richtig, weil er:
+
+reproduzierbar,
+begrenzt,
+vollständig fortschreitend,
+GUI-schonend
+
+ist.
+
+Später könnte zusätzlich ein kleiner explorativer Samplingpfad untersucht werden:
+
+neue Hypothesen,
+alte, aber kürzlich veränderte Hypothesen,
+häufig wiederbeobachtete Hypothesen,
+replayte Hypothesen,
+selten ausgewählte Hypothesen,
+Hypothesen aus unterrepräsentierten Kontextgruppen,
+Hypothesen mit ungewöhnlicher Botenstoffentwicklung.
+
+Dieser Samplingpfad dürfte den Checkpoint nicht ersetzen. Er wäre eine zusätzliche Explorationskomponente gegen chronologischen Sampling-Bias.
+
+5.3 Erweiterung eines ausgewählten Unterraums
+
+Ext-SqDRIFT übernimmt zunächst einen ausgewählten Determinantenraum und erweitert ihn anschließend um verwandte Einzel- und Doppelanregungen, bevor erneut diagonalisiert wird.
+
+Die übertragbare Idee für BrainStem lautet:
+
+Einen auffälligen Kandidaten nicht sofort produktiv verändern.
+Zunächst seine lokale Kontextnachbarschaft erfassen.
+Nahe Alternativen und Kontrastkontexte sammeln.
+Mehrere mögliche Verbindungen parallel prüfen.
+Den erweiterten lokalen Teilraum erneut bewerten.
+Erst nach wiederholter Konsolidierung eine Struktur stabilisieren.
+
+Das passt zur vorhandenen Architektur von:
+
+Context Expansion,
+Window Strategies,
+Gap-driven Rereading,
+Exploration Pressure,
+Inhibition,
+Replay,
+Consolidation.
+
+Aber die Erweiterung darf nicht durch feste sprachliche Nachbarschaftsregeln erfolgen. Sie sollte aus beobachteter Nutzung und gemessenen Outcomes entstehen.
+
+5.4 Mehrere Modellstufen gegeneinander prüfen
+
+Das Dokument vergleicht und kombiniert verschiedene Rechenebenen:
+
+einfaches Tight-Binding-Modell,
+Multireferenzmethoden,
+DFT,
+klassische Diagonalisierung,
+quantenbasiertes Sampling,
+experimentelle AFM-/STM-Beobachtungen.
+
+Für BrainStem ist daran weniger die konkrete Physik als die Validierungsstrategie relevant.
+
+Eine spätere Lernentscheidung könnte mehrere voneinander getrennte Evidenzwege besitzen:
+
+Rohbeobachtung,
+Wiederbeobachtung,
+Stability,
+Replay-Verhalten,
+Neuromodulatorreaktion,
+Fehlerereignisse,
+Nutzerfeedback,
+Dialognutzen.
+
+Eine produktive strukturelle Entscheidung sollte stärker werden, wenn mehrere unabhängige Wege übereinstimmen. Ein einzelner Score sollte nicht die gesamte Entscheidung tragen.
+
+5.5 Messbandbreite und verdeckte Zustandswechsel
+
+Das Dokument beschreibt experimentelle Situationen, in denen Moleküle zwischen Zuständen wechseln. Bei höheren Wechselraten können einzelne Übergänge schneller sein als die Messbandbreite. Das resultierende Bild kann dann geglättet wirken oder mehrere Zustände überlagern.
+
+Dieser Punkt ist für BrainStem unmittelbar als Messwarnung relevant.
+
+Ein stabiler Mittelwert kann zwei sehr unterschiedliche Ursachen haben:
+
+Tatsächlich stabil
+
+Der Wert bleibt in einem engen Bereich und ändert sich nur gering.
+
+Scheinbar stabil
+
+Der Wert wechselt schnell zwischen hohen und niedrigen Zuständen, deren Mittelwert stabil erscheint.
+
+Für BrainStem sollten daher neben Mittelwerten erfasst werden:
+
+Minimum und Maximum,
+Varianz,
+Quantile,
+Anzahl von Richtungswechseln,
+Anzahl von Schwellenkreuzungen,
+mittlere Zustandsdauer,
+maximale Änderungsrate,
+Häufigkeit kurzer Peaks,
+Autokorrelation,
+Wechselrate zwischen diskreten Zustandsbereichen.
+
+Das betrifft besonders:
+
+Cortisol,
+Glutamat/GABA,
+Adenosin/Orexin/Histamin,
+Exploration/Inhibition,
+Replay Weight,
+Meta-Plasticity,
+Stability,
+Confidence,
+Gap-Candidate-Verläufe.
+
+Die GUI darf weiterhin begrenzt und heruntergesampelt werden. Die Rohdatenbasis sollte jedoch genügend Information erhalten, um schnelle Wechsel später erkennen zu können.
+
+5.6 Zustandslebensdauer statt nur Zustandswert
+
+Die Supplementary Materials analysieren Zustandslebensdauern und Umschaltraten unter unterschiedlichen experimentellen Bedingungen.
+
+Für BrainStem ist daraus folgende Messidee relevant:
+
+Nicht nur fragen:
+
+Wie hoch ist Cortisol?
+Wie hoch ist Stability?
+Wie hoch ist Replay Weight?
+
+Sondern zusätzlich:
+
+Wie lange bleibt der Zustand bestehen?
+Wie schnell kehrt er zum Ausgangsbereich zurück?
+Wie oft wechselt er?
+Welche vorhergehenden Signale erhöhen die Verweildauer?
+Welche Zustände sind metastabil?
+Welche Zustände treten nur als kurze Übergänge auf?
+Verändert Schlaf die Zustandslebensdauer?
+Verändert Wiederbeobachtung die Lebensdauer eines Unsicherheitszustands?
+6. Gemeinsame Architekturprinzipien aus allen drei Arbeiten
+6.1 Beobachtung vor Eingriff
+
+Alle produktiven Entscheidungen sollten zunächst als Shadow-Beobachtung vorbereitet werden.
+
+Aktueller BrainStem-Status:
+
+modern_gap_candidate_shadow beobachtet Kandidatensignale.
+Kandidaten bleiben observed_only.
+Es gibt keine Gap-Klassifikation.
+Es gibt keine produktive Gap-Erzeugung.
+
+Dieses Vorgehen bleibt richtig.
+
+6.2 Bedarf und Verbindung trennen
+
+Eine Hypothese kann strukturellen Bedarf zeigen, ohne dass bereits klar ist:
+
+ob tatsächlich eine Lücke vorliegt,
+welcher Kontext geeignet ist,
+ob eine Verbindung stabilisiert werden sollte,
+ob Revision oder zusätzliche Evidenz sinnvoller ist.
+
+Deshalb sollen mögliche spätere Strukturen mindestens trennen zwischen:
+
+Bedarf,
+Angebot,
+vorläufiger Paarung,
+Beobachtung der Paarung,
+Konsolidierung,
+Stabilisierung,
+Abbau.
+6.3 Lokale Selbstregulation vor globaler Regel
+
+Globale feste Schwellen sind zu vermeiden.
+
+Bevorzugt werden:
+
+individueller Verlauf,
+gruppenspezifische Baseline,
+selbstbezogene Abweichung,
+Reaktion auf neue Evidenz,
+Wirkung von Replay,
+Wirkung der Botenstofflage,
+langfristige Veränderungsrichtung.
+6.4 Mehrere Zeitskalen
+
+BrainStem sollte schnelle, mittlere und langsame Änderungen getrennt betrachten.
+
+Schnell
+aktueller Read,
+aktueller Botenstoffzustand,
+kurzfristige Attention,
+unmittelbare Exploration.
+Mittel
+Reobservationsverlauf,
+Evidenzwachstum,
+Replay-Ergebnisse,
+Stability-Entwicklung,
+Strategievergleich.
+Langsam
+struktureller Bedarf,
+konsolidierte Verbindung,
+wiederholte Reparatur,
+Abbau unproduktiver Strukturen,
+langfristige Homeostase.
+6.5 Mehrere unabhängige Evidenzwege
+
+Spätere Entscheidungen sollten möglichst nicht von einem einzelnen Messwert abhängen.
+
+Mögliche unabhängige Signale:
+
+Wiederbeobachtung,
+Evidence Count,
+Stability-Verlauf,
+Replay-Verlauf,
+Confidence-Verlauf,
+Uncertainty-Verlauf,
+Error Events,
+Feedback,
+Conflict Count,
+Kontextunterstützung,
+Dialogerfolg,
+Botenstoffreaktion.
+6.6 Zustandsverteilung statt Einzelwert
+
+Für wichtige Entscheidungen sollen später nicht nur Mittelwerte gespeichert werden, sondern:
+
+Streuung,
+Verteilung,
+Persistenz,
+Zustandsdauer,
+Wechselhäufigkeit,
+Reproduzierbarkeit über Replay,
+Sensitivität auf Kontextvariation.
+6.7 Begrenztes Sampling mit Explorationsanteil
+
+Der aktuelle Checkpoint bleibt für die geordnete Bestandsverarbeitung geeignet.
+
+Später kann zusätzlich geprüft werden:
+
+ob chronologische Verarbeitung Populationen verzerrt,
+ob alte Hypothesen zu selten erneut betrachtet werden,
+ob seltene Signalgruppen unterrepräsentiert sind,
+ob eine kleine gewichtete Exploration zusätzliche Erkenntnisse liefert.
+
+Noch keine Änderung am aktuellen 512er-Checkpoint, bevor ein Sampling-Bias gemessen wurde.
+
+7. Konkrete Erweiterungen für den nächsten Audit
+
+Der nächste technische Schritt bleibt:
+
+Modern Gap Candidate Signal Distribution Audit V1
+
+Der Audit bleibt vollständig read-only und erzeugt keine produktiven Writes.
+
+7.1 Basisverteilungen
+
+Zu erfassen:
+
+Anzahl der Shadow-Kandidaten,
+Evidence Count,
+Reobservationsanzahl,
+Stability,
+Hypothesen-Confidence,
+Hypothesen-Uncertainty,
+Stability-Confidence,
+Stability-Uncertainty,
+Feedback Count,
+Error Count,
+Conflict Count,
+Replay Count,
+Replay Weight,
+Meta-Plasticity,
+Alter der Hypothese,
+Zeit seit letzter Beobachtung,
+Zeitspanne zwischen erster und letzter Beobachtung.
+7.2 Gruppenvergleiche
+
+Mindestens folgende Gruppen:
+
+keine Wiederbeobachtung, kein Replay
+Wiederbeobachtung, kein Replay
+Replay, keine Wiederbeobachtung
+Wiederbeobachtung und Replay
+hohe Evidence Count relativ zur Population
+lange Zeit ohne neue Beobachtung
+wiederholt replayt, aber geringe Stability-Veränderung
+wiederholt beobachtet, aber unveränderte Confidence
+Kandidaten mit Feedback
+Kandidaten mit Error Events
+Kandidaten mit Konflikten
+Kandidaten mit extremen Neuromodulatorprofilen
+
+Die Gruppen 9 bis 11 sind derzeit vermutlich leer. Der Audit soll sie trotzdem strukturell unterstützen.
+
+7.3 Homeostatische Verlaufsmetriken
+
+Soweit die Datenhistorie verfügbar ist:
+
+Stability-Änderung pro Replay,
+Confidence-Änderung pro zusätzlicher Evidenz,
+Uncertainty-Änderung pro Wiederbeobachtung,
+Replay Count ohne messbaren Fortschritt,
+Evidence-Wachstum ohne Stability-Wachstum,
+Alter ohne neue Evidenz,
+Zeitpunkt letzter positiver Veränderung,
+individuelle Schwankungsbreite.
+
+Wichtig: Wenn historische Einzelwerte fehlen und nur der aktuelle Zustand vorliegt, darf der Audit keine Verlaufsänderung erfinden. Er muss klar ausweisen, welche Metriken aufgrund fehlender Historie nicht berechnet werden können.
+
+7.4 Botenstoffverteilungen
+
+Für jede der vier Hauptgruppen:
+
+Dopamin Mittelwert, Median, Quantile,
+Serotonin Mittelwert, Median, Quantile,
+Glutamat Mittelwert, Median, Quantile,
+GABA Mittelwert, Median, Quantile,
+Noradrenalin Mittelwert, Median, Quantile,
+Acetylcholin Mittelwert, Median, Quantile,
+Replay Weight,
+Meta-Plasticity.
+
+Wenn weitere Botenstoffe nicht direkt in den Shadow-Zeilen gespeichert sind, sollen sie nicht simuliert werden. Eine spätere erweiterte Shadow-Version könnte sie hinzufügen, falls eine zuverlässige Zuordnung pro Hypothese existiert.
+
+7.5 Mehrskalige Zeitfenster
+
+Falls Zeitstempel dies erlauben:
+
+neueste Kandidaten,
+ältere Kandidaten,
+kurze Beobachtungsdauer,
+lange Beobachtungsdauer,
+kürzlich aktualisiert,
+lange unverändert.
+
+Es sollen keine willkürlichen inhaltlichen Klassen daraus entstehen. Die Fenster dienen nur zur Verteilungsanalyse.
+
+7.6 Sampling-Bias
+
+Zu prüfen:
+
+Verteilung der Hypothesen-ID über die bereits verarbeiteten Kandidaten,
+Verteilung von updated_at,
+Chunk-ID-Verteilung,
+Anteil verschiedener Evidence Counts entlang des Checkpoints,
+Anteil Replay/Wiederbeobachtung je 512er-Batch,
+Stability je Batch,
+Unterschiede zwischen frühen und späteren Checkpoint-Batches.
+
+Ziel ist festzustellen, ob die chronologische Reihenfolge bestimmte Populationen zuerst oder zuletzt verarbeitet.
+
+7.7 Wechsel- und Glättungsrisiko
+
+Sofern Zyklus- oder History-Daten verfügbar sind:
+
+Varianz statt nur Mittelwert,
+Änderungsrate,
+Anzahl von Richtungswechseln,
+kurze Peaks,
+Zustandsdauer,
+Oszillationshinweise.
+
+Falls diese Historien nicht vorhanden sind, soll der Audit nur die Lücke dokumentieren. Er darf keine Zeitreihe aus einzelnen aktuellen Werten konstruieren.
+
+8. Was ausdrücklich nicht gebaut werden soll
+
+Aus den Papers darf aktuell nicht abgeleitet werden:
+
+ein produktiver Gap-Writer,
+eine globale Stability-Schwelle,
+eine globale Uncertainty-Schwelle,
+eine Regel „Replay bedeutet Gap“,
+eine Regel „Wiederbeobachtung bedeutet Gap“,
+eine feste semantische Distanzfunktion,
+ein CNN zur Gap-Klassifikation,
+ein Bispektrum als produktiver Lernregler,
+ein zufälliger Ersatz für den Checkpoint,
+eine direkte Übertragung chemischer oder quantenmechanischer Topologie auf Sprachverständnis,
+eine produktive Strukturverbindung ohne Konsolidierung.
+9. Langfristige mögliche Roadmap
+Stufe 1 – aktuelle Shadow-Messung
+Signalverteilungen erfassen
+Sampling-Bias prüfen
+Homeostase-Metriken identifizieren
+fehlende Historien offen dokumentieren
+Stufe 2 – Verlaufsbeobachtung
+Kandidaten über mehrere Wiederbeobachtungen verfolgen
+Replay-Wirkung messen
+Stability- und Confidence-Veränderung erfassen
+Botenstoffverläufe gruppiert vergleichen
+Stufe 3 – struktureller Bedarf im Shadow-Modus
+
+Noch kein produktiver Gap.
+
+Mögliche Shadow-Repräsentation:
+
+lokaler Bedarf,
+fehlende Kontextunterstützung,
+persistierende Abweichung,
+Reaktion auf Replay,
+mögliche Kontextangebote.
+Stufe 4 – Bedarf-Angebot-Paarung im Shadow-Modus
+mehrere Kontextangebote beobachten
+Outcome-Unterschiede vergleichen
+keine produktive Verbindung
+keine direkte Wissenspromotion
+Stufe 5 – Konsolidierungs-Gate
+
+Nur wenn empirisch belegt:
+
+mehrfaches Überleben der Konsolidierung,
+_critic_gate,
+Warm-up-Dämpfung,
+kontrolliertes Budget,
+vollständige Rückverfolgbarkeit,
+automatische Rücknahme bei Instabilität.
+Stufe 6 – begrenzte produktive Gap-Öffnung
+
+Erst nach erfolgreicher Shadow-Validierung.
+
+Produktiver Umfang:
+
+sehr kleines Budget,
+zunächst höchstens ein Übergang pro Zyklus,
+keine Fact-Promotion,
+keine direkten Relations- oder Questions-Writes,
+vollständige Safety-Zählung,
+vollständiges Rollback,
+Drift- und Langzeittest.
+10. Wichtigste Erkenntnisse in Kurzform
+
+Struktureller Bedarf ist nicht dasselbe wie eine Lernlücke.
+
+Eine Lernlücke ist nicht dasselbe wie eine neue Verbindung.
+
+Eine neue Verbindung ist nicht dasselbe wie stabilisiertes Wissen.
+
+Homöostatischer Bedarf sollte aus dem eigenen Verlauf entstehen, nicht aus globalen festen Schwellen.
+
+Wiederbeobachtung, Replay und Stability sind unterschiedliche Signale und dürfen nicht gleichgesetzt werden.
+
+Nichtlineare Wechselwirkungen zwischen Botenstoffen können wichtiger sein als einzelne Mittelwerte.
+
+Unsicherheit sollte möglichst als Verteilung über mehrere Beobachtungen oder Prüfungen verstanden werden.
+
+Schnelle Zustandswechsel können durch Mittelwerte und GUI-Downsampling unsichtbar werden.
+
+Große Zustandsräume können später durch kontrolliertes Sampling untersucht werden, ohne die geordnete Checkpoint-Verarbeitung zu ersetzen.
+
+Mehrere unabhängige Evidenzwege sollten einer späteren strukturellen Entscheidung vorausgehen.
+
+Strukturelle Änderungen gehören auf eine langsamere, konsolidierungs-gesteuerte Zeitskala.
+
+Keines der Papers rechtfertigt derzeit eine produktive Gap-Öffnung.
+
+11. Verbindlicher nächster Schritt
+
+Nach Abschluss dieser Paper-Auswertung wird als nächster technischer Schritt gebaut:
+
+Modern Gap Candidate Signal Distribution Audit V1
+
+Eigenschaften:
+
+vollständig read-only,
+keine Datenbankmigration,
+keine produktiven Writes,
+keine Klassifikation,
+keine feste Gap-Schwelle,
+keine Änderung der Registry,
+keine Änderung des Checkpoints,
+keine Veränderung von internal_learning_gaps,
+keine Veränderung von chunk_attention_scores,
+keine Phase-5f-/5g-/5i-Experimente,
+SAFETY [0,0,0] bleibt Voraussetzung.
+
+Der Audit wird um die aus den Papers abgeleiteten Messbereiche ergänzt:
+
+homeostatische Verläufe,
+Gruppenvergleiche,
+mehrere Zeitskalen,
+Botenstoffkopplungen,
+Zustandsdauer und Wechselrate,
+Sampling-Bias,
+Replay-Wirkung,
+Evidence-Wachstum ohne Fortschritt,
+Unterschiede zwischen tatsächlicher Stabilität und geglättetem Wechselverhalten.
+
+Bis zur Auswertung dieses Audits bleibt die produktive Gap-Sperre vollständig geschlossen.

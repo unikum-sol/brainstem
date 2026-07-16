@@ -1,0 +1,1304 @@
+HANDOVER – BrainStem
+Stand: 16.07.2026
+Übergabezweck
+
+Dieses Handover dokumentiert den aktuellen technischen und konzeptionellen Stand des Projekts BrainStem nach:
+
+Abschluss von Etappe A,
+repositoryweitem Legacy Cleanup,
+Wiederherstellung konsistenter Bootstrap-Verträge für Phase 5g und Phase 5h,
+Installation der Modern Outcome Bridge im reinen Shadow-Modus,
+Installation der Modern Gap Candidate Bridge im reinen Shadow-Modus,
+realer Laufzeitabnahme beider Shadow-Pfade,
+sowie der Auswertung dreier wissenschaftlicher Arbeiten auf mögliche Relevanz für BrainStem.
+
+Dieses Dokument soll bei einem neuen Chat als erste Nachricht bereitgestellt werden. Zusätzlich sollen das separat gespeicherte Paper-Auswertungsdokument und die drei zugehörigen PDFs bereitgestellt werden.
+
+1. Projektidentität
+Projektname
+
+BrainStem
+
+Früherer Projektname:
+
+KI-System V8
+
+Projektpfad
+
+Z:\Temp\Ki_System\BrainStem\
+
+Python-Package
+
+Das Python-Package heißt weiterhin:
+
+ki_system
+
+Das Package darf nicht umbenannt werden. Nur der Projektordner wurde auf BrainStem geändert.
+
+Start der GUI
+
+Aus dem Projekt-Root:
+
+cd /d Z:\Temp\Ki_System\BrainStem
+
+python main.py --gui
+
+2. Übergeordnetes Projektziel
+
+BrainStem soll Sprach- und Textverständnis möglichst selbstständig aus Kontext, Beobachtung, Hypothesen, Wiederbeobachtung, Fehlern, Feedback, Replay, Konsolidierung und digitaler Neuromodulation entwickeln.
+
+Der Lernprozess soll nicht durch Wortlisten, feste sprachliche Regeln oder direkt eingetragene Fakten ersetzt werden.
+
+Der langfristige Endzustand ist ein System, das realen Nutzern im Dialog messbar hilft und seine eigenen Lernprozesse kontinuierlich verbessert.
+
+3. Zentrale Projektprinzipien
+3.1 Selbstständigkeit vor fester Regel
+
+Vor jeder Architektur- oder Codeentscheidung ist zu prüfen:
+
+Macht diese Änderung das System selbstständiger oder ersetzt sie Lernen durch eine feste Regel?
+
+Nur die erste Variante ist zulässig.
+
+3.2 Keine Wort-Blacklists
+
+Nicht erlaubt sind:
+
+Wort-Blacklists,
+Stopwortfilter als Lernlogik,
+fest kodierte Rollenlisten,
+sprachliche Ausschlussmuster,
+Regeln, die bestimmte Wörter grundsätzlich als wertlos behandeln.
+3.3 Keine direkten Wissens-Writes
+
+Bis zur kontrollierten Öffnung in Etappe B bleiben geschlossen:
+
+direkte Writes in facts,
+direkte Writes in relations,
+direkte Writes in questions,
+Fact-Promotion außerhalb der Konsolidierung.
+3.4 Erst messen, dann ändern
+
+Bei Fehlern, Lücken oder unklaren Datenflüssen gilt:
+
+Quellstand auditieren.
+Datenbankzustand read-only messen.
+Laufzeitpfad nachweisen.
+Ursache eingrenzen.
+Smoke-Test auf isoliertem Datenbestand durchführen.
+Erst danach einen Patch bauen.
+3.5 Keine unbelegten Fähigkeiten behaupten
+
+Öffentliche Dokumentation, README und Projektkommunikation dürfen nur Fähigkeiten behaupten, die durch:
+
+Code,
+Datenbankzustand,
+Runtime-Messungen,
+Drift-Tests,
+oder reproduzierbare Experimente
+
+belegt sind.
+
+3.6 Legacy Cleanup
+
+Veraltete oder ungenutzte Komponenten sollen:
+
+aktiv identifiziert,
+vollständig entfernt,
+nicht auskommentiert aufbewahrt,
+und nicht stillschweigend als mögliche Reserve behalten werden.
+
+Unsichere Komponenten müssen als Klärungspunkt dokumentiert werden.
+
+Nach größeren Refactorings ist ein Legacy-Report erforderlich:
+
+Entfernte Legacy-Elemente
+
+Vollständig entfernte oder ersetzte Altstrukturen.
+
+Beibehaltene, aber markierte Elemente
+
+Noch vorhandene Kompatibilitäts-, Historien- oder Übergangsstrukturen.
+
+4. Patch- und Installer-Regeln
+
+Jeder produktive Installer muss möglichst enthalten:
+
+Quellstandsprüfung,
+normalisierte MD5-Prüfung für LF und CRLF,
+vollständiges Source-Backup,
+konsistentes SQLite-Backup,
+eingebettete Payload-Prüfung,
+idempotentes Schema,
+Schema-Selbstprüfung vor Writes,
+py_compile,
+compileall,
+synthetischen Smoke-Test,
+realen Datenbanktest,
+Schutz der produktiven Tabellen,
+integrity_check,
+quick_check,
+automatisches Rollback,
+Console-Report,
+Legacy-Report.
+Schema-Regel
+
+Alle benötigten Spalten müssen vor dem ersten Write vollständig definiert sein.
+
+Jedes neue produktive oder Shadow-Modul benötigt:
+
+ensure_schema,
+_self_check_schema,
+und einen entsprechenden Vertrag in SCHEMA_TABLES von db_bootstrap.py.
+
+Bootstrap und reale Datenbank müssen gemeinsam angepasst werden.
+
+Wichtige Copy-Paste-Regel
+
+Bei Copy-Paste-Code dürfen keine Markdown-Backtick-Zäune in den zu kopierenden Python-Inhalt gelangen.
+
+Nach dem Speichern kann zur Sicherheit verwendet werden:
+
+findstr /v /c:"`" datei.py > tmp & move /Y tmp datei.py
+
+Kritische _read_kv-Regel
+
+_read_kv niemals als Dict-Comprehension mit rr[1] oder r[1] schreiben.
+
+Immer:
+
+return dict(con.execute("SELECT key,value FROM " + table).fetchall())
+
+Der Kopierweg hat Dict-Comprehensions in der Vergangenheit beschädigt.
+
+GUI-Langlauf
+
+GUI-Elemente müssen begrenzt oder heruntergesampelt werden:
+
+Logs begrenzen,
+Graphen downsamplen,
+History-Anzeigen nicht unbegrenzt wachsen lassen.
+
+Ein GUI-Freeze darf nicht vorschnell als Lern- oder Datenbankfehler interpretiert werden.
+
+5. Etappenstatus
+Etappe A – Lern-Kernpfad stabilisieren
+
+Status:
+
+ABGESCHLOSSEN
+
+Etappe A wurde unter anderem durch einen Drift-Test über 1.344 Zyklen als stabil belegt.
+
+Etappe B – Write-Sperren kontrolliert öffnen
+
+Status:
+
+NOCH NICHT GEÖFFNET
+
+Etappe B bleibt der nächste große Projektabschnitt. Die aktuelle Arbeit schafft zunächst die Mess- und Sicherheitsgrundlage.
+
+Vorgesehene Sicherheitsbedingungen für Etappe B:
+
+konsolidierungs-gated,
+_critic_gate,
+Warm-up-Dämpfung,
+kontrolliertes Write-Budget,
+vollständige Rückverfolgbarkeit,
+automatische Rücknahme bei Instabilität,
+Cortisol Stufe 2 als sanfter Regler,
+zunächst keine echte Fact-Promotion.
+Etappe C – Dialogsystem und Nutzerinteraktion
+
+Status:
+
+SPÄTER
+
+6. Installierte Neuromodulations- und Lernphasen
+
+Installierte relevante Phasen:
+
+6a
+6b
+6c
+6d
+7a Adenosin
+7b Endocannabinoide
+7b1 Wake-Chain-Fix
+7c Adaptive Grenzen, Sigmoid und Glutamat-GABA-Regelung
+7d Slow-Wave selbstregelnd V2
+7e Histamin
+7f Orexin
+7g BDNF
+Cortisol-Wächter Stufe 1
+perf0
+perf1b
+perf3
+
+Die autonome Kette wird über phase_registry.py geladen.
+
+Kettenspitze bleibt Phase 7g beziehungsweise der aktuelle registrierte obere Phasenpfad. Bei Registry-Audits ist weiterhin zu prüfen, welches Modul AutonomousLoop.cycle tatsächlich besitzt.
+
+7. Aktive digitale Botenstoffe
+
+Aktiv sind zwölf Botenstoffe:
+
+Dopamin
+Serotonin
+Noradrenalin
+Acetylcholin
+Glutamat
+GABA
+Adenosin
+Endocannabinoide
+Cortisol
+Histamin
+Orexin
+BDNF
+
+Im Groß-Slice-C-Audit wurde geprüft:
+
+erwartet: 12
+statisch verbunden: 12
+Runtime-Verbindung zur GUI: vollständig
+Gesamtstatus: grün
+8. Cortisol-Status
+Cortisol-Wächter Stufe 1
+
+Installiert.
+
+Stufe 1 ist ein Beobachter:
+
+berechnet Empfehlungen,
+nimmt aber keine aktiven Botenstoffanpassungen vor,
+applied bleibt false.
+Cortisol Stufe 2
+
+Noch nicht gebaut.
+
+Ziel:
+
+Ein sanfter Regler, der empfohlene Botenstoff-Nudges begrenzt anwendet, ohne den Lernprozess durch starre Regeln zu ersetzen.
+
+Vorgesehene Reihenfolge für Etappe B:
+
+Cortisol Stufe 2 bauen.
+Beobachter-/Shadow-Betrieb validieren.
+Graduierung uncertain zu stable_hypothesis.
+Facts-Tabelle zunächst geschlossen lassen.
+Erst später echte Fact-Promotion prüfen.
+9. Etappe-B-Konsolidierungsvertrag
+
+Für eine spätere Promotion gilt derzeit konzeptionell:
+
+Eine Hypothese muss die Phase-7d-Konsolidierung mindestens dreimal überlebt haben.
+Schwelle: N = 3.
+Anfangsbudget: maximal eine Promotion pro Zyklus.
+Zusätzlich gilt Warm-up-Dämpfung.
+_critic_gate bleibt verpflichtend.
+Keine Promotion außerhalb des kontrollierten Konsolidierungspfads.
+
+Diese Bedingungen sind noch keine Freigabe für produktive Writes.
+
+10. Legacy Cleanup – abgeschlossener Stand
+Groß-Slice A
+
+Erfolgreich installiert.
+
+Inhalt:
+
+zentrale Bootstrap- und Schema-Konsolidierung,
+Entfernung abgelöster Guard- und Fixmodule,
+Reduktion verteilter Altstrukturen.
+Groß-Slice B
+
+Erfolgreich installiert.
+
+Inhalt:
+
+historischer Phase-4def-bis-4p-Altcluster entfernt,
+durch kanonischen Rohbeobachtungs- und Signaturpfad ersetzt,
+alte Rollen-, Confidence-, Uncertainty- und Revisionswriter entfernt,
+Registry- und Importreferenzen bereinigt.
+Groß-Slice C
+
+Audit erfolgreich:
+
+alle zwölf Botenstoffe statisch und zur Laufzeit mit der GUI verbunden.
+
+Cleanup Patch V1.1 erfolgreich installiert.
+
+Früherer Stufe-2-Cleanup
+
+Entfernt wurden unter anderem:
+
+CorpusReader-/Phase-3d-Altcluster,
+corpus_memory.py,
+extraction_diagnostics.py,
+no_direct_writes.py,
+question_guard.py,
+relation_quality.py,
+topic_affect.py,
+nlp.py,
+alter NLP-Import,
+ungenutzte learn-Methode in gui_app.py,
+alte GUI-Kopie.
+
+Die moderne 7cort-Kette ist der einzige vorgesehene Lernpfad.
+
+11. Aktiver Rohbeobachtungspfad
+
+Das Modul v8_context_observation_learning_release.py:
+
+liest Chunks aus reading_queue,
+zerlegt Text in Rohbeobachtungen,
+erzeugt oder aktualisiert context_hypotheses,
+schreibt context_learning_events,
+markiert Queue-Zeilen als read_candidate oder read_no_candidate,
+schreibt keine Facts,
+schreibt keine Relations,
+führt keine Fact-Promotion durch.
+
+Gemessener Stand beim Producer-Audit:
+
+chunks: 102.275
+context_hypotheses: 100.335
+aktive Hypothesen: 100.335
+Rolle uncertain_hypothesis: 100.335
+context_learning_events: 149.425
+raw_observation_created: 100.335
+raw_observation_reobserved: 49.090
+reading_queue: 12.281
+read_candidate: 10.298
+pending: 1.983
+
+Der Rohbeobachtungspfad funktioniert.
+
+12. Festgestellter historischer Datenflussbruch
+
+Vor dem aktuellen Shadow-Patch wurde festgestellt:
+
+chunk_attention_scores: 0
+internal_learning_gaps: 0
+Phase-5f-Experimente: 0
+Phase-5g-Experimente: 0
+Phase-5i-Experimente: 0
+Phase-5g-Outcomes: 0
+Phase-5h-Memory: 0
+
+Repositoryweiter Audit ergab:
+
+Es gab keinen einzigen aktiven INSERT-Writer für internal_learning_gaps.
+
+Vorhanden waren nur:
+
+Schemaerzeugung,
+Spaltenergänzungen,
+Prioritäts-Backfills,
+Updates bestehender Gap-Zeilen,
+nachgelagerte Reader.
+
+Daraus folgt:
+
+Wenn internal_learning_gaps leer ist, konnte die Tabelle im damaligen Quellstand niemals wieder produktiv befüllt werden.
+
+Es wurde ausdrücklich entschieden, nicht einfach:
+
+jede Rohhypothese,
+jede read_candidate-Zeile,
+jede Hypothese mit Uncertainty 1,
+oder jede niedrige Stability
+
+in eine produktive Lernlücke umzuwandeln.
+
+Das würde Lernen durch eine feste Regel ersetzen.
+
+13. Phase-5g-/5h-Schema-Contract-Korrektur
+
+Installiert:
+
+PHASE5G/5H SCHEMA CONTRACT CONSISTENCY V1.1
+
+Backup:
+
+Z:\Temp\Ki_System\BrainStem\backup_phase5gh_schema_contract_v1_1_20260716_032638
+
+Korrigiert wurden:
+
+falsche Bootstrap-ID-Definition von phase5h_strategy_outcome_memory,
+unvollständige Bootstrap-Verträge,
+redundante Neuromodulator-Einzelspalten im Neuschema,
+generischer Zwei-Tabellen-Writer mit uneindeutiger Strategie-Spalte.
+
+Tabellenspezifische Strategiezuordnung:
+
+Phase 5h verwendet selected_strategy.
+Phase 5g verwendet strategy.
+
+Reale Runtime-Abnahme:
+
+Phase-5h-Zyklen stiegen von 159 auf 162.
+Neuester Cycle konnte alle neuen Felder schreiben.
+Phase-5h-Memory blieb 0.
+Phase-5g-Outcomes blieben 0.
+quick_check war ok.
+SAFETY blieb 0,0,0.
+14. Modern Outcome Bridge + Bootstrap Shadow V1
+
+Status:
+
+ERFOLGREICH INSTALLIERT UND IM ECHTEN GUI-LAUF ABGENOMMEN
+
+Backup:
+
+Z:\Temp\Ki_System\BrainStem\backup_modern_outcome_bridge_shadow_v1_20260716_035230
+
+Zweck
+
+Die Bridge verbindet den modernen Phase-5i-Experimentpfad beobachtend mit dem bestehenden Outcome-Format, ohne produktive Outcomes oder Strategy-Memory zu schreiben.
+
+Quelle
+
+phase5i_outcome_driven_experiments
+
+Shadow-Tabellen
+modern_outcome_bridge_shadow
+modern_outcome_bridge_shadow_cycles
+modern_outcome_bridge_shadow_state
+Gesperrte produktive Ziele
+
+Keine Writes in:
+
+phase5g_experiment_outcomes
+phase5h_strategy_outcome_memory
+facts
+relations
+questions
+Laufzeitbefund
+
+Die Bridge wurde in echten GUI-Zyklen aufgerufen.
+
+Gemessen wurden:
+
+mehrere Phase-5h-Zyklen,
+mehrere Phase-5i-Zyklen,
+mehrere Shadow-Zyklen,
+jeweils safety_ok gleich 1,
+bridge_mode shadow,
+keine produktiven Outcomes,
+kein produktives Memory,
+SAFETY 0,0,0.
+
+Die Bridge blieb leer, weil phase5i_outcome_driven_experiments leer war. Der Bruch lag weiter upstream.
+
+15. Modern Gap Candidate Bridge + Bootstrap Shadow V1
+
+Status:
+
+ERFOLGREICH INSTALLIERT UND IM ECHTEN GUI-LAUF ABGENOMMEN
+
+Backup:
+
+Z:\Temp\Ki_System\BrainStem\backup_modern_gap_candidate_shadow_v1_20260716_041352
+
+Modul
+
+ki_system\v8_modern_gap_candidate_bridge_shadow_release.py
+
+Zweck
+
+Der Patch schafft einen messbaren, rein beobachtenden Übergang zwischen Rohhypothesen und möglichen Gap-Kandidatensignalen.
+
+Er erzeugt keine produktiven Lernlücken.
+
+Quellen
+context_hypotheses
+context_learning_events
+hypothesis_stability_scores
+hypothesis_feedback
+hypothesis_error_events
+Shadow-Tabellen
+modern_gap_candidate_shadow
+modern_gap_candidate_shadow_cycles
+modern_gap_candidate_shadow_state
+Shadow-Vertrag
+
+Jede Zeile bleibt:
+
+candidate_state = observed_only
+bridge_mode = shadow
+projection_only = true
+no_gap_classification = true
+Leistungsbegrenzung
+
+Pro Zyklus werden maximal 512 neue oder aktualisierte Hypothesen verarbeitet.
+
+Checkpoint:
+
+updated_at
+hypothesis_id
+
+Der Checkpoint verhindert einen vollständigen Scan aller Hypothesen in jedem GUI-Zyklus.
+
+Angelegte Performance-Indizes
+
+Unter anderem für:
+
+Hypothesen-Checkpoint,
+Context Learning Events nach hypothesis_id,
+Feedback nach hypothesis_id,
+Error Events nach hypothesis_id,
+Shadow-Hypothesen,
+Shadow-Aktualisierungen.
+Produktiv geschützte Tabellen
+
+Vor und nach jedem Shadow-Zyklus werden die Zeilenzahlen geprüft:
+
+internal_learning_gaps
+chunk_attention_scores
+phase5f_context_window_experiments
+phase5g_strategy_experiments
+phase5i_outcome_driven_experiments
+facts
+relations
+questions
+
+Bei Abweichung muss der Shadow-Zyklus zurückgerollt und als Fehler behandelt werden.
+
+16. Reale Gap-Candidate-Laufzeitmessung
+
+Nach 21 Shadow-Zyklen:
+
+Shadow-Zeilen: 10.752
+Shadow-Zyklen: 21
+pro Zyklus: 512
+Rechnung: 21 × 512 = 10.752
+bisherige Updates: 0
+Checkpoint-Hypothese: 11.614
+Checkpoint updated_at: 1784070085
+last_source_rows_seen: 512
+last_safety_ok: true
+
+Der Initialbestand wird geordnet und ohne erkennbare Doppelverarbeitung abgearbeitet.
+
+Candidate State
+
+Alle 10.752 Zeilen:
+
+observed_only
+shadow
+
+Keine Hypothese wurde als echte Lernlücke klassifiziert.
+
+Evidence-Verteilung
+Evidence Count 1: 9.301
+Evidence Count 2: 1.320
+Evidence Count 3: 74
+Evidence Count 4: 25
+Evidence Count 5: 11
+Evidence Count 6: 8
+Evidence Count 7: 2
+Evidence Count 8: 2
+Evidence Count 9: 2
+Evidence Count 11: 4
+Evidence Count 13: 1
+Evidence Count 22: 1
+Evidence Count 81: 1
+
+Anteil Evidence Count 1:
+
+86,505 Prozent
+
+Anteil Evidence Count größer 1:
+
+13,495 Prozent
+
+Reobservations-Verteilung
+keine Wiederbeobachtung: 9.301
+eine Wiederbeobachtung: 1.320
+zwei: 74
+drei: 25
+vier: 11
+fünf: 8
+sechs: 2
+sieben: 2
+acht: 2
+zehn: 4
+zwölf: 1
+einundzwanzig: 1
+achtzig: 1
+
+Für den gemessenen Bestand gilt konsistent:
+
+evidence_count = raw_reobserved_count + 1
+
+Stability
+
+Für alle 10.752 Kandidaten vorhanden:
+
+Minimum: 0,025
+Durchschnitt: 0,030568731398809525
+Maximum: 0,25
+
+Die Werte liegen stark im unteren Bereich. Daraus darf noch keine globale Schwelle abgeleitet werden.
+
+Replay
+Kandidaten mit Replay: 1.230
+Anteil: ungefähr 11,44 Prozent
+Replay Count Minimum: 0
+Durchschnitt: 0,11904761904761904
+Maximum: 2
+Signalkombinationen
+
+Weder Wiederbeobachtung noch Replay:
+
+8.263
+ungefähr 76,851 Prozent
+
+Nur Wiederbeobachtung:
+
+1.259
+ungefähr 11,709 Prozent
+
+Nur Replay:
+
+1.038
+ungefähr 9,654 Prozent
+
+Wiederbeobachtung und Replay:
+
+192
+ungefähr 1,786 Prozent
+
+Feedback:
+
+0
+
+Error Events:
+
+0
+Protected Tables
+
+Alle weiterhin 0:
+
+internal_learning_gaps
+chunk_attention_scores
+phase5f_context_window_experiments
+phase5g_strategy_experiments
+phase5i_outcome_driven_experiments
+
+Frühere Laufzeitprüfung:
+
+INTEGRITY ok
+SAFETY 0,0,0
+
+Beim letzten langen Verteilungsbefehl wurden INTEGRITY und SAFETY nicht erneut mit ausgegeben; der letzte Shadow-Cycle meldete jedoch safety_ok 1 und der State last_safety_ok true. Der nächste Audit soll beide Prüfungen wieder explizit enthalten.
+
+17. Fachliche Bewertung der Gap-Candidate-Daten
+
+Die aktuelle Datenlage rechtfertigt noch keine produktive Gap-Erzeugung.
+
+Gründe:
+
+Rund 86,5 Prozent der Kandidaten wurden bislang nur einmal beobachtet.
+Wiederbeobachtung und Replay selektieren unterschiedliche Populationen.
+Nur 192 Kandidaten besitzen bisher beide Signale.
+Feedback- und Error-Signale fehlen vollständig.
+Stability ist zwar vollständig vorhanden, aber stark im niedrigen Bereich konzentriert.
+Es ist noch nicht belegt, dass niedrige Stability eine Lernlücke bedeutet.
+Replay kann Verarbeitung oder Konsolidierung bedeuten und ist nicht automatisch ein Fehlersignal.
+Wiederbeobachtung kann Relevanz, Redundanz oder bloße Wiederholung bedeuten.
+Eine feste Kombination aus Evidence, Replay und Stability wäre derzeit nur eine Heuristik.
+
+Die produktive Gap-Sperre bleibt vollständig geschlossen.
+
+18. Separat gespeichertes Paper-Auswertungsdokument
+
+Der Nutzer hat das unmittelbar vor diesem Handover erstellte ausführliche Dokument lokal gespeichert.
+
+Titel beziehungsweise Inhalt des Dokuments:
+
+BrainStem – Auswertung dreier wissenschaftlicher Arbeiten auf mögliche Projekt-Relevanz
+
+Dieses gespeicherte Dokument enthält:
+
+Detailauswertung aller drei Papers,
+biologische und methodische Übertragungen auf BrainStem,
+Architekturprinzipien,
+Warnungen vor unzulässigen Übertragungen,
+Erweiterungen für den nächsten Signal Distribution Audit,
+mögliche langfristige Roadmap,
+klare Trennung zwischen Shadow-Beobachtung und produktivem Lernen.
+Wichtig für den nächsten Chat
+
+Der Nutzer soll dieses gespeicherte Paper-Auswertungsdokument zusammen mit diesem Handover erneut bereitstellen.
+
+Falls der genaue lokale Dateiname vom Titel abweicht, ist die Datei über ihren Inhalt zu identifizieren:
+
+Sie beginnt mit einer Überschrift zur Auswertung dreier wissenschaftlicher Arbeiten für BrainStem und enthält die Abschnitte zur:
+
+homeostatischen strukturellen Plastizität,
+bispektralen Analyse nichtlinearer Zeitreihen,
+Half-Möbius-Topologie und SqDRIFT,
+sowie zum Modern Gap Candidate Signal Distribution Audit V1.
+
+Das Paper-Auswertungsdokument ist die fachliche Referenz für die aus den Papers abgeleiteten nächsten Messschritte.
+
+19. Drei wissenschaftliche Referenz-PDFs
+
+Die folgenden drei PDFs wurden vollständig inhaltlich geprüft und sollen beim nächsten Chat gemeinsam mit dem Handover und dem gespeicherten Auswertungsdokument bereitgestellt werden.
+
+PDF 1
+
+Dateiname:
+
+Homeostatic structural plasticity– a key to neuronal network formation and repair.pdf
+
+Autoren:
+
+Markus Butz und Arjen van Ooyen
+
+Zentrale Relevanz:
+
+strukturelle Plastizität zusätzlich zur Gewichtsplastizität,
+lokale Homöostase als Treiber von Netzwerkbildung,
+Trennung von axonalen und dendritischen Strukturelementen,
+Entstehung und Auflösung von Verbindungen,
+geordnete globale Reparatur aus lokalen Regeln,
+langsame strukturelle Anpassung,
+keine zwingende Notwendigkeit Hebb-artiger Plastizität im beschriebenen Reparaturmodell.
+PDF 2
+
+Dateiname:
+
+Nonlinear Time Series Classification Using Bispectrum-based Deep Convolutional Neural Networks.pdf
+
+Autoren:
+
+Paul A. Parker, Scott H. Holan und Nalini Ravishanker
+
+Zentrale Relevanz:
+
+höhere Spektralanalyse,
+Bispektrum auf Basis dritter Momente,
+Analyse nichtlinearer Frequenzkopplungen,
+CNN-basierte Verarbeitung hochdimensionaler Bispektren,
+Dropout-basierte Unsicherheitsverteilungen,
+Class Activation Maps,
+Warnung vor der Beschränkung auf Eigenschaften zweiter Ordnung,
+Stationaritätsproblem bei langen nichtstationären Verläufen.
+PDF 3
+
+Dateiname:
+
+science.aea3321_sm.pdf
+
+Titel:
+
+Supplementary Materials for A molecule with half-Möbius topology
+
+Autoren:
+
+Igor Rončević et al.
+
+Zentrale Relevanz für BrainStem:
+
+nicht die molekulare Möbius-Topologie selbst,
+sondern randomisiertes Sampling großer Zustandsräume,
+SqDRIFT als Auswahl eines relevanten Teilraums,
+Ext-SqDRIFT als Erweiterung eines ausgewählten Teilraums,
+Vergleich mehrerer Modell- und Messebenen,
+Zustandswechsel und Zustandslebensdauern,
+Warnung, dass schnelle Zustandswechsel durch begrenzte Messbandbreite als geglätteter Zustand erscheinen können.
+Wichtige Einschränkung
+
+Die drei Papers sind Inspirations- und Prüfquellen.
+
+Sie sind keine direkte Implementierungsvorgabe.
+
+Insbesondere nicht zulässig sind:
+
+biologische Begriffe ohne funktionale Entsprechung im Code,
+direkte Übertragung molekularer Topologie auf Sprachverstehen,
+CNN-Klassifikation ohne echte Labels,
+feste Gap-Schwellen aus biologischen Analogien,
+eine Gauß-Distanzregel als festes semantisches Modell,
+ein randomisiertes Sampling als ungeprüfter Ersatz des Checkpoints.
+20. Wichtigste Erkenntnisse aus den Papers
+20.1 Bedarf ist nicht gleich Lernlücke
+
+Eine Hypothese kann einen strukturellen Bedarf zeigen, ohne dass bereits nachgewiesen ist, dass eine produktive Lernlücke vorliegt.
+
+20.2 Lernlücke ist nicht gleich Verbindung
+
+Selbst wenn ein Bedarf vorliegt, ist noch nicht klar:
+
+welcher Kontext helfen kann,
+welche Strategie geeignet ist,
+oder ob zusätzliche Evidenz ausreicht.
+20.3 Verbindung ist nicht gleich Wissen
+
+Eine neue Kontextverbindung darf nicht automatisch als stabilisiertes Wissen oder Fact gelten.
+
+20.4 Bedarf und Angebot trennen
+
+Spätere mögliche Struktur:
+
+lokaler Bedarf,
+freies Gap-Bedarfselement,
+Kontextangebot,
+vorläufige Paarung,
+Beobachtung,
+Konsolidierung,
+Stabilisierung oder Auflösung.
+20.5 Selbstbezogene Homeostase
+
+Keine globale Regel wie:
+
+Stability kleiner X,
+Uncertainty größer Y,
+Replay Count größer Z.
+
+Stattdessen möglichst:
+
+individueller Verlauf,
+eigene Baseline,
+Reaktion auf neue Evidenz,
+Reaktion auf Replay,
+anhaltende Abweichung vom eigenen Entwicklungsverlauf.
+20.6 Mehrere Zeitskalen
+
+Trennung von:
+
+schneller Beobachtung,
+mittlerer Wiederbeobachtung und Replay,
+langsamer struktureller Konsolidierung.
+20.7 Mehrere unabhängige Evidenzwege
+
+Spätere Entscheidungen sollten nach Möglichkeit gemeinsam berücksichtigen:
+
+Evidence,
+Reobservations,
+Stability-Verlauf,
+Confidence-Verlauf,
+Uncertainty-Verlauf,
+Replay-Verlauf,
+Feedback,
+Errors,
+Conflicts,
+Botenstoffreaktion,
+Kontextunterstützung,
+Dialognutzen.
+20.8 Verteilungen statt Einzelwerte
+
+Nicht nur Mittelwerte prüfen, sondern:
+
+Minimum,
+Maximum,
+Quantile,
+Varianz,
+Zustandsdauer,
+Wechselrate,
+Richtungswechsel,
+Peaks,
+Robustheit über mehrere Replay-Durchläufe.
+20.9 Nichtlineare Botenstoffkopplungen
+
+Später analytisch interessant:
+
+Glutamat und GABA,
+Adenosin, Histamin und Orexin,
+Cortisol und Exploration,
+BDNF und Konsolidierung,
+Replay Weight und Meta-Plasticity,
+Confidence und Evidence,
+Stability und Replay.
+
+Noch kein Bispektrum im produktiven Pfad.
+
+20.10 Messbandbreite
+
+Ein stabiler Mittelwert kann entstehen durch:
+
+tatsächlich geringe Schwankung,
+oder schnelles Umschalten zwischen gegensätzlichen Zuständen.
+
+Deshalb dürfen GUI-Downsampling und Durchschnittsbildung schnelle Systemwechsel nicht vollständig unsichtbar machen.
+
+21. Verbindlicher nächster technischer Schritt
+Modern Gap Candidate Signal Distribution Audit V1
+
+Status:
+
+NOCH NICHT GEBAUT
+
+Dieser Audit ist der nächste Schritt nach Übergabe dieses Handovers und erneuter Bereitstellung des gespeicherten Paper-Auswertungsdokuments sowie der drei PDFs.
+
+Audit-Typ
+
+Vollständig read-only.
+
+Verbotene Änderungen
+
+Der Audit darf nicht:
+
+die Datenbank migrieren,
+SCHEMA_TABLES verändern,
+die Registry verändern,
+den Checkpoint verändern,
+Shadow-Zeilen verändern,
+internal_learning_gaps schreiben,
+chunk_attention_scores schreiben,
+Phase-5f-/5g-/5i-Experimente schreiben,
+Facts schreiben,
+Relations schreiben,
+Questions schreiben,
+Kandidaten klassifizieren,
+produktive Schwellen einführen.
+22. Messumfang des nächsten Audits
+22.1 Basisverteilungen
+
+Zu analysieren:
+
+Gesamtzahl der Kandidaten,
+Evidence Count,
+Reobservationsanzahl,
+Stability,
+Hypothesen-Confidence,
+Hypothesen-Uncertainty,
+Stability-Confidence,
+Stability-Uncertainty,
+Feedback Count,
+Error Count,
+Conflict Count,
+Replay Count,
+Replay Weight,
+Meta-Plasticity,
+Alter der Hypothese,
+Zeit seit letzter Beobachtung,
+Zeit zwischen erster und letzter Beobachtung.
+22.2 Vier Hauptgruppen
+Keine Wiederbeobachtung und kein Replay
+Wiederbeobachtung ohne Replay
+Replay ohne Wiederbeobachtung
+Wiederbeobachtung und Replay
+
+Für jede Gruppe sollen verglichen werden:
+
+Anzahl und Anteil,
+Evidence-Verteilung,
+Stability-Verteilung,
+Confidence,
+Uncertainty,
+Replay Weight,
+Meta-Plasticity,
+Neuromodulatorprofile,
+Hypothesenalter,
+Beobachtungszeitspanne.
+22.3 Zusätzliche Gruppen
+
+Soweit vorhanden:
+
+hohe Evidence relativ zur Population,
+viele Wiederbeobachtungen,
+mehrfach replayt,
+lange unverändert,
+kürzlich aktualisiert,
+Feedback vorhanden,
+Error Events vorhanden,
+Conflicts vorhanden,
+extreme Stability-Werte,
+extreme Neuromodulatorprofile.
+22.4 Homeostatische Verlaufsmetriken
+
+Nur soweit historische Daten dies tatsächlich erlauben:
+
+Stability-Änderung nach Replay,
+Confidence-Änderung nach neuer Evidenz,
+Uncertainty-Änderung nach Wiederbeobachtung,
+Evidence-Wachstum ohne Stability-Fortschritt,
+Replay ohne messbare Veränderung,
+lange Dauer ohne neue Evidenz,
+letzte positive Veränderung,
+individuelle Schwankungsbreite.
+
+Wenn nur ein aktueller Einzelzustand vorliegt, darf der Audit keine Veränderung erfinden.
+
+Fehlende Historie muss ausdrücklich als nicht berechenbar gemeldet werden.
+
+22.5 Neuromodulatorvergleich
+
+Für die vier Hauptgruppen:
+
+Dopamin,
+Serotonin,
+Glutamat,
+GABA,
+Noradrenalin,
+Acetylcholin,
+Replay Weight,
+Meta-Plasticity.
+
+Jeweils möglichst:
+
+Minimum,
+Median,
+Mittelwert,
+Quantile,
+Maximum.
+
+Weitere Botenstoffe nur dann, wenn eine verlässliche Zuordnung pro Hypothese existiert.
+
+22.6 Sampling-Bias
+
+Prüfen:
+
+Hypothesen-ID-Verteilung,
+updated_at-Verteilung,
+Chunk-ID-Verteilung,
+Evidence-Verteilung pro 512er-Batch,
+Replay-Anteil pro Batch,
+Wiederbeobachtungsanteil pro Batch,
+Stability pro Batch,
+Unterschiede zwischen frühen und späteren Checkpoint-Batches.
+
+Noch keine Randomisierung einbauen.
+
+Zuerst messen, ob der chronologische Checkpoint überhaupt verzerrt.
+
+22.7 Mehrskalige Zeitfenster
+
+Soweit Daten es erlauben:
+
+neue versus alte Hypothesen,
+kurze versus lange Beobachtungsdauer,
+kürzlich aktualisiert versus lange unverändert,
+frühe versus späte Checkpoint-Batches.
+
+Zeitfenster dienen nur der Messung, nicht der Klassifikation.
+
+22.8 Zustandswechsel und Glättungsrisiko
+
+Soweit History-Daten vorhanden sind:
+
+Varianz,
+Änderungsrate,
+Richtungswechsel,
+Peaks,
+Zustandsdauer,
+mögliche Oszillation.
+
+Wenn History-Daten fehlen, soll der Audit diese Messlücke dokumentieren.
+
+22.9 Sicherheitsprüfung
+
+Am Anfang und Ende des Audits ausgeben:
+
+integrity_check oder quick_check,
+facts count,
+relations count,
+questions count,
+internal_learning_gaps count,
+chunk_attention_scores count,
+Phase-5f-Experimente,
+Phase-5g-Experimente,
+Phase-5i-Experimente.
+
+Da der Audit read-only ist, müssen die Zählwerte unverändert bleiben.
+
+23. Entscheidung nach dem Signal Distribution Audit
+
+Nach dem Audit darf nicht automatisch ein produktiver Patch folgen.
+
+Zunächst ist zu entscheiden:
+
+Sind die Gruppen statistisch unterscheidbar?
+Reagieren Stability und Confidence tatsächlich auf Evidence und Replay?
+Gibt es Hinweise auf homeostatische Entwicklung?
+Sind Neuromodulatorprofile gruppenspezifisch?
+Ist der Checkpoint repräsentativ?
+Reicht die Historie für Verlaufsmetriken?
+Gibt es echte Feedback-, Error- oder Conflict-Signale?
+Sind Replay und Wiederbeobachtung hilfreich, neutral oder nur korreliert?
+Kann ein struktureller Bedarf ohne feste globale Schwelle beschrieben werden?
+Muss zunächst zusätzliche History gespeichert werden?
+
+Mögliche Folgeentscheidungen:
+
+Shadow weiterlaufen lassen,
+History-Erfassung erweitern,
+Error-/Feedbackpfad untersuchen,
+homeostatische Baselines im Shadow-Modus messen,
+Bedarf-Angebot-Modell nur konzeptionell spezifizieren,
+oder erst deutlich später einen streng begrenzten produktiven Gap-Übergang prüfen.
+24. Noch nicht zulässige nächste Schritte
+
+Nicht bauen, bevor die Messgrundlage vorliegt:
+
+produktiver INSERT in internal_learning_gaps,
+globale Gap-Schwelle,
+harte Stability-Grenze,
+harte Uncertainty-Grenze,
+Replay-ist-Gap-Regel,
+Reobserved-ist-Gap-Regel,
+CNN-Gap-Klassifikator,
+Bispektrum als produktiver Regler,
+feste semantische Distanzfunktion,
+zufälliger Ersatz für den Checkpoint,
+direkte Shadow-Übernahme in Phase 5f, 5g oder 5i,
+Fact-Promotion.
+25. Spätere mögliche Architektur – noch nicht implementieren
+
+Eine mögliche langfristige Struktur, abgeleitet aus der homeostatischen strukturellen Plastizität:
+
+Rohhypothese
+Beobachtung des individuellen Verlaufs
+Homeostatische Abweichung im Shadow-Modus
+Struktureller Bedarf im Shadow-Modus
+Kontextangebote im Shadow-Modus
+Mehrere vorläufige Paarungen
+Beobachtung ihrer Outcomes
+Replay und Konsolidierung
+_critic_gate
+Warm-up-Dämpfung
+N-maliges Überleben
+sehr begrenzte produktive Struktur
+fortgesetzte Beobachtung
+Stabilisierung oder Abbau
+
+Mögliche konzeptionelle Zustände:
+
+observed_only
+homeostatic_deviation_observed
+structural_demand_pending
+context_offer_pending
+pairing_under_observation
+consolidation_candidate
+stable_connection
+connection_released
+
+Diese Namen sind nur konzeptionelle Platzhalter und keine freigegebene produktive Zustandsmaschine.
+
+26. Performance- und Datenbankwartung
+
+Bereits umgesetzt:
+
+Indizes für große Hypothesen- und Feedbacktabellen,
+Ringpuffer-Pruning-Whitelist,
+Verringerung der Datenbankgröße von ungefähr 5,6 GB auf ungefähr 3,0 GB,
+ensure_perf_indexes im Bootstrap,
+automatische Wiederanlage gedroppter Performance-Indizes.
+
+Wichtige Regeln:
+
+Nicht prunen:
+
+context_hypotheses,
+phase5g-Tabellen,
+phase5f-Tabellen,
+phase5i-Tabellen,
+Tabellen mit state im Namen,
+aktiv gelesene Tabellen,
+productive oder Safety-relevante Tabellen.
+
+Offener Wartungspunkt:
+
+prune_history.py als periodischen Auto-Job kontrolliert in _auto_worker integrieren.
+
+Dies ist nicht der unmittelbar nächste Lernarchitektur-Schritt.
+
+27. Backup-Regel
+
+Vor jeder BrainStem-Empfehlung und jedem größeren Patch erstellt der Nutzer ein Vollbackup.
+
+Jeder Installer erstellt zusätzlich ein eigenes lokales Backup.
+
+Aktuell besonders relevante Backups:
+
+Phase-5g-/5h-Schema:
+
+Z:\Temp\Ki_System\BrainStem\backup_phase5gh_schema_contract_v1_1_20260716_032638
+
+Modern Outcome Bridge:
+
+Z:\Temp\Ki_System\BrainStem\backup_modern_outcome_bridge_shadow_v1_20260716_035230
+
+Modern Gap Candidate Bridge:
+
+Z:\Temp\Ki_System\BrainStem\backup_modern_gap_candidate_shadow_v1_20260716_041352
+
+28. Dateien, die im nächsten Chat zuerst bereitgestellt werden sollen
+Pflicht
+Dieses Handover
+Das separat gespeicherte Dokument:
+
+BrainStem – Auswertung dreier wissenschaftlicher Arbeiten auf mögliche Projekt-Relevanz
+
+PDF:
+
+Homeostatic structural plasticity– a key to neuronal network formation and repair.pdf
+
+PDF:
+
+Nonlinear Time Series Classification Using Bispectrum-based Deep Convolutional Neural Networks.pdf
+
+PDF:
+
+science.aea3321_sm.pdf
+
+Bei Bedarf für Codearbeit
+Aktuelles Quellbundle oder neu erzeugtes Auditbundle
+Aktuelle Console-Ausgaben
+Aktuelle Datenbank-Audit-Ausgabe
+Betroffene Python-Module
+Aktuelle db_bootstrap.py
+Aktuelle phase_registry.py
+
+Nicht von alten Bundles ausgehen, wenn zwischenzeitlich weitere Patches installiert wurden.
+
+Vor einem neuen Patch muss der aktuelle Quellstand erneut geprüft werden.
+
+29. Empfohlener Einstiegstext im nächsten Chat
+
+BrainStem Handover, Paper-Auswertungsdokument und die drei wissenschaftlichen PDFs sind beigefügt. Bitte zuerst alles vollständig lesen. Der verbindliche nächste technische Schritt ist der read-only Modern Gap Candidate Signal Distribution Audit V1. Noch keine produktive Gap-Öffnung, keine Attention-Writes und keine Phase-5f-/5g-/5i-Experimente. Erst messen, dann gemeinsam auswerten und erst danach über eine Architekturänderung entscheiden.
+
+30. Abschließender Projektstatus
+Stabil und bestätigt
+Etappe A abgeschlossen
+1.344-Zyklen-Drift-Test stabil
+moderner Rohbeobachtungspfad aktiv
+zwölf Botenstoffe aktiv und GUI-verbunden
+Registry- und Legacy-Cleanup durchgeführt
+Phase-5g-/5h-Schema konsistent
+Modern Outcome Bridge im Shadow-Modus aktiv
+Modern Gap Candidate Bridge im Shadow-Modus aktiv
+Checkpoint-Verarbeitung mit maximal 512 Hypothesen pro Zyklus aktiv
+10.752 Gap-Kandidaten rein beobachtend erfasst
+Protected Tables weiterhin geschlossen
+keine Facts
+keine Relations
+keine Questions
+keine produktive Gap-Erzeugung
+Offen
+Modern Gap Candidate Signal Distribution Audit V1
+Prüfung homeostatischer Verläufe
+Prüfung von Sampling-Bias
+Prüfung nichtlinearer Botenstoffkopplungen
+Prüfung schneller Zustandswechsel versus stabiler Mittelwerte
+Aufbau echter Feedback- und Error-Signale
+Cortisol Stufe 2
+kontrollierte Etappe-B-Öffnung
+spätere Dialog- und Nutzerinteraktion
+Verbindliche Sicherheitsposition
+
+Die aktuelle Shadow-Population ist eine Messpopulation.
+
+Sie ist:
+
+keine Liste echter Lernlücken,
+keine Freigabe für Attention,
+keine Grundlage für automatische Phase-5f-/5g-/5i-Experimente,
+keine Wissensstruktur,
+und keine Promotion-Population.
+
+Der nächste Schritt bleibt ausschließlich analytisch und read-only.

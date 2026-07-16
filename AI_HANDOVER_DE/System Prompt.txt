@@ -1,0 +1,70 @@
+BrainStem – Kompaktes Delta-Handover
+
+Stand: 16.07.2026
+
+PROJEKT: BrainStem (frueher KI-System V8) - selbstlernende Sprach-/Textverstehens-KI ENDZIEL: System lernt Sprach-/Textverständnis selbstständig durch Kontext- Hypothesen, Fehler-als-Lernmaterial, digitale Botenstoffe (steuern den GESAMTEN Lernprozess: Lernrate, Fehlergewichtung, Revision, Confidence, Exploration, Hemmung, Stabilisierung, Konsolidierung, Aufmerksamkeit), Schlaf-/Konsolidierungs- phasen und kontinuierliche Selbstverbesserung. Endzustand: hilft realen Nutzern messbar im Dialog.
+
+
+Projektstatus
+Etappe A abgeschlossen: Lern-Kernpfad wurde stabilisiert und mit einem Drift-Test über 1.344 Zyklen bestätigt.
+Legacy Cleanup Groß-Slices A–C abgeschlossen.
+Historische und ungenutzte Lernpfade wurden entfernt.
+Alle 12 digitalen Botenstoffe sind statisch und zur Laufzeit mit der GUI verbunden: 12/12, overall True.
+Python-Package bleibt ki_system.
+Projektpfad bleibt Z:\Temp\Ki_System\BrainStem\.
+Aktueller Entwicklungsstand
+Modern Gap Candidate Bridge + Bootstrap Shadow V1 ist installiert.
+Der neue Pfad arbeitet strikt im Modus observed_only.
+Verarbeitung erfolgt checkpoint-basiert mit maximal 512 Hypothesen pro Zyklus.
+Produktive Writes bleiben geschlossen für:
+internal_learning_gaps
+Attention
+Phase-5f-/5g-/5i-Experimente
+Facts
+Relations
+Questions
+Letzter Shadow-Lauf:
+Phase-5i-Quelle: 0
+Shadow-Zeilen: 0
+fehlende Signale: keine
+produktive Writes: [0, 0]
+Modus: shadow
+
+Die Nullwerte sind derzeit ein Messergebnis, nicht automatisch ein Fehler. Vor Änderungen muss geprüft werden, ob schlicht keine geeigneten Phase-5i-Kandidaten vorhanden waren oder ob ein vorgelagerter Pfad keine Daten liefert.
+
+Nächster Schritt
+Zuerst den fehlenden Kandidatenfluss messen.
+Phase-5i-Quelle, Checkpoint, Auswahlbedingungen und Bootstrap-Vertrag prüfen.
+Keine produktiven Writes öffnen, bevor der Shadow-Pfad nachweisbar echte Kandidaten verarbeitet.
+Danach Etappe B kontrolliert vorbereiten:
+Cortisol Stufe 2 als sanften Regler
+Beobachterbetrieb
+konsolidierungs-gated Graduierung
+mindestens drei überlebte 7d-Konsolidierungen
+_critic_gate
+Warm-up-Dämpfung
+anfängliches Budget: eine Promotion pro Zyklus
+Facts-Promotion bleibt bis zu einem separat geprüften späteren Schritt geschlossen.
+Verbindliche Arbeitsregeln
+Erst messen, dann ändern.
+Vor jeder Änderung Vollbackup.
+Jede Schemaänderung gleichzeitig im Bootstrap nachziehen.
+Vor Writes immer:
+idempotentes ensure_schema
+_self_check_schema
+alle Spalten vorab in SCHEMA_TABLES
+Smoke-Test, Compile-Check und Zwischenprüfungen vor Auslieferung.
+Keine Wort-Blacklists oder fest codierten Sprachfilter.
+Keine direkten Facts-/Relations-/Questions-Writes.
+Keine Fact-Promotion außerhalb der Konsolidierung.
+Änderungen müssen das System selbstständiger machen und dürfen Lernen nicht durch feste Regeln ersetzen.
+Nach größeren Refactorings Legacy-Report mit entfernten und bewusst beibehaltenen Elementen.
+GUI-Logs und Graphen begrenzen beziehungsweise downsamplen.
+_read_kv ausschließlich über:
+
+return dict(con.execute("SELECT key,value FROM " + table).fetchall())
+
+Copy-Paste-Code ohne Markdown-Backticks.
+Jeder Auslieferungsschritt enthält eine fertige CMD-Routine ab:
+
+Z:\Temp\Ki_System\BrainStem\
