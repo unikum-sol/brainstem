@@ -85,6 +85,47 @@ def _unique(db: sqlite3.Connection, table: str, col: str, changes: List[str]) ->
         changes.append(f"skip_unique_duplicate:{table}.{col}")
 
 
+PHASE5H_REQUIRED_SCHEMA = {
+    "phase5h_experiment_outcome_cycles": (
+        "id", "phase", "experiments_seen", "outcomes_written", "memory_updates",
+        "avg_outcome_score", "avg_closure_delta", "avg_no_candidate_rate",
+        "avg_overlap_score", "recommendation", "safety_ok",
+        "no_word_blacklists", "fact_promotion", "created_at",
+    ),
+    "phase5h_strategy_outcome_memory": (
+        "memory_key", "selected_strategy", "gap_type", "role", "observations",
+        "avg_outcome_score", "avg_closure_delta", "avg_no_candidate_rate",
+        "avg_overlap_score", "avg_strategy_score", "recommendation",
+        "neuromodulator_profile", "details", "first_seen", "last_seen", "updated_at",
+    ),
+    "phase5g_strategy_selection_memory": (
+        "memory_key", "strategy", "gap_type", "role", "observations",
+        "avg_outcome_score", "avg_closure_delta", "avg_no_candidate_rate",
+        "avg_overlap_score", "avg_strategy_score", "recommendation",
+        "neuromodulator_profile", "details", "first_seen", "last_seen", "updated_at",
+    ),
+    "phase5g_experiment_outcomes": (
+        "outcome_key", "experiment_key", "gap_type", "role", "selected_strategy",
+        "target_chunk_id", "closure_delta", "no_candidate_rate", "overlap_score",
+        "strategy_score", "outcome_score", "recommendation", "learning_rate",
+        "error_weight", "revision_pressure", "exploration_pressure",
+        "inhibition_level", "consolidation_gain", "details", "created_at", "updated_at",
+    ),
+}
+
+def _self_check_schema(db: sqlite3.Connection) -> bool:
+    missing: List[str] = []
+    for table, required in PHASE5H_REQUIRED_SCHEMA.items():
+        existing = set(_cols(db, table))
+        if not existing:
+            missing.append(table)
+            continue
+        missing.extend(table + "." + col for col in required if col not in existing)
+    if missing:
+        raise RuntimeError("Phase5h schema missing: " + ", ".join(missing))
+    return True
+
+
 def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
     db = _get_db(mem_or_conn)
     cur = db.cursor()
@@ -105,7 +146,10 @@ def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
         safety_ok INTEGER DEFAULT 1,
         no_word_blacklists TEXT DEFAULT 'true',
         fact_promotion TEXT DEFAULT 'disabled',
-        created_at INTEGER
+        facts INTEGER DEFAULT 0,
+        relations INTEGER DEFAULT 0,
+        questions INTEGER DEFAULT 0,
+        created_at INTEGER DEFAULT 0
     )""")
     cur.execute("""
     CREATE TABLE IF NOT EXISTS phase5h_strategy_outcome_memory(
@@ -119,12 +163,6 @@ def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
         avg_no_candidate_rate REAL DEFAULT 0,
         avg_overlap_score REAL DEFAULT 0,
         avg_strategy_score REAL DEFAULT 0,
-        avg_learning_rate REAL DEFAULT 0,
-        avg_error_weight REAL DEFAULT 0,
-        avg_revision_pressure REAL DEFAULT 0,
-        avg_exploration_pressure REAL DEFAULT 0,
-        avg_inhibition_level REAL DEFAULT 0,
-        avg_consolidation_gain REAL DEFAULT 0,
         recommendation TEXT,
         neuromodulator_profile TEXT,
         details TEXT,
@@ -221,6 +259,20 @@ def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
     )""")
     # Future-proof important tables.
     table_cols = {
+        'phase5h_experiment_outcome_cycles': {
+            'recommendation':'TEXT','safety_ok':'INTEGER DEFAULT 1',
+            'no_word_blacklists':"TEXT DEFAULT 'true'",'fact_promotion':"TEXT DEFAULT 'disabled'",
+            'facts':'INTEGER DEFAULT 0','relations':'INTEGER DEFAULT 0','questions':'INTEGER DEFAULT 0',
+            'created_at':'INTEGER DEFAULT 0'
+        },
+        'phase5h_strategy_outcome_memory': {
+            'selected_strategy':'TEXT','gap_type':'TEXT','role':'TEXT','observations':'INTEGER DEFAULT 0',
+            'avg_outcome_score':'REAL DEFAULT 0','avg_closure_delta':'REAL DEFAULT 0',
+            'avg_no_candidate_rate':'REAL DEFAULT 0','avg_overlap_score':'REAL DEFAULT 0',
+            'avg_strategy_score':'REAL DEFAULT 0','recommendation':'TEXT',
+            'neuromodulator_profile':'TEXT','details':'TEXT','first_seen':'INTEGER',
+            'last_seen':'INTEGER','updated_at':'INTEGER DEFAULT 0'
+        },
         'phase5g_strategy_experiments': {
             'experiment_key':'TEXT','gap_id':'INTEGER','gap_key':'TEXT','gap_type':'TEXT','role':'TEXT',
             'center_chunk_id':'INTEGER','target_chunk_id':'INTEGER','selected_strategy':'TEXT','window_strategy':'TEXT',
@@ -238,7 +290,7 @@ def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
             'details':'TEXT','created_at':'INTEGER','updated_at':'INTEGER'
         },
         'phase5g_strategy_selection_memory': {
-            'avg_outcome_score':'REAL DEFAULT 0','avg_closure_delta':'REAL DEFAULT 0','avg_no_candidate_rate':'REAL DEFAULT 0',
+            'strategy':'TEXT','avg_outcome_score':'REAL DEFAULT 0','avg_closure_delta':'REAL DEFAULT 0','avg_no_candidate_rate':'REAL DEFAULT 0',
             'avg_overlap_score':'REAL DEFAULT 0','avg_strategy_score':'REAL DEFAULT 0','recommendation':'TEXT',
             'neuromodulator_profile':'TEXT','first_seen':'INTEGER','last_seen':'INTEGER','updated_at':'INTEGER'
         },
@@ -273,6 +325,9 @@ def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
         ('chunk_attention_scores','chunk_id'),
     ]:
         _unique(db, tbl, col, changes)
+    # No write may proceed with an incomplete active Phase5g/5h contract.
+    _self_check_schema(db)
+
     # Safety state
     now = _now()
     for k, v in {
@@ -461,23 +516,29 @@ def evaluate_strategy_experiment_outcomes(mem_or_conn: Any = None, limit: int = 
             key = f'{strategy}:{gap_type}:{role}'
             rec = _memory_recommendation(_clamp(avg_out), _clamp(avg_cl), _clamp(avg_no), _clamp(avg_ov))
             profile = {'learning_rate':lr,'error_weight':ew,'revision_pressure':rp,'exploration_pressure':ep,'inhibition_level':inh,'consolidation_gain':cg}
-            for table in ('phase5h_strategy_outcome_memory','phase5g_strategy_selection_memory'):
-                db.execute(f"""
-                    INSERT INTO {table}(memory_key,selected_strategy,gap_type,role,observations,avg_outcome_score,avg_closure_delta,avg_no_candidate_rate,avg_overlap_score,avg_strategy_score,recommendation,neuromodulator_profile,details,first_seen,last_seen,updated_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    ON CONFLICT(memory_key) DO UPDATE SET
-                        observations=excluded.observations,
-                        avg_outcome_score=excluded.avg_outcome_score,
-                        avg_closure_delta=excluded.avg_closure_delta,
-                        avg_no_candidate_rate=excluded.avg_no_candidate_rate,
-                        avg_overlap_score=excluded.avg_overlap_score,
-                        avg_strategy_score=excluded.avg_strategy_score,
-                        recommendation=excluded.recommendation,
-                        neuromodulator_profile=excluded.neuromodulator_profile,
-                        details=excluded.details,
-                        last_seen=excluded.last_seen,
-                        updated_at=excluded.updated_at
-                """, (key,strategy,gap_type,role,int(n or 0),_clamp(avg_out),_clamp(avg_cl),_clamp(avg_no),_clamp(avg_ov),_clamp(avg_str),rec,_j(profile),_j({'phase':PHASE}),now,now,now))
+            memory_values = (key,strategy,gap_type,role,int(n or 0),_clamp(avg_out),_clamp(avg_cl),_clamp(avg_no),_clamp(avg_ov),_clamp(avg_str),rec,_j(profile),_j({'phase':PHASE}),now,now,now)
+            db.execute("""
+                INSERT INTO phase5h_strategy_outcome_memory(memory_key,selected_strategy,gap_type,role,observations,avg_outcome_score,avg_closure_delta,avg_no_candidate_rate,avg_overlap_score,avg_strategy_score,recommendation,neuromodulator_profile,details,first_seen,last_seen,updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(memory_key) DO UPDATE SET
+                    selected_strategy=excluded.selected_strategy,
+                    observations=excluded.observations, avg_outcome_score=excluded.avg_outcome_score,
+                    avg_closure_delta=excluded.avg_closure_delta, avg_no_candidate_rate=excluded.avg_no_candidate_rate,
+                    avg_overlap_score=excluded.avg_overlap_score, avg_strategy_score=excluded.avg_strategy_score,
+                    recommendation=excluded.recommendation, neuromodulator_profile=excluded.neuromodulator_profile,
+                    details=excluded.details, last_seen=excluded.last_seen, updated_at=excluded.updated_at
+            """, memory_values)
+            db.execute("""
+                INSERT INTO phase5g_strategy_selection_memory(memory_key,strategy,gap_type,role,observations,avg_outcome_score,avg_closure_delta,avg_no_candidate_rate,avg_overlap_score,avg_strategy_score,recommendation,neuromodulator_profile,details,first_seen,last_seen,updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(memory_key) DO UPDATE SET
+                    strategy=excluded.strategy,
+                    observations=excluded.observations, avg_outcome_score=excluded.avg_outcome_score,
+                    avg_closure_delta=excluded.avg_closure_delta, avg_no_candidate_rate=excluded.avg_no_candidate_rate,
+                    avg_overlap_score=excluded.avg_overlap_score, avg_strategy_score=excluded.avg_strategy_score,
+                    recommendation=excluded.recommendation, neuromodulator_profile=excluded.neuromodulator_profile,
+                    details=excluded.details, last_seen=excluded.last_seen, updated_at=excluded.updated_at
+            """, memory_values)
             memory_updates += 1
             # Backpropagate to matching gaps/chunks for future selection.
             if _table_exists(db, 'internal_learning_gaps'):
