@@ -10,7 +10,7 @@ Update 16.07.26
 
 BrainStem is a biologically inspired, neuro-symbolic cognitive architecture for lifelong learning. It is designed to learn models of the structures and dynamics of language and text through context hypotheses, uncertainty, contradiction, revision, neuromodulation, replay, and consolidation rather than by merely storing isolated facts.
 
->One CPU Core 
+>One CPU Core /
 >No GPU needed
 
 [Open NotebookLM for code exploration](https://notebooklm.google.com/notebook/22f86efd-8cd6-447b-a43f-65f252259ab4?utm_source=nlmm_share)
