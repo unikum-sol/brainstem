@@ -11,7 +11,7 @@ A biologically inspired, neuro-symbolic cognitive architecture for lifelong lear
 
 BrainStem is an autonomous experimental system designed to learn models of the structures and dynamics of language and text rather than merely storing isolated facts. Digital neuromodulators regulate hypothesis formation, uncertainty, revision, exploration, inhibition, memory consolidation, sleep pressure, and system stability over an SQLite backend.
 
-[Open NotebookLM for code explonation](https://notebooklm.google.com/notebook/22f86efd-8cd6-447b-a43f-65f252259ab4?utm_source=nlmm_share)
+[Open NotebookLM for code exploration](https://notebooklm.google.com/notebook/22f86efd-8cd6-447b-a43f-65f252259ab4?utm_source=nlmm_share)
 
 > [!IMPORTANT]
 > BrainStem is a research and calibration system, not a production-ready assistant. Permanent fact, relation, and question writes remain locked while the learning core is being validated.
