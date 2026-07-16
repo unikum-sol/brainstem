@@ -2,10 +2,11 @@
 
 Update 16.07.26
 
-**Updated: 16 July 2026**  
-**Status:** Experimental research system  
-**Runtime:** Python 3.11 · Windows · SQLite  
-**Roadmap:** Stage A complete · candidate-flow validation before Stage B
+[![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
+[![Backend: SQLite](https://img.shields.io/badge/backend-SQLite-lightgrey)](#database-initialization)
+[![Roadmap: Stage A complete -> validating](https://img.shields.io/badge/roadmap-Stage%20A%20complete-green)](#current-development-and-testing-status)
+
 
 BrainStem is a biologically inspired, neuro-symbolic cognitive architecture for lifelong learning. It is designed to learn models of the structures and dynamics of language and text through context hypotheses, uncertainty, contradiction, revision, neuromodulation, replay, and consolidation rather than by merely storing isolated facts.
 
