@@ -87,6 +87,10 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {
         ("effectiveness_avg",   "REAL"),
         ("state_json",          "TEXT"),
         ("active",              "INTEGER DEFAULT 1"),
+    
+        ('measurement_event_id', 'INTEGER'),
+        ('evidence_state', 'TEXT'),
+        ('snapshot_owner', 'TEXT')
     ],
     "phase6b_effectiveness_events": [
         ("id",                    "INTEGER PRIMARY KEY AUTOINCREMENT"),
@@ -116,6 +120,17 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {
         ("glutamate",             "REAL"),
         ("gaba",                  "REAL"),
         ("notes",                 "TEXT"),
+    
+        ('measurement_owner', 'TEXT'),
+        ('population_available', 'INTEGER DEFAULT 0'),
+        ('outcome_observation_available', 'INTEGER DEFAULT 0'),
+        ('comparison_window_available', 'INTEGER DEFAULT 0'),
+        ('evidence_state', 'TEXT'),
+        ('evidence_reason', 'TEXT')
+    ,
+        ('source_phase6a_cycle_id', 'INTEGER'),
+        ('source_phase6a_created_at', 'INTEGER'),
+        ('source_phase6a_fresh', 'INTEGER DEFAULT 0')
     ],
     "phase6b_plasticity_adjustments": [
         ("id",                        "INTEGER PRIMARY KEY AUTOINCREMENT"),
@@ -143,6 +158,10 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {
         ("gaba",                      "REAL"),
         ("critic_gate_result",        "TEXT"),
         ("notes",                     "TEXT"),
+    
+        ('measurement_event_id', 'INTEGER'),
+        ('evidence_state', 'TEXT'),
+        ('state_change_allowed', 'INTEGER DEFAULT 0')
     ],
     "phase6b_distilled_knowledge": [
         ("id",                    "INTEGER PRIMARY KEY AUTOINCREMENT"),
@@ -170,6 +189,9 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {
         ("anchor_stability",         "REAL"),
         ("alert_flag",               "INTEGER DEFAULT 0"),
         ("alert_reason",             "TEXT"),
+    
+        ('measurement_event_id', 'INTEGER'),
+        ('evidence_state', 'TEXT')
     ],
 }
 
@@ -347,22 +369,33 @@ def _read_kv(con, table):
     return dict(con.execute("SELECT key,value FROM " + table).fetchall())
 
 
+def _phase6c_cfg(con):
+    if not _table_exists(con, "phase6c_meta_control_parameters"):
+        return {}
+    try:
+        return {str(k): _to_float(v, 0.0) for k,v in con.execute("SELECT parameter_key,current_value FROM phase6c_meta_control_parameters").fetchall()}
+    except Exception:
+        return {}
+
+def _cfg_value(cfg, key, default):
+    return _to_float(cfg.get(key), default) if key in cfg else default
+
+
 def _read_recent_cycles(con: sqlite3.Connection, n: int = 20) -> List[Dict[str, Any]]:
     if not _table_exists(con, "phase6a_sleep_replay_cycles"):
         return []
-    wanted = [
-        "candidate_count", "replay_events", "avg_outcome_score",
-        "avg_closure_delta", "avg_overlap_score", "persistent_gap_pressure",
-        "plasticity_level", "exploration_bias", "consolidation_bias", "created_at",
-    ]
-    existing = set(_columns(con, "phase6a_sleep_replay_cycles"))
-    select_cols = [c for c in wanted if c in existing]
-    if not select_cols:
-        return []
-    order_col = "created_at" if "created_at" in existing else "rowid"
-    sql = ("SELECT " + ", ".join(select_cols) +
-           " FROM phase6a_sleep_replay_cycles ORDER BY " + order_col + " DESC LIMIT ?")
-    return [dict(zip(select_cols, r)) for r in con.execute(sql, (int(n),)).fetchall()]
+    wanted = ["id","candidate_count","replay_events","avg_outcome_score","avg_closure_delta","avg_overlap_score",
+              "persistent_gap_pressure","plasticity_level","exploration_bias","consolidation_bias","created_at",
+              "population_available","outcome_observation_available","outcome_observation_count","evidence_state","evidence_reason"]
+    existing=set(_columns(con,"phase6a_sleep_replay_cycles")); select_cols=[c for c in wanted if c in existing]
+    if not select_cols: return []
+    order_col="id" if "id" in existing else ("created_at" if "created_at" in existing else "rowid")
+    sql="SELECT "+", ".join(select_cols)+" FROM phase6a_sleep_replay_cycles ORDER BY "+order_col+" DESC LIMIT ?"
+    return [dict(zip(select_cols,r)) for r in con.execute(sql,(int(n),)).fetchall()]
+
+
+
+
 
 
 def _neuromodulators(sleep_state: Dict[str, Any]) -> Dict[str, float]:
@@ -450,151 +483,66 @@ def _promote_anchors(con: sqlite3.Connection,
     return promoted
 
 
-def _select_replay_batch(con: sqlite3.Connection,
-                         neuromod: Dict[str, float],
-                         batch_size: int = 180) -> Dict[str, Any]:
-    """Interleaved replay: novel + anchor. GABA inhibits recently replayed
-    ineffective candidates. Noradrenaline boosts novelty ratio."""
-    gaba = neuromod["gaba"]
-    na = neuromod["noradrenaline"]
-    novel_ratio = _clamp(0.6 - 0.3 * gaba + 0.2 * na, 0.3, 0.9)
-    n_anchor = int(batch_size * (1.0 - novel_ratio))
-    n_novel = batch_size - n_anchor
-
-    now = _now()
-
-    anchors = con.execute(
-        "SELECT id, source_table, source_id, stability_score "
-        "FROM phase6b_anchor_pool WHERE active=1 "
-        "ORDER BY stability_score DESC, last_replayed_at ASC LIMIT ?",
-        (n_anchor,),
-    ).fetchall()
-
-    novel = []
-    if _table_exists(con, "phase5g_experiment_outcomes"):
-        ncols = set(_columns(con, "phase5g_experiment_outcomes"))
-        id_col = "id" if "id" in ncols else "rowid"
-        score_col = "outcome_score" if "outcome_score" in ncols else None
-        sql = "SELECT " + id_col + " FROM phase5g_experiment_outcomes "
-        if score_col:
-            sql += "ORDER BY " + score_col + " ASC LIMIT ?"
-        else:
-            sql += "ORDER BY " + id_col + " DESC LIMIT ?"
-        raw = con.execute(sql, (int(n_novel * 3),)).fetchall()
-        rnd = random.Random(now)
+def _select_replay_batch(con: sqlite3.Connection, neuromod: Dict[str, float], batch_size: int = 180) -> Dict[str, Any]:
+    cfg=_phase6c_cfg(con); gaba=neuromod["gaba"]; na=neuromod["noradrenaline"]
+    base=_cfg_value(cfg,"novel_ratio_base",0.6); gw=_cfg_value(cfg,"novel_ratio_gaba_weight",0.3); nw=_cfg_value(cfg,"novel_ratio_na_weight",0.2)
+    novel_ratio=_clamp(base-gw*gaba+nw*na,0.3,0.9); n_anchor=int(batch_size*(1.0-novel_ratio)); n_novel=batch_size-n_anchor; now=_now()
+    anchors=con.execute("SELECT id,source_table,source_id,stability_score FROM phase6b_anchor_pool WHERE active=1 ORDER BY stability_score DESC,last_replayed_at ASC LIMIT ?",(n_anchor,)).fetchall()
+    novel=[]
+    if _table_exists(con,"phase5g_experiment_outcomes"):
+        ncols=set(_columns(con,"phase5g_experiment_outcomes")); id_col="id" if "id" in ncols else "rowid"; score_col="outcome_score" if "outcome_score" in ncols else None
+        sql="SELECT "+id_col+" FROM phase5g_experiment_outcomes ORDER BY "+(score_col+" ASC" if score_col else id_col+" DESC")+" LIMIT ?"
+        raw=con.execute(sql,(int(n_novel*3),)).fetchall(); inhibit=_cfg_value(cfg,"gaba_novel_inhibition",0.5); rnd=random.Random(now)
         for r in raw:
-            if rnd.random() < gaba * 0.5:
-                continue
+            if rnd.random() < gaba*inhibit: continue
             novel.append(_to_int(r[0]))
-            if len(novel) >= n_novel:
-                break
-
+            if len(novel)>=n_novel: break
     if anchors:
-        anchor_ids = [a[0] for a in anchors]
-        placeholders = ",".join("?" for _ in anchor_ids)
-        con.execute(
-            "UPDATE phase6b_anchor_pool "
-            "SET replay_count = COALESCE(replay_count,0) + 1, "
-            "    last_replayed_at = ?, updated_at = ? "
-            "WHERE id IN (" + placeholders + ")",
-            [now, now] + anchor_ids,
-        )
+        ids=[a[0] for a in anchors]; ph=",".join("?" for _ in ids)
+        con.execute("UPDATE phase6b_anchor_pool SET replay_count=COALESCE(replay_count,0)+1,last_replayed_at=?,updated_at=? WHERE id IN ("+ph+")",[now,now]+ids)
     con.commit()
-
-    return {
-        "batch_size": batch_size,
-        "novel_ratio_target": round(novel_ratio, 3),
-        "anchor_count": len(anchors),
-        "novel_count": len(novel),
-        "anchor_ids": [a[0] for a in anchors],
-        "novel_ids": novel,
-    }
+    return {"batch_size":batch_size,"novel_ratio_target":round(novel_ratio,3),"anchor_count":len(anchors),"novel_count":len(novel),"anchor_ids":[a[0] for a in anchors],"novel_ids":novel}
 
 
-def _measure_effectiveness(con: sqlite3.Connection,
-                           recent: List[Dict[str, Any]],
-                           batch: Dict[str, Any],
-                           neuromod: Dict[str, float],
-                           cycle_index: int,
-                           window_size: int = 5) -> Dict[str, Any]:
-    """Compute effectiveness by comparing latest cycle metrics to a window
-    of previous cycles. Neuromodulator-weighted scoring."""
-    if len(recent) >= 2:
-        cur = recent[0]
-        prev_window = recent[1:1 + window_size]
-    else:
-        cur = recent[0] if recent else {}
-        prev_window = []
 
-    def _avg(rows, key):
-        vals = [_to_float(r.get(key), None) for r in rows]
-        vals = [v for v in vals if v is not None]
-        return sum(vals) / len(vals) if vals else 0.0
 
-    pre_o = _avg(prev_window, "avg_outcome_score")
-    pre_c = _avg(prev_window, "avg_closure_delta")
-    pre_ov = _avg(prev_window, "avg_overlap_score")
-    post_o = _to_float(cur.get("avg_outcome_score"), pre_o)
-    post_c = _to_float(cur.get("avg_closure_delta"), pre_c)
-    post_ov = _to_float(cur.get("avg_overlap_score"), pre_ov)
+def _measure_effectiveness(con, recent, batch, neuromod, cycle_index, window_size=5):
+    cur=recent[0] if recent else {}; source_id=_to_int(cur.get("id"),0); source_created=_to_int(cur.get("created_at"),0)
+    state_kv=_read_kv(con,"phase6b_state"); last_source=_to_int(state_kv.get("last_consumed_phase6a_cycle_id"),0)
+    fresh=1 if source_id>0 and source_id>last_source else 0
+    if not fresh:
+        return {"skip_no_fresh_source":True,"measurement_event_id":None,"cycle_index":cycle_index,"window_size":window_size,
+                "effectiveness_score":0.0,"plateau_flag":0,"anchor_consistency":0.0,"population_available":0,
+                "outcome_observation_available":0,"comparison_window_available":0,"evidence_state":"stale_source_observation",
+                "evidence_reason":"no_unconsumed_phase6a_cycle","state_change_allowed":0,
+                "source_phase6a_cycle_id":source_id,"source_phase6a_created_at":source_created,"source_phase6a_fresh":0}
+    population=1 if (_to_int(cur.get("population_available"),0)>0 or _to_int(cur.get("candidate_count"),0)>0 or _to_int(cur.get("replay_events"),0)>0) else 0
+    outcome_obs=1 if _to_int(cur.get("outcome_observation_available"),0)>0 else 0
+    observed_prev=[r for r in recent[1:1+window_size] if _to_int(r.get("outcome_observation_available"),0)>0]
+    comparison=1 if outcome_obs and observed_prev else 0
+    def avg(rows,key):
+        vals=[_to_float(r.get(key),None) for r in rows]; vals=[v for v in vals if v is not None]; return sum(vals)/len(vals) if vals else 0.0
+    pre_o=avg(observed_prev,"avg_outcome_score"); pre_c=avg(observed_prev,"avg_closure_delta"); pre_ov=avg(observed_prev,"avg_overlap_score")
+    post_o=_to_float(cur.get("avg_outcome_score"),pre_o); post_c=_to_float(cur.get("avg_closure_delta"),pre_c); post_ov=_to_float(cur.get("avg_overlap_score"),pre_ov)
+    d_o=post_o-pre_o if comparison else 0.0; d_c=post_c-pre_c if comparison else 0.0; d_ov=post_ov-pre_ov if comparison else 0.0
+    cfg=_phase6c_cfg(con); eps=_cfg_value(cfg,"plateau_eps",0.005)
+    if not population: state="no_population"; reason="no_replay_population_observed"
+    elif not outcome_obs: state="population_without_outcome_observation"; reason="population_present_but_outcome_observation_absent"
+    elif not comparison: state="outcome_observed_insufficient_comparison"; reason="outcome_observed_without_prior_observed_window"
+    elif abs(d_o)<eps and abs(d_c)<eps and abs(d_ov)<eps: state="outcome_observed_no_change"; reason="observed_comparison_within_plateau_epsilon"
+    else: state="outcome_observed_change"; reason="observed_comparison_changed"
+    allowed=1 if state in ("outcome_observed_change","outcome_observed_no_change") else 0; plateau=1 if state=="outcome_observed_no_change" else 0
+    eff=(0.5+0.3*neuromod["dopamine"])*d_o+(0.3+0.2*neuromod["noradrenaline"])*d_c+(0.2+0.2*neuromod["acetylcholine"])*d_ov if allowed else 0.0
+    row=con.execute("SELECT AVG(stability_score) FROM phase6b_anchor_pool WHERE active=1").fetchone(); anchor=_to_float(row[0] if row else 0.0,0.0)
+    notes=json.dumps({"novel_ratio_target":batch.get("novel_ratio_target"),"anchor_count":batch.get("anchor_count"),"novel_count":batch.get("novel_count"),"plateau_eps":eps,"source_phase6a_cycle_id":source_id})
+    sql="INSERT INTO phase6b_effectiveness_events (created_at,cycle_index,window_size,replay_batch_size,novel_count,anchor_count,pre_outcome_score,post_outcome_score,pre_closure_delta,post_closure_delta,pre_overlap_score,post_overlap_score,delta_outcome,delta_closure,delta_overlap,effectiveness_score,plateau_flag,critic_penalty,anchor_consistency,dopamine,serotonin,noradrenaline,acetylcholine,glutamate,gaba,notes,measurement_owner,population_available,outcome_observation_available,comparison_window_available,evidence_state,evidence_reason,source_phase6a_cycle_id,source_phase6a_created_at,source_phase6a_fresh) VALUES("+",".join("?" for _ in range(35))+")"
+    curx=con.execute(sql,(_now(),cycle_index,window_size,batch.get("batch_size",0),batch.get("novel_count",0),batch.get("anchor_count",0),pre_o,post_o,pre_c,post_c,pre_ov,post_ov,d_o,d_c,d_ov,eff,plateau,0.0,anchor,neuromod["dopamine"],neuromod["serotonin"],neuromod["noradrenaline"],neuromod["acetylcholine"],neuromod["glutamate"],neuromod["gaba"],notes,"canonical_phase6b",population,outcome_obs,comparison,state,reason,source_id,source_created,1))
+    _kv_set(con,"phase6b_state","last_consumed_phase6a_cycle_id",source_id); _kv_set(con,"phase6b_state","last_consumed_phase6a_created_at",source_created); con.commit()
+    return {"skip_no_fresh_source":False,"measurement_event_id":int(curx.lastrowid),"cycle_index":cycle_index,"window_size":window_size,"delta_outcome":d_o,"delta_closure":d_c,"delta_overlap":d_ov,"effectiveness_score":eff,"plateau_flag":plateau,"anchor_consistency":anchor,"population_available":population,"outcome_observation_available":outcome_obs,"comparison_window_available":comparison,"evidence_state":state,"evidence_reason":reason,"state_change_allowed":allowed,"source_phase6a_cycle_id":source_id,"source_phase6a_created_at":source_created,"source_phase6a_fresh":1}
 
-    d_o = post_o - pre_o
-    d_c = post_c - pre_c
-    d_ov = post_ov - pre_ov
 
-    da = neuromod["dopamine"]
-    na = neuromod["noradrenaline"]
-    ach = neuromod["acetylcholine"]
-    w_out = 0.5 + 0.3 * da
-    w_clo = 0.3 + 0.2 * na
-    w_ovl = 0.2 + 0.2 * ach
-    eff = w_out * d_o + w_clo * d_c + w_ovl * d_ov
 
-    eps = 0.005
-    plateau = 1 if (abs(d_o) < eps and abs(d_c) < eps and abs(d_ov) < eps) else 0
 
-    row = con.execute(
-        "SELECT AVG(stability_score) FROM phase6b_anchor_pool WHERE active=1"
-    ).fetchone()
-    anchor_stab = _to_float(row[0] if row else 0.0, 0.0)
-
-    notes = json.dumps({
-        "novel_ratio_target": batch.get("novel_ratio_target"),
-        "anchor_count": batch.get("anchor_count"),
-        "novel_count": batch.get("novel_count"),
-    })
-
-    con.execute(
-        "INSERT INTO phase6b_effectiveness_events ("
-        "created_at, cycle_index, window_size, replay_batch_size, "
-        "novel_count, anchor_count, "
-        "pre_outcome_score, post_outcome_score, "
-        "pre_closure_delta, post_closure_delta, "
-        "pre_overlap_score, post_overlap_score, "
-        "delta_outcome, delta_closure, delta_overlap, "
-        "effectiveness_score, plateau_flag, critic_penalty, anchor_consistency, "
-        "dopamine, serotonin, noradrenaline, acetylcholine, glutamate, gaba, "
-        "notes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (_now(), cycle_index, window_size, batch.get("batch_size", 0),
-         batch.get("novel_count", 0), batch.get("anchor_count", 0),
-         pre_o, post_o, pre_c, post_c, pre_ov, post_ov,
-         d_o, d_c, d_ov, eff, plateau, 0.0, anchor_stab,
-         neuromod["dopamine"], neuromod["serotonin"], neuromod["noradrenaline"],
-         neuromod["acetylcholine"], neuromod["glutamate"], neuromod["gaba"],
-         notes),
-    )
-    con.commit()
-
-    return {
-        "cycle_index": cycle_index,
-        "window_size": window_size,
-        "pre_outcome_score": pre_o, "post_outcome_score": post_o,
-        "pre_closure_delta": pre_c, "post_closure_delta": post_c,
-        "pre_overlap_score": pre_ov, "post_overlap_score": post_ov,
-        "delta_outcome": d_o, "delta_closure": d_c, "delta_overlap": d_ov,
-        "effectiveness_score": eff, "plateau_flag": plateau,
-        "anchor_consistency": anchor_stab,
-    }
 
 
 def _critic_gate(con: sqlite3.Connection,
@@ -632,125 +580,34 @@ def _critic_gate(con: sqlite3.Connection,
 
 
 def _apply_plasticity_adjustment(con, eff, neuromod, meta_state):
-    """Option b: aggressive homeostatic adjustment when plateau detected.
-    All post-values are clamped and gated by critic snapshot."""
-    pre_plast = _to_float(meta_state.get("last_plasticity_level"), 0.5)
-    pre_expl = _to_float(meta_state.get("last_exploration_bias"), 0.5)
-    pre_cons = _to_float(meta_state.get("last_consolidation_bias"), 0.5)
-    pre_inh = _to_float(meta_state.get("last_inhibition_bias"), 0.3)
-    pre_rev = _to_float(meta_state.get("last_revision_bias"), 0.5)
+    if eff.get("skip_no_fresh_source"):
+        return {"adjustment_type":"skipped_no_fresh_source","pre":{},"post":{},"critic_gate_result":"not_run",
+                "critic_penalty":0.0,"evidence_state":"stale_source_observation","state_change_allowed":0}
+    pre_plast=_to_float(meta_state.get("last_plasticity_level"),0.5); pre_expl=_to_float(meta_state.get("last_exploration_bias"),0.5); pre_cons=_to_float(meta_state.get("last_consolidation_bias"),0.5); pre_inh=_to_float(meta_state.get("last_inhibition_bias"),0.3); pre_rev=_to_float(meta_state.get("last_revision_bias"),0.5)
+    post_plast,post_expl,post_cons,post_inh,post_rev=pre_plast,pre_expl,pre_cons,pre_inh,pre_rev
+    state=str(eff.get("evidence_state") or "historical_unclassified"); allowed_state=1 if _to_int(eff.get("state_change_allowed"),0)>0 else 0; plateau=_to_int(eff.get("plateau_flag"),0); score=_to_float(eff.get("effectiveness_score"),0.0)
+    cfg=_phase6c_cfg(con); adj="hold_no_evidence" if not allowed_state else "hold"; scale=1.0; reasons=["evidence_state:"+state]
+    if allowed_state and plateau:
+        adj="plateau_break"; scale=_clamp(_cfg_value(cfg,"plateau_break_scale",0.85)-0.10*neuromod["gaba"],0.55,0.98)
+        post_plast=_clamp(pre_plast*scale); post_expl=_clamp(pre_expl+_cfg_value(cfg,"exploration_delta",0.15)*(1-neuromod["gaba"])+0.05*neuromod["noradrenaline"]); post_inh=_clamp(pre_inh+_cfg_value(cfg,"inhibition_delta",0.10)*neuromod["gaba"]+0.05*(1-neuromod["dopamine"])); post_rev=_clamp(pre_rev+_cfg_value(cfg,"revision_delta",0.10)*neuromod["serotonin"]+0.05*neuromod["acetylcholine"]); post_cons=_clamp(pre_cons-0.05*(1-score)); reasons.append("plateau_break_canonical")
+    elif allowed_state and score>_cfg_value(cfg,"stabilize_threshold",0.02):
+        adj="stabilize_gains"; post_cons=_clamp(pre_cons+_cfg_value(cfg,"consolidation_delta",0.05)*neuromod["dopamine"]+0.05*neuromod["glutamate"]); post_rev=_clamp(pre_rev-0.03*neuromod["serotonin"]); post_plast=_clamp(pre_plast+0.02*neuromod["dopamine"]); reasons.append("stabilize_positive_effectiveness")
+    proposed={"plasticity_level":post_plast,"exploration_bias":post_expl,"consolidation_bias":post_cons,"inhibition_bias":post_inh,"revision_bias":post_rev}
+    if allowed_state: gate,penalty,critic=_critic_gate(con,proposed,_to_float(eff.get("anchor_consistency"),0.0))
+    else: gate,penalty,critic=False,0.0,"state_change_blocked_by_evidence_state"
+    if not gate: post_plast,post_expl,post_cons,post_inh,post_rev=pre_plast,pre_expl,pre_cons,pre_inh,pre_rev
+    elif penalty>0:
+        blend=lambda a,b:_clamp(a+(b-a)*(1-penalty)); post_plast=blend(pre_plast,post_plast); post_expl=blend(pre_expl,post_expl); post_cons=blend(pre_cons,post_cons); post_inh=blend(pre_inh,post_inh); post_rev=blend(pre_rev,post_rev)
+    con.execute("INSERT INTO phase6b_plasticity_adjustments (created_at,cycle_index,adjustment_type,reason,scale_factor,window_size,pre_plasticity_level,post_plasticity_level,pre_exploration_bias,post_exploration_bias,pre_consolidation_bias,post_consolidation_bias,pre_inhibition_bias,post_inhibition_bias,pre_revision_bias,post_revision_bias,dopamine,serotonin,noradrenaline,acetylcholine,glutamate,gaba,critic_gate_result,notes,measurement_event_id,evidence_state,state_change_allowed) VALUES("+",".join("?" for _ in range(27))+")",
+      (_now(),_to_int(eff.get("cycle_index"),0),adj,";".join(reasons),scale,_to_int(eff.get("window_size"),5),pre_plast,post_plast,pre_expl,post_expl,pre_cons,post_cons,pre_inh,post_inh,pre_rev,post_rev,neuromod["dopamine"],neuromod["serotonin"],neuromod["noradrenaline"],neuromod["acetylcholine"],neuromod["glutamate"],neuromod["gaba"],critic,json.dumps({"eff":score,"plateau":plateau}),eff.get("measurement_event_id"),state,1 if gate and allowed_state else 0))
+    if gate and allowed_state:
+        for k,v in (("last_plasticity_level",post_plast),("last_exploration_bias",post_expl),("last_consolidation_bias",post_cons),("last_inhibition_bias",post_inh),("last_revision_bias",post_rev)):
+            _kv_set(con,"phase6a_meta_plasticity_state",k,round(v,6)); _kv_set(con,"phase6a_neuromodulated_sleep_state",k,round(v,6))
+    con.commit(); return {"adjustment_type":adj,"pre":{"plasticity_level":pre_plast,"exploration_bias":pre_expl,"consolidation_bias":pre_cons,"inhibition_bias":pre_inh,"revision_bias":pre_rev},"post":{"plasticity_level":post_plast,"exploration_bias":post_expl,"consolidation_bias":post_cons,"inhibition_bias":post_inh,"revision_bias":post_rev},"critic_gate_result":critic,"critic_penalty":penalty,"evidence_state":state,"state_change_allowed":1 if gate and allowed_state else 0}
 
-    da = neuromod["dopamine"]
-    sero = neuromod["serotonin"]
-    na = neuromod["noradrenaline"]
-    ach = neuromod["acetylcholine"]
-    glu = neuromod["glutamate"]
-    gaba = neuromod["gaba"]
 
-    plateau = int(eff.get("plateau_flag", 0))
-    eff_score = _to_float(eff.get("effectiveness_score"), 0.0)
 
-    post_plast = pre_plast
-    post_expl = pre_expl
-    post_cons = pre_cons
-    post_inh = pre_inh
-    post_rev = pre_rev
 
-    reason_parts = []
-    scale = 1.0
-    adj_type = "no_change"
-
-    if plateau == 1:
-        adj_type = "plateau_break"
-        scale = _clamp(0.85 - 0.10 * gaba, 0.70, 0.98)
-        post_plast = _clamp(pre_plast * scale)
-        post_expl = _clamp(pre_expl + 0.15 * (1.0 - gaba) + 0.05 * na)
-        post_inh = _clamp(pre_inh + 0.10 * gaba + 0.05 * (1.0 - da))
-        post_rev = _clamp(pre_rev + 0.10 * sero + 0.05 * ach)
-        post_cons = _clamp(pre_cons - 0.05 * (1.0 - eff_score))
-        reason_parts.append("plateau_break_aggressive")
-    elif eff_score > 0.02:
-        adj_type = "stabilize_gains"
-        post_cons = _clamp(pre_cons + 0.10 * da + 0.05 * glu)
-        post_rev = _clamp(pre_rev - 0.03 * sero)
-        post_plast = _clamp(pre_plast + 0.02 * da)
-        reason_parts.append("stabilize_positive_effectiveness")
-    else:
-        adj_type = "hold"
-        reason_parts.append("hold_within_normal_variance")
-
-    proposed = {
-        "plasticity_level": post_plast,
-        "exploration_bias": post_expl,
-        "consolidation_bias": post_cons,
-        "inhibition_bias": post_inh,
-        "revision_bias": post_rev,
-    }
-    anchor_cons = _to_float(eff.get("anchor_consistency"), 0.0)
-    allowed, penalty, critic_reason = _critic_gate(con, proposed, anchor_cons)
-
-    if not allowed:
-        post_plast, post_expl, post_cons, post_inh, post_rev = (
-            pre_plast, pre_expl, pre_cons, pre_inh, pre_rev
-        )
-        reason_parts.append("critic_rejected:" + critic_reason)
-        adj_type = "critic_rejected"
-    elif penalty > 0.0:
-        def _blend(pre, post):
-            return _clamp(pre + (post - pre) * (1.0 - penalty))
-        post_plast = _blend(pre_plast, post_plast)
-        post_expl = _blend(pre_expl, post_expl)
-        post_cons = _blend(pre_cons, post_cons)
-        post_inh = _blend(pre_inh, post_inh)
-        post_rev = _blend(pre_rev, post_rev)
-        reason_parts.append("critic_scaled:" + critic_reason)
-
-    reason = ";".join(reason_parts) if reason_parts else "n/a"
-
-    con.execute(
-        "INSERT INTO phase6b_plasticity_adjustments ("
-        "created_at, cycle_index, adjustment_type, reason, scale_factor, "
-        "window_size, "
-        "pre_plasticity_level, post_plasticity_level, "
-        "pre_exploration_bias, post_exploration_bias, "
-        "pre_consolidation_bias, post_consolidation_bias, "
-        "pre_inhibition_bias, post_inhibition_bias, "
-        "pre_revision_bias, post_revision_bias, "
-        "dopamine, serotonin, noradrenaline, acetylcholine, glutamate, gaba, "
-        "critic_gate_result, notes) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (_now(), int(eff.get("cycle_index", 0)), adj_type, reason, scale,
-         int(eff.get("window_size", 5)),
-         pre_plast, post_plast, pre_expl, post_expl,
-         pre_cons, post_cons, pre_inh, post_inh, pre_rev, post_rev,
-         da, sero, na, ach, glu, gaba,
-         critic_reason, json.dumps({"eff": eff_score, "plateau": plateau})),
-    )
-
-    if allowed:
-        for k, v in (
-            ("last_plasticity_level", post_plast),
-            ("last_exploration_bias", post_expl),
-            ("last_consolidation_bias", post_cons),
-            ("last_inhibition_bias", post_inh),
-            ("last_revision_bias", post_rev),
-        ):
-            _kv_set(con, "phase6a_meta_plasticity_state", k, round(v, 6))
-            _kv_set(con, "phase6a_neuromodulated_sleep_state", k, round(v, 6))
-
-    con.commit()
-    return {
-        "adjustment_type": adj_type,
-        "scale_factor": scale,
-        "pre":  {"plasticity_level": pre_plast,  "exploration_bias": pre_expl,
-                 "consolidation_bias": pre_cons, "inhibition_bias": pre_inh,
-                 "revision_bias": pre_rev},
-        "post": {"plasticity_level": post_plast, "exploration_bias": post_expl,
-                 "consolidation_bias": post_cons, "inhibition_bias": post_inh,
-                 "revision_bias": post_rev},
-        "critic_gate_result": critic_reason,
-        "critic_penalty": penalty,
-    }
 
 
 def _distill_knowledge(con, cycle_index, eff_score, stability_threshold=0.7):
@@ -792,121 +649,33 @@ def _distill_knowledge(con, cycle_index, eff_score, stability_threshold=0.7):
 
 
 def _compute_l2m_metrics(con, cycle_index, eff):
-    row = con.execute(
-        "SELECT AVG(stability_score) FROM phase6b_anchor_pool WHERE active=1"
-    ).fetchone()
-    anchor_stab = _to_float(row[0] if row else 0.0, 0.0)
-
-    prev_row = con.execute(
-        "SELECT anchor_consistency FROM phase6b_effectiveness_events "
-        "WHERE cycle_index < ? ORDER BY id DESC LIMIT 1",
-        (int(cycle_index),),
-    ).fetchone()
-    prev_stab = _to_float(prev_row[0] if prev_row else anchor_stab, anchor_stab)
-
-    pm = anchor_stab
-    ft = _to_float(eff.get("delta_outcome"), 0.0)
-    bt = anchor_stab - prev_stab
-    batch = max(1, _to_int(eff.get("window_size"), 1) * 1)
-    se = _to_float(eff.get("effectiveness_score"), 0.0) / float(batch)
-
-    rows = con.execute(
-        "SELECT plateau_flag, delta_outcome FROM phase6b_effectiveness_events "
-        "ORDER BY id DESC LIMIT 20"
-    ).fetchall()
-    if rows:
-        recoveries = 0
-        plateaus = 0
-        prev_p = 0
-        for r in rows:
-            p = _to_int(r[0])
-            d = _to_float(r[1])
-            if prev_p == 1 and d > 0:
-                recoveries += 1
-            if p == 1:
-                plateaus += 1
-            prev_p = p
-        pr = recoveries / max(1, plateaus)
-    else:
-        pr = 0.0
-
-    alert = 1 if bt < -0.05 else 0
-    reason = "backward_transfer_negative" if alert else "ok"
-
-    con.execute(
-        "INSERT INTO phase6b_l2m_metrics ("
-        "created_at, cycle_index, performance_maintenance, forward_transfer, "
-        "backward_transfer, sample_efficiency, performance_recovery, "
-        "anchor_stability, alert_flag, alert_reason) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?)",
-        (_now(), int(cycle_index), pm, ft, bt, se, pr, anchor_stab, alert, reason),
-    )
-    con.commit()
-    return {
-        "performance_maintenance": pm,
-        "forward_transfer": ft,
-        "backward_transfer": bt,
-        "sample_efficiency": se,
-        "performance_recovery": pr,
-        "anchor_stability": anchor_stab,
-        "alert_flag": alert,
-        "alert_reason": reason,
-    }
+    if eff.get("skip_no_fresh_source"):
+        return {"skipped":True,"reason":"no_fresh_phase6a_source","evidence_state":"stale_source_observation"}
+    row=con.execute("SELECT AVG(stability_score) FROM phase6b_anchor_pool WHERE active=1").fetchone(); anchor=_to_float(row[0] if row else 0.0,0.0)
+    prev=con.execute("SELECT anchor_consistency FROM phase6b_effectiveness_events WHERE cycle_index<? AND measurement_owner='canonical_phase6b' ORDER BY id DESC LIMIT 1",(int(cycle_index),)).fetchone(); prev_stab=_to_float(prev[0] if prev else anchor,anchor)
+    ft=_to_float(eff.get("delta_outcome"),0.0); bt=anchor-prev_stab; se=_to_float(eff.get("effectiveness_score"),0.0)/max(1,_to_int(eff.get("window_size"),1)); state=str(eff.get("evidence_state") or "historical_unclassified")
+    alert=1 if bt < -0.05 else 0; reason="backward_transfer_negative" if alert else ("evidence_unavailable" if not state.startswith("outcome_observed_") else "ok")
+    con.execute("INSERT INTO phase6b_l2m_metrics (created_at,cycle_index,performance_maintenance,forward_transfer,backward_transfer,sample_efficiency,performance_recovery,anchor_stability,alert_flag,alert_reason,measurement_event_id,evidence_state) VALUES("+",".join("?" for _ in range(12))+")",(_now(),int(cycle_index),anchor,ft,bt,se,0.0,anchor,alert,reason,eff.get("measurement_event_id"),state)); con.commit()
+    return {"performance_maintenance":anchor,"forward_transfer":ft,"backward_transfer":bt,"sample_efficiency":se,"performance_recovery":0.0,"anchor_stability":anchor,"alert_flag":alert,"alert_reason":reason,"evidence_state":state}
 
 
-def _maybe_snapshot_critic(con, neuromod, eff_score, adj):
-    sero = neuromod["serotonin"]
-    p = _clamp(0.05 + 0.5 * sero, 0.05, 0.8)
 
-    stable_count = _to_int(_read_kv(con, "phase6b_state").get("stable_cycles_since_snapshot"), 0)
-    if eff_score >= 0.0 and adj.get("adjustment_type") != "critic_rejected":
-        stable_count += 1
-    _kv_set(con, "phase6b_state", "stable_cycles_since_snapshot", stable_count)
 
-    min_stable = max(3, int(round(5 * (1.0 - sero) + 3)))
-    if stable_count < min_stable:
-        con.commit()
-        return {"snapshot": False, "reason": "not_enough_stable_cycles",
-                "stable_cycles": stable_count, "min_required": min_stable,
-                "probability": p}
 
-    rnd = random.random()
-    if rnd > p:
-        con.commit()
-        return {"snapshot": False, "reason": "probabilistic_skip",
-                "probability": p, "roll": rnd}
 
-    con.execute("UPDATE phase6b_critic_snapshot SET active=0 WHERE active=1")
-    row = con.execute(
-        "SELECT COUNT(*) FROM phase6b_anchor_pool WHERE active=1"
-    ).fetchone()
-    anchor_count = _to_int(row[0] if row else 0, 0)
-    state_dump = json.dumps({"eff_score": eff_score,
-                             "adjustment": adj.get("adjustment_type"),
-                             "neuromod": neuromod})
-    post = adj.get("post", {})
-    con.execute(
-        "INSERT INTO phase6b_critic_snapshot ("
-        "created_at, reason, dopamine, serotonin, noradrenaline, "
-        "acetylcholine, glutamate, gaba, plasticity_level, "
-        "exploration_bias, consolidation_bias, inhibition_bias, revision_bias, "
-        "anchor_count, effectiveness_avg, state_json, active) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)",
-        (_now(), "serotonin_gated_snapshot",
-         neuromod["dopamine"], neuromod["serotonin"], neuromod["noradrenaline"],
-         neuromod["acetylcholine"], neuromod["glutamate"], neuromod["gaba"],
-         _to_float(post.get("plasticity_level")),
-         _to_float(post.get("exploration_bias")),
-         _to_float(post.get("consolidation_bias")),
-         _to_float(post.get("inhibition_bias")),
-         _to_float(post.get("revision_bias")),
-         anchor_count, eff_score, state_dump),
-    )
-    _kv_set(con, "phase6b_state", "stable_cycles_since_snapshot", 0)
-    con.commit()
-    return {"snapshot": True, "reason": "serotonin_gated",
-            "probability": p, "anchor_count": anchor_count,
-            "stable_cycles_since_previous": stable_count}
+def _maybe_snapshot_critic(con, neuromod, eff_score, adj, eff=None):
+    eff=eff or {}; state=str(eff.get("evidence_state") or adj.get("evidence_state") or "historical_unclassified")
+    if _to_int(adj.get("state_change_allowed"),0)<=0:
+        return {"snapshot":False,"reason":"evidence_state_blocks_snapshot","evidence_state":state}
+    sero=neuromod["serotonin"]; cfg=_phase6c_cfg(con); p=_clamp(_cfg_value(cfg,"critic_snapshot_p_base",0.05)+_cfg_value(cfg,"critic_snapshot_p_range",0.5)*sero,0.02,0.85)
+    stable=_to_int(_read_kv(con,"phase6b_state").get("stable_cycles_since_snapshot"),0)+1; _kv_set(con,"phase6b_state","stable_cycles_since_snapshot",stable)
+    minimum=max(3,int(round(_cfg_value(cfg,"critic_min_stable_base",3.0)+(1-sero)*4)))
+    if stable<minimum: con.commit(); return {"snapshot":False,"reason":"not_enough_stable_cycles"}
+    if random.random()>p: con.commit(); return {"snapshot":False,"reason":"probabilistic_skip"}
+    con.execute("UPDATE phase6b_critic_snapshot SET active=0 WHERE active=1"); cnt=_to_int(con.execute("SELECT COUNT(*) FROM phase6b_anchor_pool WHERE active=1").fetchone()[0],0); post=adj.get("post",{})
+    con.execute("INSERT INTO phase6b_critic_snapshot (created_at,reason,dopamine,serotonin,noradrenaline,acetylcholine,glutamate,gaba,plasticity_level,exploration_bias,consolidation_bias,inhibition_bias,revision_bias,anchor_count,effectiveness_avg,state_json,active,measurement_event_id,evidence_state,snapshot_owner) VALUES("+",".join("?" for _ in range(20))+")",(_now(),"canonical_phase6b_snapshot",neuromod["dopamine"],neuromod["serotonin"],neuromod["noradrenaline"],neuromod["acetylcholine"],neuromod["glutamate"],neuromod["gaba"],_to_float(post.get("plasticity_level")),_to_float(post.get("exploration_bias")),_to_float(post.get("consolidation_bias")),_to_float(post.get("inhibition_bias")),_to_float(post.get("revision_bias")),cnt,eff_score,json.dumps({"evidence_state":state}),1,eff.get("measurement_event_id"),state,"canonical_phase6b")); _kv_set(con,"phase6b_state","stable_cycles_since_snapshot",0); con.commit(); return {"snapshot":True,"reason":"canonical_phase6b","evidence_state":state}
+
+
 
 
 def run_phase6b_cycle(db_or_obj=None, cycle_index=None):
@@ -932,7 +701,7 @@ def run_phase6b_cycle(db_or_obj=None, cycle_index=None):
     adj = _apply_plasticity_adjustment(con, eff, neuromod, meta_state)
     l2m = _compute_l2m_metrics(con, cycle_index, eff)
     dist = _distill_knowledge(con, cycle_index, eff.get("effectiveness_score", 0.0))
-    snap = _maybe_snapshot_critic(con, neuromod, eff.get("effectiveness_score", 0.0), adj)
+    snap = _maybe_snapshot_critic(con, neuromod, eff.get("effectiveness_score", 0.0), adj, eff)
 
     _kv_set(con, "phase6b_state", "cycle_count", cycle_index)
     _kv_set(con, "phase6b_state", "last_cycle_at", _now())
