@@ -1,17 +1,19 @@
 PROJEKT-EXPORT INDEX
-Root: Z:\Temp\Ki_System\Neuer Ordner
-Dateien gesamt: 44
-Groesse gesamt: 698741 bytes
+Root: Z:\Temp\Ki_System\BrainStem
+Dateien gesamt: 49
+Groesse gesamt: 783053 bytes
 
 --- Verteilung ---
-part1.txt :    20 Dateien,       231790 bytes
-part2.txt :     7 Dateien,       195050 bytes
-part3.txt :    17 Dateien,       271966 bytes
+part1.txt :    22 Dateien,       260982 bytes
+part2.txt :     9 Dateien,       242141 bytes
+part3.txt :    18 Dateien,       278855 bytes
 
 --- Dateiliste ---
+part1.txt |       5464 B | add_indexes.py
+part1.txt |        279 B | desktop.ini
 part1.txt |        150 B | ki_system\__init__.py
 part1.txt |        975 B | ki_system\autonomous.py
-part1.txt |      31158 B | ki_system\db_bootstrap.py
+part1.txt |      54824 B | ki_system\db_bootstrap.py
 part1.txt |        811 B | ki_system\dialogue.py
 part1.txt |      40979 B | ki_system\gui_app.py
 part1.txt |       3990 B | ki_system\ingest.py
@@ -23,20 +25,22 @@ part1.txt |       1144 B | ki_system\text_utils.py
 part1.txt |       1934 B | ki_system\user_gui.py
 part1.txt |      12772 B | ki_system\v8_context_observation_learning_release.py
 part1.txt |       9747 B | ki_system\v8_deprivation_runner.py
+part1.txt |      19514 B | ki_system\v8_modern_gap_candidate_bridge_shadow_release.py
+part1.txt |      19616 B | ki_system\v8_modern_outcome_bridge_shadow_release.py
 part1.txt |       6158 B | ki_system\v8_perf0_runtime_acceleration_release.py
 part1.txt |       1472 B | ki_system\v8_perf3_connection_accelerator.py
-part1.txt |      18172 B | ki_system\v8_phase5a_integrated_self_improving_learning_release.py
+part1.txt |      18532 B | ki_system\v8_phase5a_integrated_self_improving_learning_release.py
 part1.txt |      28979 B | ki_system\v8_phase5b_integrated_strategy_refinement_release.py
-part1.txt |      17381 B | ki_system\v8_phase5c_learning_outcome_closure_and_question_cluster_resolution.py
-part1.txt |      22326 B | ki_system\v8_phase5d_integrated_observation_and_strategy_memory_release.py
+part2.txt |      17381 B | ki_system\v8_phase5c_learning_outcome_closure_and_question_cluster_resolution.py
+part2.txt |      22326 B | ki_system\v8_phase5d_integrated_observation_and_strategy_memory_release.py
 part2.txt |      18613 B | ki_system\v8_phase5e_context_expansion_and_gap_closure_release.py
 part2.txt |      26963 B | ki_system\v8_phase5f_context_expansion_effectiveness_and_adaptive_windowing_release.py
 part2.txt |      23070 B | ki_system\v8_phase5g_context_strategy_selection_and_experiment_memory_release.py
-part2.txt |      30405 B | ki_system\v8_phase5h_strategy_experiment_outcome_learning_release.py
+part2.txt |      34514 B | ki_system\v8_phase5h_strategy_experiment_outcome_learning_release.py
 part2.txt |      23588 B | ki_system\v8_phase5i_outcome_driven_context_strategy_diversification_release.py
-part2.txt |      31119 B | ki_system\v8_phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release.py
-part2.txt |      41292 B | ki_system\v8_phase6b_sleep_replay_effectiveness_and_plasticity_adjustment_release.py
-part3.txt |      49379 B | ki_system\v8_phase6c_bias_persistence_and_self_regulating_meta_release.py
+part2.txt |      32988 B | ki_system\v8_phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release.py
+part2.txt |      42698 B | ki_system\v8_phase6b_sleep_replay_effectiveness_and_plasticity_adjustment_release.py
+part3.txt |      31981 B | ki_system\v8_phase6c_bias_persistence_and_self_regulating_meta_release.py
 part3.txt |      28166 B | ki_system\v8_phase6d_saturation_homeostasis_and_meta_metaplasticity_release.py
 part3.txt |      25813 B | ki_system\v8_phase7a_adenosine_homeostat_release.py
 part3.txt |       5924 B | ki_system\v8_phase7b1_wake_chain_bridge_release.py
@@ -51,5 +55,6 @@ part3.txt |      11245 B | ki_system\v8_phase7g_bdnf_growth_consolidation_releas
 part3.txt |       2656 B | ki_system\v8_sensory_deprivation.py
 part3.txt |        853 B | ki_system\wiki_quality.py
 part3.txt |        486 B | main.py
-part3.txt |       3125 B | reset_learning.py
+part3.txt |       7580 B | prune_history.py
+part3.txt |      19832 B | reset_learning.py
 part3.txt |       9872 B | systemtest.py

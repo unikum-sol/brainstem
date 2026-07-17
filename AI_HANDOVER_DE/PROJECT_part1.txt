@@ -1,4 +1,140 @@
 
+===== FILE: add_indexes.py =====
+# -*- coding: utf-8 -*-
+"""Legt fehlende Indizes auf die tatsaechlich gefilterten Spalten an (behebt SQL-Flaschenhals).
+Default = DRY-RUN (zeigt Plan, aendert nichts). Echt nur mit --apply (Backup davor).
+Selbst-Test: python add_indexes.py --selftest"""
+import sqlite3, os, shutil, sys, time
+from pathlib import Path
+
+INDEX_SPECS = [
+    ("hypothesis_learning_updates", "hypothesis_id", "idx_hlu_hyp"),
+    ("hypothesis_feedback", "hypothesis_id", "idx_hfb_hyp"),
+    ("hypothesis_error_events", "hypothesis_id", "idx_hee_hyp"),
+    ("hypothesis_stability_scores", "hypothesis_id", "idx_hss_hyp"),
+    ("phase5f_context_window_experiments", "target_chunk_id", "idx_p5f_tgt"),
+]
+
+def _table_exists(con, t):
+    try:
+        return con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (t,)).fetchone() is not None
+    except Exception:
+        return False
+
+def _col_exists(con, t, c):
+    try:
+        return c in [r[1] for r in con.execute("PRAGMA table_info(" + t + ")").fetchall()]
+    except Exception:
+        return False
+
+def _index_exists(con, name):
+    try:
+        return con.execute("SELECT name FROM sqlite_master WHERE type='index' AND name=?", (name,)).fetchone() is not None
+    except Exception:
+        return False
+
+def plan(con):
+    out = []
+    for t, c, name in INDEX_SPECS:
+        if not _table_exists(con, t):
+            status = "table_missing"
+        elif not _col_exists(con, t, c):
+            status = "col_missing"
+        elif _index_exists(con, name):
+            status = "exists"
+        else:
+            status = "will_create"
+        out.append((t, c, name, status))
+    return out
+
+def apply_indexes(con):
+    results = []
+    for t, c, name, status in plan(con):
+        if status != "will_create":
+            results.append((name, status))
+            continue
+        t0 = time.time()
+        try:
+            con.execute("CREATE INDEX IF NOT EXISTS " + name + " ON " + t + "(" + c + ")")
+            con.commit()
+            results.append((name, "created %.1fs" % (time.time() - t0)))
+        except Exception as e:
+            results.append((name, "ERR: " + str(e)))
+    return results
+
+def _main():
+    dry = "--apply" not in sys.argv
+    db = "ki_memory.sqlite3"
+    print("=" * 60)
+    print("INDEX-TOOL " + ("(DRY-RUN - aendert nichts)" if dry else "(APPLY)"))
+    print("=" * 60)
+    if not os.path.exists(db):
+        print("ERROR: ki_memory.sqlite3 nicht gefunden."); return
+    con = sqlite3.connect(db, timeout=60)
+    print("\nPLAN:")
+    for t, c, name, status in plan(con):
+        print("  %-40s %-16s -> %s" % (t + "(" + c + ")", name, status))
+    if dry:
+        con.close()
+        print("\nDRY-RUN: nichts geaendert. Echt anlegen (mit Backup):")
+        print("   python add_indexes.py --apply")
+        return
+    con.close()
+    bak = db + ".bak_idx_" + str(int(time.time()))
+    print("\nErstelle Backup (kann bei ~5.6GB einen Moment dauern) ...")
+    shutil.copy2(db, bak)
+    print("Backup:", bak)
+    con = sqlite3.connect(db, timeout=120)
+    print("\nLege Indizes an:")
+    for name, res in apply_indexes(con):
+        print("  %-16s : %s" % (name, res))
+    con.close()
+    print("\nFERTIG: Indizes angelegt. Lookups auf diese Spalten sind jetzt schnell.")
+
+def _selftest():
+    print("SELFTEST add_indexes")
+    db = "idx_selftest.sqlite3"
+    if os.path.exists(db): os.remove(db)
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE hypothesis_learning_updates(id INTEGER PRIMARY KEY, hypothesis_id INTEGER, val REAL)")
+    c.execute("CREATE TABLE hypothesis_feedback(id INTEGER PRIMARY KEY, hypothesis_id INTEGER)")
+    c.execute("CREATE TABLE phase5f_context_window_experiments(id INTEGER PRIMARY KEY, target_chunk_id INTEGER)")
+    # hypothesis_error_events fehlt komplett -> table_missing
+    # hypothesis_stability_scores hat die Spalte nicht -> col_missing
+    c.execute("CREATE TABLE hypothesis_stability_scores(id INTEGER PRIMARY KEY, something REAL)")
+    for i in range(50):
+        c.execute("INSERT INTO hypothesis_learning_updates(hypothesis_id,val) VALUES(?,?)", (i % 5, 0.1))
+    c.commit()
+    p = dict((name, status) for t, col, name, status in plan(c))
+    res = {}
+    res["will_create"] = "PASS" if p.get("idx_hlu_hyp") == "will_create" else "FAIL(%s)" % p.get("idx_hlu_hyp")
+    res["table_missing"] = "PASS" if p.get("idx_hee_hyp") == "table_missing" else "FAIL(%s)" % p.get("idx_hee_hyp")
+    res["col_missing"] = "PASS" if p.get("idx_hss_hyp") == "col_missing" else "FAIL(%s)" % p.get("idx_hss_hyp")
+    # nichts erstellt im Dry-Plan
+    res["dry_no_create"] = "PASS" if not _index_exists(c, "idx_hlu_hyp") else "FAIL"
+    apply_indexes(c)
+    res["created"] = "PASS" if _index_exists(c, "idx_hlu_hyp") and _index_exists(c, "idx_hfb_hyp") and _index_exists(c, "idx_p5f_tgt") else "FAIL"
+    res["skip_missing"] = "PASS" if not _index_exists(c, "idx_hee_hyp") and not _index_exists(c, "idx_hss_hyp") else "FAIL"
+    c.close(); os.remove(db)
+    allp = all(v.startswith("PASS") for v in res.values())
+    for k in ("will_create", "table_missing", "col_missing", "dry_no_create", "created", "skip_missing"):
+        print("  [%s] %-14s: %s" % ("OK" if res[k].startswith("PASS") else "X", k, res[k]))
+    print("OVERALL:", "ALL PASS" if allp else "SOME FAILED")
+
+if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        _selftest()
+    else:
+        _main()
+===== END FILE: add_indexes.py =====
+
+===== FILE: desktop.ini =====
+[LocalizedFileNames]
+collect_legacy_large_slice_a_full_source_v2.py=@collect_legacy_large_slice_a_full_source_v2.py,0
+post_legacy_deprivation_runtime_adapter_v1.py=@post_legacy_deprivation_runtime_adapter_v1.py,0
+
+===== END FILE: desktop.ini =====
+
 ===== FILE: ki_system\__init__.py =====
 """KI-System V8 Clean Final."""
 __version__ = "8.0-clean-final"
@@ -155,16 +291,77 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                             ('status', "TEXT DEFAULT 'open'"),
                             ('created_at', 'INTEGER')],
  'phase5g_experiment_outcomes': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                 ('experiment_id', 'INTEGER'),
+                                 ('gap_id', 'INTEGER'),
                                  ('strategy', 'TEXT'),
-                                 ('outcome_score', 'REAL DEFAULT 0'),
+                                 ('before_score', 'REAL DEFAULT 0'),
+                                 ('after_score', 'REAL DEFAULT 0'),
                                  ('closure_delta', 'REAL DEFAULT 0'),
+                                 ('read_status', 'TEXT'),
+                                 ('no_candidate_penalty', 'REAL DEFAULT 0'),
+                                 ('effectiveness_score', 'REAL DEFAULT 0'),
+                                 ('outcome', 'TEXT'),
+                                 ('details', 'TEXT'),
+                                 ('created_at', 'INTEGER'),
+                                 ('outcome_key', 'TEXT'),
+                                 ('experiment_key', 'TEXT'),
+                                 ('gap_key', 'TEXT'),
+                                 ('gap_type', 'TEXT'),
+                                 ('role', 'TEXT'),
+                                 ('source_chunk_id', 'INTEGER'),
+                                 ('center_chunk_id', 'INTEGER'),
+                                 ('target_chunk_id', 'INTEGER'),
+                                 ('selected_strategy', 'TEXT'),
+                                 ('window_strategy', 'TEXT'),
+                                 ('window_radius', 'INTEGER'),
+                                 ('no_candidate_rate', 'REAL DEFAULT 0'),
                                  ('overlap_score', 'REAL DEFAULT 0'),
-                                 ('created_at', 'INTEGER')],
- 'phase5h_strategy_outcome_memory': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
-                                     ('strategy', 'TEXT'),
-                                     ('outcome_score', 'REAL DEFAULT 0'),
-                                     ('confidence', 'REAL DEFAULT 0'),
-                                     ('created_at', 'INTEGER')],
+                                 ('strategy_score', 'REAL DEFAULT 0'),
+                                 ('outcome_score', 'REAL DEFAULT 0'),
+                                 ('outcome_label', 'TEXT'),
+                                 ('recommendation', 'TEXT'),
+                                 ('learning_rate', 'REAL DEFAULT 0'),
+                                 ('error_weight', 'REAL DEFAULT 0'),
+                                 ('revision_pressure', 'REAL DEFAULT 0'),
+                                 ('exploration_pressure', 'REAL DEFAULT 0'),
+                                 ('inhibition_level', 'REAL DEFAULT 0'),
+                                 ('consolidation_gain', 'REAL DEFAULT 0'),
+                                 ('dopamine', 'REAL DEFAULT 0'),
+                                 ('serotonin', 'REAL DEFAULT 0'),
+                                 ('glutamate', 'REAL DEFAULT 0'),
+                                 ('gaba', 'REAL DEFAULT 0'),
+                                 ('noradrenaline', 'REAL DEFAULT 0'),
+                                 ('acetylcholine', 'REAL DEFAULT 0'),
+                                 ('evidence_count', 'INTEGER DEFAULT 1'),
+                                 ('updated_at', 'INTEGER DEFAULT 0'),
+                                 ('phase5i_memory_used', 'INTEGER DEFAULT 0'),
+                                 ('phase6a_replay_priority', 'REAL DEFAULT 0'),
+                                 ('phase6a_replay_weight', 'REAL DEFAULT 0'),
+                                 ('phase6a_meta_plasticity', 'REAL DEFAULT 0'),
+                                 ('phase6a_sleep_replay_count', 'INTEGER DEFAULT 0'),
+                                 ('phase6a_last_replayed_at', 'INTEGER'),
+                                 ('phase6a_replay_decision', 'TEXT'),
+                                 ('phase6a_replay_reason', 'TEXT')],
+ 'phase5h_strategy_outcome_memory': [('memory_key', 'TEXT PRIMARY KEY'),
+                                     ('selected_strategy', 'TEXT'),
+                                     ('gap_type', 'TEXT'),
+                                     ('role', 'TEXT'),
+                                     ('observations', 'INTEGER DEFAULT 0'),
+                                     ('avg_outcome_score', 'REAL DEFAULT 0'),
+                                     ('avg_closure_delta', 'REAL DEFAULT 0'),
+                                     ('avg_no_candidate_rate', 'REAL DEFAULT 0'),
+                                     ('avg_overlap_score', 'REAL DEFAULT 0'),
+                                     ('avg_strategy_score', 'REAL DEFAULT 0'),
+                                     ('recommendation', 'TEXT'),
+                                     ('neuromodulator_profile', 'TEXT'),
+                                     ('details', 'TEXT'),
+                                     ('first_seen', 'INTEGER'),
+                                     ('last_seen', 'INTEGER'),
+                                     ('updated_at', 'INTEGER DEFAULT 0'),
+                                     ('phase6a_replay_weight', 'REAL DEFAULT 0'),
+                                     ('phase6a_meta_plasticity', 'REAL DEFAULT 0'),
+                                     ('phase6a_last_replayed_at', 'INTEGER'),
+                                     ('phase6a_replay_recommendation', 'TEXT')],
  'phase6a_sleep_replay_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
                                  ('candidate_count', 'INTEGER'),
                                  ('replay_events', 'INTEGER'),
@@ -175,7 +372,13 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                                  ('plasticity_level', 'REAL'),
                                  ('exploration_bias', 'REAL'),
                                  ('consolidation_bias', 'REAL'),
-                                 ('created_at', 'INTEGER')],
+                                 ('created_at', 'INTEGER'),
+        ('population_available', 'INTEGER DEFAULT 0'),
+        ('outcome_observation_available', 'INTEGER DEFAULT 0'),
+        ('outcome_observation_count', 'INTEGER DEFAULT 0'),
+        ('evidence_state', 'TEXT'),
+        ('evidence_reason', 'TEXT')
+    ],
  'phase6a_meta_plasticity_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
  'phase6a_neuromodulated_sleep_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
  'attention_queue_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER DEFAULT 0')],
@@ -400,7 +603,268 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                    ('phase6a_last_adjusted_at', 'INTEGER'),
                    ('phase6a_reason', 'TEXT')],
  'reading_strategy_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER DEFAULT 0')],
- 'rollback_safe_core_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER DEFAULT 0')]}
+ 'rollback_safe_core_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER DEFAULT 0')],
+ 'phase5g_strategy_selection_memory': [('memory_key', 'TEXT PRIMARY KEY'),
+                                       ('gap_type', 'TEXT'),
+                                       ('role', 'TEXT'),
+                                       ('strategy', 'TEXT'),
+                                       ('observations', 'INTEGER DEFAULT 0'),
+                                       ('avg_closure_delta', 'REAL DEFAULT 0'),
+                                       ('avg_no_candidate_rate', 'REAL DEFAULT 0'),
+                                       ('avg_overlap_score', 'REAL DEFAULT 0'),
+                                       ('avg_effectiveness', 'REAL DEFAULT 0'),
+                                       ('avg_outcome_score', 'REAL DEFAULT 0'),
+                                       ('avg_expected_gain', 'REAL DEFAULT 0'),
+                                       ('dopamine', 'REAL DEFAULT 0'),
+                                       ('serotonin', 'REAL DEFAULT 0'),
+                                       ('glutamate', 'REAL DEFAULT 0'),
+                                       ('gaba', 'REAL DEFAULT 0'),
+                                       ('noradrenaline', 'REAL DEFAULT 0'),
+                                       ('acetylcholine', 'REAL DEFAULT 0'),
+                                       ('recommendation', 'TEXT'),
+                                       ('status', "TEXT DEFAULT 'observe'"),
+                                       ('details', 'TEXT'),
+                                       ('first_seen', 'INTEGER'),
+                                       ('last_seen', 'INTEGER'),
+                                       ('updated_at', 'INTEGER'),
+                                       ('selected_strategy', 'TEXT'),
+                                       ('avg_strategy_score', 'REAL DEFAULT 0'),
+                                       ('success_count', 'INTEGER DEFAULT 0'),
+                                       ('failure_count', 'INTEGER DEFAULT 0'),
+                                       ('neuromodulator_profile', 'TEXT'),
+                                       ('created_at', 'INTEGER DEFAULT 0'),
+                                       ('phase5i_diversification_score', 'REAL DEFAULT 0'),
+                                       ('phase5i_last_used_at', 'INTEGER'),
+                                       ('phase5i_recommendation', 'TEXT')],
+ 'phase5h_experiment_outcome_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                       ('phase', 'TEXT'),
+                                       ('experiments_seen', 'INTEGER DEFAULT 0'),
+                                       ('outcomes_written', 'INTEGER DEFAULT 0'),
+                                       ('memory_updates', 'INTEGER DEFAULT 0'),
+                                       ('avg_outcome_score', 'REAL DEFAULT 0'),
+                                       ('avg_closure_delta', 'REAL DEFAULT 0'),
+                                       ('avg_no_candidate_rate', 'REAL DEFAULT 0'),
+                                       ('avg_overlap_score', 'REAL DEFAULT 0'),
+                                       ('recommendation', 'TEXT'),
+                                       ('safety_ok', 'INTEGER DEFAULT 1'),
+                                       ('no_word_blacklists', "TEXT DEFAULT 'true'"),
+                                       ('fact_promotion', "TEXT DEFAULT 'disabled'"),
+                                       ('facts', 'INTEGER DEFAULT 0'),
+                                       ('relations', 'INTEGER DEFAULT 0'),
+                                       ('questions', 'INTEGER DEFAULT 0'),
+                                       ('created_at', 'INTEGER DEFAULT 0')],
+ 'phase5g_strategy_experiments': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                  ('gap_id', 'INTEGER'),
+                                  ('gap_key', 'TEXT'),
+                                  ('gap_type', 'TEXT'),
+                                  ('role', 'TEXT'),
+                                  ('source_strategy', 'TEXT'),
+                                  ('selected_strategy', 'TEXT'),
+                                  ('previous_best_strategy', 'TEXT'),
+                                  ('center_chunk_id', 'INTEGER'),
+                                  ('target_chunk_id', 'INTEGER'),
+                                  ('window_radius', 'INTEGER DEFAULT 0'),
+                                  ('expected_gain', 'REAL DEFAULT 0'),
+                                  ('predicted_effectiveness', 'REAL DEFAULT 0'),
+                                  ('observed_closure_delta', 'REAL DEFAULT 0'),
+                                  ('no_candidate_rate', 'REAL DEFAULT 0'),
+                                  ('overlap_score', 'REAL DEFAULT 0'),
+                                  ('exploration_pressure', 'REAL DEFAULT 0'),
+                                  ('inhibition_level', 'REAL DEFAULT 0'),
+                                  ('learning_rate', 'REAL DEFAULT 0'),
+                                  ('error_weight', 'REAL DEFAULT 0'),
+                                  ('revision_pressure', 'REAL DEFAULT 0'),
+                                  ('decision', 'TEXT'),
+                                  ('outcome', "TEXT DEFAULT 'pending'"),
+                                  ('details', 'TEXT'),
+                                  ('created_at', 'INTEGER'),
+                                  ('updated_at', 'INTEGER'),
+                                  ('experiment_key', 'TEXT'),
+                                  ('source_chunk_id', 'INTEGER'),
+                                  ('strategy', 'TEXT'),
+                                  ('window_strategy', 'TEXT'),
+                                  ('read_status', 'TEXT'),
+                                  ('before_score', 'REAL DEFAULT 0'),
+                                  ('after_score', 'REAL DEFAULT 0'),
+                                  ('closure_delta', 'REAL DEFAULT 0'),
+                                  ('strategy_score', 'REAL DEFAULT 0'),
+                                  ('effectiveness_score', 'REAL DEFAULT 0'),
+                                  ('outcome_score', 'REAL DEFAULT 0'),
+                                  ('outcome_label', 'TEXT'),
+                                  ('recommendation', 'TEXT'),
+                                  ('phase5h_outcome_score', 'REAL DEFAULT 0'),
+                                  ('phase5h_outcome_label', 'TEXT'),
+                                  ('phase5h_last_evaluated_at', 'INTEGER DEFAULT 0'),
+                                  ('phase5h_memory_key', 'TEXT'),
+                                  ('phase5h_reason', 'TEXT')],
+ 'phase5h_experiment_learning_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                        ('experiment_key', 'TEXT'),
+                                        ('outcome_key', 'TEXT'),
+                                        ('selected_strategy', 'TEXT'),
+                                        ('gap_type', 'TEXT'),
+                                        ('role', 'TEXT'),
+                                        ('target_chunk_id', 'INTEGER'),
+                                        ('outcome_score', 'REAL DEFAULT 0'),
+                                        ('closure_delta', 'REAL DEFAULT 0'),
+                                        ('no_candidate_rate', 'REAL DEFAULT 0'),
+                                        ('overlap_score', 'REAL DEFAULT 0'),
+                                        ('strategy_score', 'REAL DEFAULT 0'),
+                                        ('recommendation', 'TEXT'),
+                                        ('event_type', 'TEXT'),
+                                        ('details', 'TEXT'),
+                                        ('created_at', 'INTEGER')],
+ 'phase5i_outcome_driven_experiments': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                        ('experiment_key', 'TEXT'),
+                                        ('gap_id', 'INTEGER'),
+                                        ('gap_key', 'TEXT'),
+                                        ('gap_type', 'TEXT'),
+                                        ('role', 'TEXT'),
+                                        ('center_chunk_id', 'INTEGER'),
+                                        ('target_chunk_id', 'INTEGER'),
+                                        ('selected_strategy', 'TEXT'),
+                                        ('previous_strategy', 'TEXT'),
+                                        ('strategy_score', 'REAL DEFAULT 0'),
+                                        ('expected_outcome_score', 'REAL DEFAULT 0'),
+                                        ('expected_closure_delta', 'REAL DEFAULT 0'),
+                                        ('expected_overlap_score', 'REAL DEFAULT 0'),
+                                        ('expected_no_candidate_rate', 'REAL DEFAULT 0'),
+                                        ('learning_rate', 'REAL DEFAULT 0'),
+                                        ('error_weight', 'REAL DEFAULT 0'),
+                                        ('revision_pressure', 'REAL DEFAULT 0'),
+                                        ('exploration_pressure', 'REAL DEFAULT 0'),
+                                        ('inhibition_level', 'REAL DEFAULT 0'),
+                                        ('consolidation_gain', 'REAL DEFAULT 0'),
+                                        ('dopamine', 'REAL DEFAULT 0'),
+                                        ('serotonin', 'REAL DEFAULT 0'),
+                                        ('glutamate', 'REAL DEFAULT 0'),
+                                        ('gaba', 'REAL DEFAULT 0'),
+                                        ('noradrenaline', 'REAL DEFAULT 0'),
+                                        ('acetylcholine', 'REAL DEFAULT 0'),
+                                        ('reason', 'TEXT'),
+                                        ('details', 'TEXT'),
+                                        ('created_at', 'INTEGER'),
+                                        ('updated_at', 'INTEGER')],
+ 'modern_outcome_bridge_shadow': [('shadow_key', 'TEXT PRIMARY KEY'),
+                                  ('source_table', 'TEXT'),
+                                  ('source_id', 'INTEGER'),
+                                  ('experiment_key', 'TEXT'),
+                                  ('gap_id', 'INTEGER'),
+                                  ('gap_key', 'TEXT'),
+                                  ('gap_type', 'TEXT'),
+                                  ('role', 'TEXT'),
+                                  ('center_chunk_id', 'INTEGER'),
+                                  ('target_chunk_id', 'INTEGER'),
+                                  ('selected_strategy', 'TEXT'),
+                                  ('strategy_score', 'REAL DEFAULT 0'),
+                                  ('expected_outcome_score', 'REAL DEFAULT 0'),
+                                  ('expected_closure_delta', 'REAL DEFAULT 0'),
+                                  ('expected_overlap_score', 'REAL DEFAULT 0'),
+                                  ('expected_no_candidate_rate', 'REAL DEFAULT 0'),
+                                  ('observed_read_status', 'TEXT'),
+                                  ('observed_read_count', 'INTEGER DEFAULT 0'),
+                                  ('observed_attention_score', 'REAL DEFAULT 0'),
+                                  ('observation_ready', 'INTEGER DEFAULT 0'),
+                                  ('mapped_closure_delta', 'REAL DEFAULT 0'),
+                                  ('mapped_overlap_score', 'REAL DEFAULT 0'),
+                                  ('mapped_no_candidate_rate', 'REAL DEFAULT 0'),
+                                  ('mapped_outcome_score', 'REAL DEFAULT 0'),
+                                  ('mapped_outcome_label', 'TEXT'),
+                                  ('mapped_recommendation', 'TEXT'),
+                                  ('projection_status', 'TEXT'),
+                                  ('missing_signals', 'TEXT'),
+                                  ('bridge_mode', "TEXT DEFAULT 'shadow'"),
+                                  ('details', 'TEXT'),
+                                  ('source_created_at', 'INTEGER'),
+                                  ('created_at', 'INTEGER'),
+                                  ('updated_at', 'INTEGER')],
+ 'modern_outcome_bridge_shadow_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                         ('phase', 'TEXT'),
+                                         ('source_rows_seen', 'INTEGER DEFAULT 0'),
+                                         ('shadow_rows_created', 'INTEGER DEFAULT 0'),
+                                         ('shadow_rows_updated', 'INTEGER DEFAULT 0'),
+                                         ('observation_ready', 'INTEGER DEFAULT 0'),
+                                         ('awaiting_observation', 'INTEGER DEFAULT 0'),
+                                         ('productive_outcomes_before', 'INTEGER DEFAULT 0'),
+                                         ('productive_outcomes_after', 'INTEGER DEFAULT 0'),
+                                         ('productive_memory_before', 'INTEGER DEFAULT 0'),
+                                         ('productive_memory_after', 'INTEGER DEFAULT 0'),
+                                         ('facts_before', 'INTEGER DEFAULT 0'),
+                                         ('facts_after', 'INTEGER DEFAULT 0'),
+                                         ('relations_before', 'INTEGER DEFAULT 0'),
+                                         ('relations_after', 'INTEGER DEFAULT 0'),
+                                         ('questions_before', 'INTEGER DEFAULT 0'),
+                                         ('questions_after', 'INTEGER DEFAULT 0'),
+                                         ('safety_ok', 'INTEGER DEFAULT 1'),
+                                         ('bridge_mode', "TEXT DEFAULT 'shadow'"),
+                                         ('created_at', 'INTEGER')],
+ 'modern_outcome_bridge_shadow_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'modern_gap_candidate_shadow': [('shadow_key', 'TEXT PRIMARY KEY'),
+                                 ('hypothesis_id', 'INTEGER'),
+                                 ('signature', 'TEXT'),
+                                 ('chunk_id', 'INTEGER'),
+                                 ('role', 'TEXT'),
+                                 ('status', 'TEXT'),
+                                 ('hypothesis_confidence', 'REAL DEFAULT 0'),
+                                 ('hypothesis_uncertainty', 'REAL DEFAULT 0'),
+                                 ('evidence_count', 'INTEGER DEFAULT 0'),
+                                 ('raw_observation_count', 'INTEGER DEFAULT 0'),
+                                 ('raw_created_count', 'INTEGER DEFAULT 0'),
+                                 ('raw_reobserved_count', 'INTEGER DEFAULT 0'),
+                                 ('stability', 'REAL'),
+                                 ('stability_confidence', 'REAL'),
+                                 ('stability_uncertainty', 'REAL'),
+                                 ('feedback_count', 'INTEGER DEFAULT 0'),
+                                 ('error_count', 'INTEGER DEFAULT 0'),
+                                 ('conflict_count', 'INTEGER DEFAULT 0'),
+                                 ('dopamine', 'REAL DEFAULT 0'),
+                                 ('serotonin', 'REAL DEFAULT 0'),
+                                 ('glutamate', 'REAL DEFAULT 0'),
+                                 ('gaba', 'REAL DEFAULT 0'),
+                                 ('noradrenaline', 'REAL DEFAULT 0'),
+                                 ('acetylcholine', 'REAL DEFAULT 0'),
+                                 ('phase6a_replay_weight', 'REAL DEFAULT 0'),
+                                 ('phase6a_meta_plasticity', 'REAL DEFAULT 0'),
+                                 ('phase6a_sleep_replay_count', 'INTEGER DEFAULT 0'),
+                                 ('last_replayed_at', 'INTEGER'),
+                                 ('first_observed_at', 'INTEGER'),
+                                 ('last_observed_at', 'INTEGER'),
+                                 ('signal_presence', 'TEXT'),
+                                 ('missing_signals', 'TEXT'),
+                                 ('candidate_state', "TEXT DEFAULT 'observed_only'"),
+                                 ('bridge_mode', "TEXT DEFAULT 'shadow'"),
+                                 ('details', 'TEXT'),
+                                 ('created_at', 'INTEGER'),
+                                 ('updated_at', 'INTEGER')],
+ 'modern_gap_candidate_shadow_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                        ('phase', 'TEXT'),
+                                        ('source_rows_seen', 'INTEGER DEFAULT 0'),
+                                        ('shadow_rows_created', 'INTEGER DEFAULT 0'),
+                                        ('shadow_rows_updated', 'INTEGER DEFAULT 0'),
+                                        ('rows_with_reobservation', 'INTEGER DEFAULT 0'),
+                                        ('rows_with_stability', 'INTEGER DEFAULT 0'),
+                                        ('rows_with_feedback', 'INTEGER DEFAULT 0'),
+                                        ('rows_with_errors', 'INTEGER DEFAULT 0'),
+                                        ('rows_with_replay', 'INTEGER DEFAULT 0'),
+                                        ('productive_gaps_before', 'INTEGER DEFAULT 0'),
+                                        ('productive_gaps_after', 'INTEGER DEFAULT 0'),
+                                        ('attention_before', 'INTEGER DEFAULT 0'),
+                                        ('attention_after', 'INTEGER DEFAULT 0'),
+                                        ('phase5f_experiments_before', 'INTEGER DEFAULT 0'),
+                                        ('phase5f_experiments_after', 'INTEGER DEFAULT 0'),
+                                        ('phase5g_experiments_before', 'INTEGER DEFAULT 0'),
+                                        ('phase5g_experiments_after', 'INTEGER DEFAULT 0'),
+                                        ('phase5i_experiments_before', 'INTEGER DEFAULT 0'),
+                                        ('phase5i_experiments_after', 'INTEGER DEFAULT 0'),
+                                        ('facts_before', 'INTEGER DEFAULT 0'),
+                                        ('facts_after', 'INTEGER DEFAULT 0'),
+                                        ('relations_before', 'INTEGER DEFAULT 0'),
+                                        ('relations_after', 'INTEGER DEFAULT 0'),
+                                        ('questions_before', 'INTEGER DEFAULT 0'),
+                                        ('questions_after', 'INTEGER DEFAULT 0'),
+                                        ('safety_ok', 'INTEGER DEFAULT 1'),
+                                        ('bridge_mode', "TEXT DEFAULT 'shadow'"),
+                                        ('created_at', 'INTEGER')],
+ 'modern_gap_candidate_shadow_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')]}
 BASE_SCHEMA = SCHEMA_TABLES
 
 PHASE_REGISTRY: List[Tuple[str, str]] = [
@@ -2748,6 +3212,616 @@ if __name__ == "__main__":
 
 ===== END FILE: ki_system\v8_deprivation_runner.py =====
 
+===== FILE: ki_system\v8_modern_gap_candidate_bridge_shadow_release.py =====
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+import json
+import sqlite3
+import time
+from typing import Any, Dict, List, Tuple
+
+PHASE = "modern_gap_candidate_bridge_shadow_v1"
+BRIDGE_MODE = "shadow"
+BATCH_LIMIT = 512
+SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'modern_gap_candidate_shadow': [('shadow_key', 'TEXT PRIMARY KEY'),
+                                 ('hypothesis_id', 'INTEGER'),
+                                 ('signature', 'TEXT'),
+                                 ('chunk_id', 'INTEGER'),
+                                 ('role', 'TEXT'),
+                                 ('status', 'TEXT'),
+                                 ('hypothesis_confidence', 'REAL DEFAULT 0'),
+                                 ('hypothesis_uncertainty', 'REAL DEFAULT 0'),
+                                 ('evidence_count', 'INTEGER DEFAULT 0'),
+                                 ('raw_observation_count', 'INTEGER DEFAULT 0'),
+                                 ('raw_created_count', 'INTEGER DEFAULT 0'),
+                                 ('raw_reobserved_count', 'INTEGER DEFAULT 0'),
+                                 ('stability', 'REAL'),
+                                 ('stability_confidence', 'REAL'),
+                                 ('stability_uncertainty', 'REAL'),
+                                 ('feedback_count', 'INTEGER DEFAULT 0'),
+                                 ('error_count', 'INTEGER DEFAULT 0'),
+                                 ('conflict_count', 'INTEGER DEFAULT 0'),
+                                 ('dopamine', 'REAL DEFAULT 0'),
+                                 ('serotonin', 'REAL DEFAULT 0'),
+                                 ('glutamate', 'REAL DEFAULT 0'),
+                                 ('gaba', 'REAL DEFAULT 0'),
+                                 ('noradrenaline', 'REAL DEFAULT 0'),
+                                 ('acetylcholine', 'REAL DEFAULT 0'),
+                                 ('phase6a_replay_weight', 'REAL DEFAULT 0'),
+                                 ('phase6a_meta_plasticity', 'REAL DEFAULT 0'),
+                                 ('phase6a_sleep_replay_count', 'INTEGER DEFAULT 0'),
+                                 ('last_replayed_at', 'INTEGER'),
+                                 ('first_observed_at', 'INTEGER'),
+                                 ('last_observed_at', 'INTEGER'),
+                                 ('signal_presence', 'TEXT'),
+                                 ('missing_signals', 'TEXT'),
+                                 ('candidate_state', "TEXT DEFAULT 'observed_only'"),
+                                 ('bridge_mode', "TEXT DEFAULT 'shadow'"),
+                                 ('details', 'TEXT'),
+                                 ('created_at', 'INTEGER'),
+                                 ('updated_at', 'INTEGER')],
+ 'modern_gap_candidate_shadow_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                        ('phase', 'TEXT'),
+                                        ('source_rows_seen', 'INTEGER DEFAULT 0'),
+                                        ('shadow_rows_created', 'INTEGER DEFAULT 0'),
+                                        ('shadow_rows_updated', 'INTEGER DEFAULT 0'),
+                                        ('rows_with_reobservation', 'INTEGER DEFAULT 0'),
+                                        ('rows_with_stability', 'INTEGER DEFAULT 0'),
+                                        ('rows_with_feedback', 'INTEGER DEFAULT 0'),
+                                        ('rows_with_errors', 'INTEGER DEFAULT 0'),
+                                        ('rows_with_replay', 'INTEGER DEFAULT 0'),
+                                        ('productive_gaps_before', 'INTEGER DEFAULT 0'),
+                                        ('productive_gaps_after', 'INTEGER DEFAULT 0'),
+                                        ('attention_before', 'INTEGER DEFAULT 0'),
+                                        ('attention_after', 'INTEGER DEFAULT 0'),
+                                        ('phase5f_experiments_before', 'INTEGER DEFAULT 0'),
+                                        ('phase5f_experiments_after', 'INTEGER DEFAULT 0'),
+                                        ('phase5g_experiments_before', 'INTEGER DEFAULT 0'),
+                                        ('phase5g_experiments_after', 'INTEGER DEFAULT 0'),
+                                        ('phase5i_experiments_before', 'INTEGER DEFAULT 0'),
+                                        ('phase5i_experiments_after', 'INTEGER DEFAULT 0'),
+                                        ('facts_before', 'INTEGER DEFAULT 0'),
+                                        ('facts_after', 'INTEGER DEFAULT 0'),
+                                        ('relations_before', 'INTEGER DEFAULT 0'),
+                                        ('relations_after', 'INTEGER DEFAULT 0'),
+                                        ('questions_before', 'INTEGER DEFAULT 0'),
+                                        ('questions_after', 'INTEGER DEFAULT 0'),
+                                        ('safety_ok', 'INTEGER DEFAULT 1'),
+                                        ('bridge_mode', "TEXT DEFAULT 'shadow'"),
+                                        ('created_at', 'INTEGER')],
+ 'modern_gap_candidate_shadow_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')]}
+PROTECTED_TABLES = (
+    "internal_learning_gaps", "chunk_attention_scores", "phase5f_context_window_experiments",
+    "phase5g_strategy_experiments", "phase5i_outcome_driven_experiments", "facts", "relations", "questions",
+)
+
+def _now() -> int:
+    return int(time.time())
+
+def _json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+def _table_exists(con: sqlite3.Connection, table: str) -> bool:
+    return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
+
+def _columns(con: sqlite3.Connection, table: str) -> List[str]:
+    if not _table_exists(con, table):
+        return []
+    return [r[1] for r in con.execute("PRAGMA table_info(" + table + ")").fetchall()]
+
+def _count(con: sqlite3.Connection, table: str) -> int:
+    if not _table_exists(con, table):
+        return 0
+    return int(con.execute("SELECT COUNT(1) FROM " + table).fetchone()[0])
+
+def _protected_counts(con: sqlite3.Connection) -> Dict[str, int]:
+    return {table: _count(con, table) for table in PROTECTED_TABLES}
+
+def ensure_schema(con: sqlite3.Connection) -> Dict[str, Any]:
+    report = {"created_tables": [], "added_columns": []}
+    for table, definitions in SCHEMA_TABLES.items():
+        if not _table_exists(con, table):
+            con.execute("CREATE TABLE " + table + " (" + ", ".join(name + " " + decl for name, decl in definitions) + ")")
+            report["created_tables"].append(table)
+        else:
+            existing = set(_columns(con, table))
+            for name, decl in definitions:
+                if name in existing:
+                    continue
+                upper = decl.upper()
+                if "PRIMARY KEY" in upper or "AUTOINCREMENT" in upper:
+                    continue
+                con.execute("ALTER TABLE " + table + " ADD COLUMN " + name + " " + decl)
+                report["added_columns"].append(table + "." + name)
+    con.execute("CREATE INDEX IF NOT EXISTS idx_gap_shadow_hypothesis ON modern_gap_candidate_shadow(hypothesis_id)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_gap_shadow_updated ON modern_gap_candidate_shadow(updated_at)")
+    if _table_exists(con, "context_hypotheses"):
+        con.execute("CREATE INDEX IF NOT EXISTS idx_gap_shadow_source_checkpoint ON context_hypotheses(updated_at,id)")
+    if _table_exists(con, "context_learning_events"):
+        con.execute("CREATE INDEX IF NOT EXISTS idx_gap_shadow_learning_events_hyp ON context_learning_events(hypothesis_id)")
+    if _table_exists(con, "hypothesis_feedback"):
+        con.execute("CREATE INDEX IF NOT EXISTS idx_gap_shadow_feedback_hyp ON hypothesis_feedback(hypothesis_id)")
+    if _table_exists(con, "hypothesis_error_events"):
+        con.execute("CREATE INDEX IF NOT EXISTS idx_gap_shadow_errors_hyp ON hypothesis_error_events(hypothesis_id)")
+    con.commit()
+    _self_check_schema(con)
+    return report
+
+def _self_check_schema(con: sqlite3.Connection) -> bool:
+    missing: List[str] = []
+    for table, definitions in SCHEMA_TABLES.items():
+        existing = set(_columns(con, table))
+        if not existing:
+            missing.append(table)
+        else:
+            missing.extend(table + "." + name for name, _decl in definitions if name not in existing)
+    if missing:
+        raise RuntimeError("Modern gap shadow schema missing: " + ", ".join(missing))
+    return True
+
+def _resolve_db(obj: Any = None) -> sqlite3.Connection:
+    if isinstance(obj, sqlite3.Connection):
+        return obj
+    if obj is not None:
+        for attr in ("mem", "memory", "m", "store", "memory_store"):
+            inner = getattr(obj, attr, None)
+            if inner is not None and inner is not obj:
+                try:
+                    return _resolve_db(inner)
+                except Exception:
+                    pass
+        for attr in ("conn", "con", "db", "connection"):
+            con = getattr(obj, attr, None)
+            if isinstance(con, sqlite3.Connection):
+                return con
+        for attr in ("db_path", "path", "filename"):
+            path = getattr(obj, attr, None)
+            if path:
+                return sqlite3.connect(str(path))
+    return sqlite3.connect("ki_memory.sqlite3")
+
+def _state_set(con: sqlite3.Connection, key: str, value: Any, now: int) -> None:
+    con.execute(
+        "INSERT INTO modern_gap_candidate_shadow_state(key,value,updated_at) VALUES(?,?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
+        (key, str(value).lower() if isinstance(value, bool) else str(value), now),
+    )
+
+def _state_int(con: sqlite3.Connection, key: str, default: int = 0) -> int:
+    row = con.execute("SELECT value FROM modern_gap_candidate_shadow_state WHERE key=?", (key,)).fetchone()
+    try:
+        return int(row[0]) if row else int(default)
+    except Exception:
+        return int(default)
+
+def observe_shadow(obj: Any = None, limit: int = BATCH_LIMIT) -> Dict[str, Any]:
+    con = _resolve_db(obj)
+    ensure_schema(con)
+    _self_check_schema(con)
+    now = _now()
+    before = _protected_counts(con)
+    checkpoint_updated = _state_int(con, "checkpoint_updated_at", 0)
+    checkpoint_id = _state_int(con, "checkpoint_hypothesis_id", 0)
+    rows = con.execute(
+        "SELECT h.id,h.signature,h.chunk_id,h.role,h.status,h.confidence,h.uncertainty,h.evidence_count,"
+        "h.dopamine,h.serotonin,h.glutamate,h.gaba,h.noradrenaline,h.acetylcholine,"
+        "h.phase6a_replay_weight,h.phase6a_meta_plasticity,h.phase6a_sleep_replay_count,h.phase6a_last_replayed_at,h.created_at,h.updated_at,"
+        "s.stability,s.confidence,s.uncertainty,s.feedback_count,s.error_count,s.conflict_count "
+        "FROM context_hypotheses h LEFT JOIN hypothesis_stability_scores s ON s.hypothesis_id=h.id "
+        "WHERE (COALESCE(h.updated_at,0)>? OR (COALESCE(h.updated_at,0)=? AND h.id>?)) "
+        "ORDER BY COALESCE(h.updated_at,0),h.id LIMIT ?",
+        (checkpoint_updated, checkpoint_updated, checkpoint_id, max(1, min(int(limit), BATCH_LIMIT))),
+    ).fetchall()
+    created = updated = with_reobs = with_stability = with_feedback = with_errors = with_replay = 0
+    last_updated = checkpoint_updated
+    last_id = checkpoint_id
+    for row in rows:
+        (hid,signature,chunk_id,role,status,hconf,hunc,evidence,dopamine,serotonin,glutamate,gaba,noradrenaline,acetylcholine,
+         replay_weight,meta_plasticity,replay_count,last_replayed,created_at,updated_at,stability,sconf,sunc,feedback_count,error_count,conflict_count)=row
+        ev = con.execute(
+            "SELECT COUNT(1),SUM(CASE WHEN event_type='raw_observation_created' THEN 1 ELSE 0 END),"
+            "SUM(CASE WHEN event_type='raw_observation_reobserved' THEN 1 ELSE 0 END),MIN(created_at),MAX(created_at) "
+            "FROM context_learning_events WHERE hypothesis_id=?", (hid,)
+        ).fetchone()
+        raw_count=int((ev and ev[0]) or 0); raw_created=int((ev and ev[1]) or 0); raw_reobs=int((ev and ev[2]) or 0)
+        first_obs=(ev and ev[3]) or created_at; last_obs=(ev and ev[4]) or updated_at
+        fb_total=int(con.execute("SELECT COUNT(1) FROM hypothesis_feedback WHERE hypothesis_id=?",(hid,)).fetchone()[0]) if _table_exists(con,"hypothesis_feedback") else 0
+        err_total=int(con.execute("SELECT COUNT(1) FROM hypothesis_error_events WHERE hypothesis_id=?",(hid,)).fetchone()[0]) if _table_exists(con,"hypothesis_error_events") else 0
+        feedback_total=max(int(feedback_count or 0),int(fb_total or 0)); error_total=max(int(error_count or 0),int(err_total or 0))
+        presence={"raw_observation":raw_count>0,"reobservation":raw_reobs>0,"stability":stability is not None,"feedback":feedback_total>0,
+                  "error":error_total>0,"conflict":int(conflict_count or 0)>0,"replay":int(replay_count or 0)>0 or float(replay_weight or 0)>0}
+        missing=sorted(k for k,v in presence.items() if not v)
+        key="context_hypothesis:"+str(hid)
+        existed=con.execute("SELECT 1 FROM modern_gap_candidate_shadow WHERE shadow_key=?",(key,)).fetchone() is not None
+        con.execute(
+            "INSERT INTO modern_gap_candidate_shadow(shadow_key,hypothesis_id,signature,chunk_id,role,status,hypothesis_confidence,hypothesis_uncertainty,evidence_count,"
+            "raw_observation_count,raw_created_count,raw_reobserved_count,stability,stability_confidence,stability_uncertainty,feedback_count,error_count,conflict_count,"
+            "dopamine,serotonin,glutamate,gaba,noradrenaline,acetylcholine,phase6a_replay_weight,phase6a_meta_plasticity,phase6a_sleep_replay_count,last_replayed_at,"
+            "first_observed_at,last_observed_at,signal_presence,missing_signals,candidate_state,bridge_mode,details,created_at,updated_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(shadow_key) DO UPDATE SET signature=excluded.signature,chunk_id=excluded.chunk_id,role=excluded.role,status=excluded.status,"
+            "hypothesis_confidence=excluded.hypothesis_confidence,hypothesis_uncertainty=excluded.hypothesis_uncertainty,evidence_count=excluded.evidence_count,"
+            "raw_observation_count=excluded.raw_observation_count,raw_created_count=excluded.raw_created_count,raw_reobserved_count=excluded.raw_reobserved_count,"
+            "stability=excluded.stability,stability_confidence=excluded.stability_confidence,stability_uncertainty=excluded.stability_uncertainty,"
+            "feedback_count=excluded.feedback_count,error_count=excluded.error_count,conflict_count=excluded.conflict_count,dopamine=excluded.dopamine,"
+            "serotonin=excluded.serotonin,glutamate=excluded.glutamate,gaba=excluded.gaba,noradrenaline=excluded.noradrenaline,acetylcholine=excluded.acetylcholine,"
+            "phase6a_replay_weight=excluded.phase6a_replay_weight,phase6a_meta_plasticity=excluded.phase6a_meta_plasticity,"
+            "phase6a_sleep_replay_count=excluded.phase6a_sleep_replay_count,last_replayed_at=excluded.last_replayed_at,last_observed_at=excluded.last_observed_at,"
+            "signal_presence=excluded.signal_presence,missing_signals=excluded.missing_signals,details=excluded.details,updated_at=excluded.updated_at",
+            (key,hid,signature,chunk_id,role,status,float(hconf or 0),float(hunc or 0),int(evidence or 0),raw_count,raw_created,raw_reobs,
+             stability,sconf,sunc,feedback_total,error_total,int(conflict_count or 0),float(dopamine or 0),float(serotonin or 0),float(glutamate or 0),
+             float(gaba or 0),float(noradrenaline or 0),float(acetylcholine or 0),float(replay_weight or 0),float(meta_plasticity or 0),int(replay_count or 0),
+             last_replayed,first_obs,last_obs,_json(presence),_json(missing),"observed_only",BRIDGE_MODE,
+             _json({"projection_only":True,"no_gap_classification":True,"source":"context_hypotheses"}),now,now)
+        )
+        if existed: updated+=1
+        else: created+=1
+        with_reobs+=int(raw_reobs>0); with_stability+=int(stability is not None); with_feedback+=int(feedback_total>0)
+        with_errors+=int(error_total>0); with_replay+=int(presence["replay"])
+        last_updated=int(updated_at or 0); last_id=int(hid)
+    after = _protected_counts(con)
+    if before != after:
+        con.rollback()
+        raise RuntimeError("Shadow bridge changed protected tables: before="+repr(before)+" after="+repr(after))
+    values=(PHASE,len(rows),created,updated,with_reobs,with_stability,with_feedback,with_errors,with_replay,
+            before["internal_learning_gaps"],after["internal_learning_gaps"],before["chunk_attention_scores"],after["chunk_attention_scores"],
+            before["phase5f_context_window_experiments"],after["phase5f_context_window_experiments"],before["phase5g_strategy_experiments"],after["phase5g_strategy_experiments"],
+            before["phase5i_outcome_driven_experiments"],after["phase5i_outcome_driven_experiments"],before["facts"],after["facts"],before["relations"],after["relations"],
+            before["questions"],after["questions"],1,BRIDGE_MODE,now)
+    con.execute("INSERT INTO modern_gap_candidate_shadow_cycles(phase,source_rows_seen,shadow_rows_created,shadow_rows_updated,rows_with_reobservation,rows_with_stability,"
+                "rows_with_feedback,rows_with_errors,rows_with_replay,productive_gaps_before,productive_gaps_after,attention_before,attention_after,phase5f_experiments_before,"
+                "phase5f_experiments_after,phase5g_experiments_before,phase5g_experiments_after,phase5i_experiments_before,phase5i_experiments_after,facts_before,facts_after,"
+                "relations_before,relations_after,questions_before,questions_after,safety_ok,bridge_mode,created_at) VALUES("+",".join(["?"]*28)+")",values)
+    if rows:
+        _state_set(con,"checkpoint_updated_at",last_updated,now); _state_set(con,"checkpoint_hypothesis_id",last_id,now)
+    for key,value in {"phase":PHASE,"bridge_mode":BRIDGE_MODE,"candidate_state":"observed_only","productive_gap_writes":"disabled",
+                      "attention_writes":"disabled","phase5f_writes":"disabled","phase5g_writes":"disabled","phase5i_writes":"disabled",
+                      "direct_fact_writes":"disabled","direct_relation_writes":"disabled","question_writes":"disabled","fact_promotion":"disabled",
+                      "last_source_rows_seen":len(rows),"last_safety_ok":True}.items():
+        _state_set(con,key,value,now)
+    con.commit()
+    return {"status":"modern_gap_candidate_shadow_complete","phase":PHASE,"bridge_mode":BRIDGE_MODE,"source_rows_seen":len(rows),
+            "shadow_rows_created":created,"shadow_rows_updated":updated,"rows_with_reobservation":with_reobs,"rows_with_stability":with_stability,
+            "rows_with_feedback":with_feedback,"rows_with_errors":with_errors,"rows_with_replay":with_replay,"protected_counts_unchanged":True,
+            "facts":after["facts"],"relations":after["relations"],"questions":after["questions"]}
+
+===== END FILE: ki_system\v8_modern_gap_candidate_bridge_shadow_release.py =====
+
+===== FILE: ki_system\v8_modern_outcome_bridge_shadow_release.py =====
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+import json
+import sqlite3
+import time
+from typing import Any, Dict, List, Tuple
+
+PHASE = "modern_outcome_bridge_shadow_v1"
+BRIDGE_MODE = "shadow"
+SOURCE_TABLE = "phase5i_outcome_driven_experiments"
+
+SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'phase5i_outcome_driven_experiments': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                        ('experiment_key', 'TEXT'),
+                                        ('gap_id', 'INTEGER'),
+                                        ('gap_key', 'TEXT'),
+                                        ('gap_type', 'TEXT'),
+                                        ('role', 'TEXT'),
+                                        ('center_chunk_id', 'INTEGER'),
+                                        ('target_chunk_id', 'INTEGER'),
+                                        ('selected_strategy', 'TEXT'),
+                                        ('previous_strategy', 'TEXT'),
+                                        ('strategy_score', 'REAL DEFAULT 0'),
+                                        ('expected_outcome_score', 'REAL DEFAULT 0'),
+                                        ('expected_closure_delta', 'REAL DEFAULT 0'),
+                                        ('expected_overlap_score', 'REAL DEFAULT 0'),
+                                        ('expected_no_candidate_rate', 'REAL DEFAULT 0'),
+                                        ('learning_rate', 'REAL DEFAULT 0'),
+                                        ('error_weight', 'REAL DEFAULT 0'),
+                                        ('revision_pressure', 'REAL DEFAULT 0'),
+                                        ('exploration_pressure', 'REAL DEFAULT 0'),
+                                        ('inhibition_level', 'REAL DEFAULT 0'),
+                                        ('consolidation_gain', 'REAL DEFAULT 0'),
+                                        ('dopamine', 'REAL DEFAULT 0'),
+                                        ('serotonin', 'REAL DEFAULT 0'),
+                                        ('glutamate', 'REAL DEFAULT 0'),
+                                        ('gaba', 'REAL DEFAULT 0'),
+                                        ('noradrenaline', 'REAL DEFAULT 0'),
+                                        ('acetylcholine', 'REAL DEFAULT 0'),
+                                        ('reason', 'TEXT'),
+                                        ('details', 'TEXT'),
+                                        ('created_at', 'INTEGER'),
+                                        ('updated_at', 'INTEGER')],
+ 'modern_outcome_bridge_shadow': [('shadow_key', 'TEXT PRIMARY KEY'),
+                                  ('source_table', 'TEXT'),
+                                  ('source_id', 'INTEGER'),
+                                  ('experiment_key', 'TEXT'),
+                                  ('gap_id', 'INTEGER'),
+                                  ('gap_key', 'TEXT'),
+                                  ('gap_type', 'TEXT'),
+                                  ('role', 'TEXT'),
+                                  ('center_chunk_id', 'INTEGER'),
+                                  ('target_chunk_id', 'INTEGER'),
+                                  ('selected_strategy', 'TEXT'),
+                                  ('strategy_score', 'REAL DEFAULT 0'),
+                                  ('expected_outcome_score', 'REAL DEFAULT 0'),
+                                  ('expected_closure_delta', 'REAL DEFAULT 0'),
+                                  ('expected_overlap_score', 'REAL DEFAULT 0'),
+                                  ('expected_no_candidate_rate', 'REAL DEFAULT 0'),
+                                  ('observed_read_status', 'TEXT'),
+                                  ('observed_read_count', 'INTEGER DEFAULT 0'),
+                                  ('observed_attention_score', 'REAL DEFAULT 0'),
+                                  ('observation_ready', 'INTEGER DEFAULT 0'),
+                                  ('mapped_closure_delta', 'REAL DEFAULT 0'),
+                                  ('mapped_overlap_score', 'REAL DEFAULT 0'),
+                                  ('mapped_no_candidate_rate', 'REAL DEFAULT 0'),
+                                  ('mapped_outcome_score', 'REAL DEFAULT 0'),
+                                  ('mapped_outcome_label', 'TEXT'),
+                                  ('mapped_recommendation', 'TEXT'),
+                                  ('projection_status', 'TEXT'),
+                                  ('missing_signals', 'TEXT'),
+                                  ('bridge_mode', "TEXT DEFAULT 'shadow'"),
+                                  ('details', 'TEXT'),
+                                  ('source_created_at', 'INTEGER'),
+                                  ('created_at', 'INTEGER'),
+                                  ('updated_at', 'INTEGER')],
+ 'modern_outcome_bridge_shadow_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                         ('phase', 'TEXT'),
+                                         ('source_rows_seen', 'INTEGER DEFAULT 0'),
+                                         ('shadow_rows_created', 'INTEGER DEFAULT 0'),
+                                         ('shadow_rows_updated', 'INTEGER DEFAULT 0'),
+                                         ('observation_ready', 'INTEGER DEFAULT 0'),
+                                         ('awaiting_observation', 'INTEGER DEFAULT 0'),
+                                         ('productive_outcomes_before', 'INTEGER DEFAULT 0'),
+                                         ('productive_outcomes_after', 'INTEGER DEFAULT 0'),
+                                         ('productive_memory_before', 'INTEGER DEFAULT 0'),
+                                         ('productive_memory_after', 'INTEGER DEFAULT 0'),
+                                         ('facts_before', 'INTEGER DEFAULT 0'),
+                                         ('facts_after', 'INTEGER DEFAULT 0'),
+                                         ('relations_before', 'INTEGER DEFAULT 0'),
+                                         ('relations_after', 'INTEGER DEFAULT 0'),
+                                         ('questions_before', 'INTEGER DEFAULT 0'),
+                                         ('questions_after', 'INTEGER DEFAULT 0'),
+                                         ('safety_ok', 'INTEGER DEFAULT 1'),
+                                         ('bridge_mode', "TEXT DEFAULT 'shadow'"),
+                                         ('created_at', 'INTEGER')],
+ 'modern_outcome_bridge_shadow_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')]}
+
+def _now() -> int:
+    return int(time.time())
+
+def _clamp(value: Any, lo: float = 0.0, hi: float = 1.0) -> float:
+    try:
+        value = float(value)
+    except Exception:
+        value = 0.0
+    return max(lo, min(hi, value))
+
+def _json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+def _table_exists(con: sqlite3.Connection, table: str) -> bool:
+    return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
+
+def _columns(con: sqlite3.Connection, table: str) -> List[str]:
+    if not _table_exists(con, table):
+        return []
+    return [row[1] for row in con.execute("PRAGMA table_info(" + table + ")").fetchall()]
+
+def _count(con: sqlite3.Connection, table: str) -> int:
+    if not _table_exists(con, table):
+        return 0
+    return int(con.execute("SELECT COUNT(1) FROM " + table).fetchone()[0])
+
+def ensure_schema(con: sqlite3.Connection) -> Dict[str, Any]:
+    report = {"created_tables": [], "added_columns": []}
+    for table, definitions in SCHEMA_TABLES.items():
+        if not _table_exists(con, table):
+            con.execute("CREATE TABLE " + table + " (" + ", ".join(name + " " + decl for name, decl in definitions) + ")")
+            report["created_tables"].append(table)
+        else:
+            existing = set(_columns(con, table))
+            for name, decl in definitions:
+                if name in existing:
+                    continue
+                upper = decl.upper()
+                if "PRIMARY KEY" in upper or "AUTOINCREMENT" in upper:
+                    continue
+                con.execute("ALTER TABLE " + table + " ADD COLUMN " + name + " " + decl)
+                report["added_columns"].append(table + "." + name)
+    con.execute("CREATE INDEX IF NOT EXISTS idx_modern_outcome_shadow_source ON modern_outcome_bridge_shadow(source_table,source_id)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_modern_outcome_shadow_ready ON modern_outcome_bridge_shadow(observation_ready,updated_at)")
+    con.commit()
+    _self_check_schema(con)
+    return report
+
+def _self_check_schema(con: sqlite3.Connection) -> bool:
+    missing: List[str] = []
+    for table, definitions in SCHEMA_TABLES.items():
+        existing = set(_columns(con, table))
+        if not existing:
+            missing.append(table)
+            continue
+        missing.extend(table + "." + name for name, _decl in definitions if name not in existing)
+    if missing:
+        raise RuntimeError("Modern outcome shadow schema missing: " + ", ".join(missing))
+    return True
+
+def _state_set(con: sqlite3.Connection, key: str, value: Any, now: int) -> None:
+    con.execute(
+        "INSERT INTO modern_outcome_bridge_shadow_state(key,value,updated_at) VALUES(?,?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
+        (key, str(value).lower() if isinstance(value, bool) else str(value), now),
+    )
+
+def _recommendation(outcome: float, closure: float, no_candidate: float, overlap: float) -> str:
+    if outcome >= 0.62 and closure >= 0.08:
+        return "reinforce_strategy_for_gap_type"
+    if no_candidate >= 0.35:
+        return "reduce_or_shift_strategy_due_to_no_candidate"
+    if overlap >= 0.85 and closure < 0.06:
+        return "increase_contrast_and_reduce_overlap"
+    if closure < 0.03:
+        return "explore_alternative_context_strategy"
+    return "observe_and_refine_strategy"
+
+def _mapped_label(outcome: float, closure: float, no_candidate: float, overlap: float) -> str:
+    if closure > 0.09 and no_candidate < 0.35:
+        return "useful_strategy_signal"
+    if no_candidate >= 0.75:
+        return "no_candidate_strategy_penalty"
+    if overlap >= 0.9 and closure < 0.04:
+        return "high_overlap_low_gain"
+    if outcome >= 0.5:
+        return "promising_strategy_observe"
+    return "weak_strategy_signal"
+
+def _resolve_db(obj: Any = None) -> sqlite3.Connection:
+    if isinstance(obj, sqlite3.Connection):
+        return obj
+    if obj is not None:
+        for attr in ("mem", "memory", "m", "store", "memory_store"):
+            inner = getattr(obj, attr, None)
+            if inner is not None and inner is not obj:
+                try:
+                    return _resolve_db(inner)
+                except Exception:
+                    pass
+        for attr in ("conn", "con", "db", "connection"):
+            con = getattr(obj, attr, None)
+            if isinstance(con, sqlite3.Connection):
+                return con
+        for attr in ("db_path", "path", "filename"):
+            path = getattr(obj, attr, None)
+            if path:
+                return sqlite3.connect(str(path))
+    return sqlite3.connect("ki_memory.sqlite3")
+
+def observe_shadow(obj: Any = None, limit: int = 1200) -> Dict[str, Any]:
+    con = _resolve_db(obj)
+    ensure_schema(con)
+    _self_check_schema(con)
+    now = _now()
+    before = {
+        "outcomes": _count(con, "phase5g_experiment_outcomes"),
+        "memory": _count(con, "phase5h_strategy_outcome_memory"),
+        "facts": _count(con, "facts"),
+        "relations": _count(con, "relations"),
+        "questions": _count(con, "questions"),
+    }
+    rows = con.execute(
+        "SELECT id,experiment_key,gap_id,gap_key,gap_type,role,center_chunk_id,target_chunk_id,selected_strategy,"
+        "strategy_score,expected_outcome_score,expected_closure_delta,expected_overlap_score,expected_no_candidate_rate,"
+        "reason,details,created_at FROM phase5i_outcome_driven_experiments ORDER BY id DESC LIMIT ?",
+        (int(limit),),
+    ).fetchall()
+    created = updated = ready_count = awaiting = 0
+    rq_cols = set(_columns(con, "reading_queue"))
+    ca_cols = set(_columns(con, "chunk_attention_scores"))
+    for row in rows:
+        (source_id, experiment_key, gap_id, gap_key, gap_type, role, center_chunk, target_chunk,
+         strategy, strategy_score, expected_outcome, expected_closure, expected_overlap, expected_no_candidate,
+         reason, source_details, source_created_at) = row
+        read_status = "unknown"
+        read_count = 0
+        attention = 0.0
+        missing: List[str] = []
+        if target_chunk is None:
+            missing.append("target_chunk_id")
+        if target_chunk is not None and {"chunk_id", "status", "read_count"}.issubset(rq_cols):
+            rr = con.execute("SELECT status,read_count FROM reading_queue WHERE chunk_id=?", (target_chunk,)).fetchone()
+            if rr:
+                read_status = str(rr[0] or "unknown")
+                read_count = int(rr[1] or 0)
+            else:
+                missing.append("reading_queue_row")
+        else:
+            missing.append("reading_queue_status")
+        if target_chunk is not None and {"chunk_id", "attention_score"}.issubset(ca_cols):
+            ar = con.execute("SELECT attention_score FROM chunk_attention_scores WHERE chunk_id=?", (target_chunk,)).fetchone()
+            if ar:
+                attention = _clamp(ar[0])
+            else:
+                missing.append("chunk_attention_row")
+        else:
+            missing.append("chunk_attention_score")
+        observation_ready = int(read_count > 0 or read_status in ("read", "read_no_candidate", "completed", "done"))
+        if observation_ready:
+            ready_count += 1
+        else:
+            awaiting += 1
+            missing.append("completed_read_observation")
+        closure = _clamp(expected_closure, -1.0, 1.0)
+        overlap = _clamp(expected_overlap if expected_overlap is not None else 0.5)
+        no_candidate = _clamp(expected_no_candidate)
+        if read_status == "read_no_candidate":
+            no_candidate = 1.0
+        score = _clamp(strategy_score if strategy_score is not None else expected_outcome)
+        mapped_outcome = _clamp(0.45 * max(closure, 0.0) + 0.25 * (1.0 - no_candidate) + 0.20 * (1.0 - overlap) + 0.10 * score)
+        label = _mapped_label(mapped_outcome, closure, no_candidate, overlap)
+        recommendation = _recommendation(mapped_outcome, max(closure, 0.0), no_candidate, overlap)
+        shadow_key = SOURCE_TABLE + ":" + str(source_id)
+        exists = con.execute("SELECT 1 FROM modern_outcome_bridge_shadow WHERE shadow_key=?", (shadow_key,)).fetchone() is not None
+        con.execute(
+            "INSERT INTO modern_outcome_bridge_shadow("
+            "shadow_key,source_table,source_id,experiment_key,gap_id,gap_key,gap_type,role,center_chunk_id,target_chunk_id,selected_strategy,"
+            "strategy_score,expected_outcome_score,expected_closure_delta,expected_overlap_score,expected_no_candidate_rate,"
+            "observed_read_status,observed_read_count,observed_attention_score,observation_ready,mapped_closure_delta,mapped_overlap_score,"
+            "mapped_no_candidate_rate,mapped_outcome_score,mapped_outcome_label,mapped_recommendation,projection_status,missing_signals,"
+            "bridge_mode,details,source_created_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(shadow_key) DO UPDATE SET observed_read_status=excluded.observed_read_status,observed_read_count=excluded.observed_read_count,"
+            "observed_attention_score=excluded.observed_attention_score,observation_ready=excluded.observation_ready,mapped_closure_delta=excluded.mapped_closure_delta,"
+            "mapped_overlap_score=excluded.mapped_overlap_score,mapped_no_candidate_rate=excluded.mapped_no_candidate_rate,"
+            "mapped_outcome_score=excluded.mapped_outcome_score,mapped_outcome_label=excluded.mapped_outcome_label,"
+            "mapped_recommendation=excluded.mapped_recommendation,projection_status=excluded.projection_status,missing_signals=excluded.missing_signals,"
+            "details=excluded.details,updated_at=excluded.updated_at",
+            (shadow_key,SOURCE_TABLE,source_id,experiment_key,gap_id,gap_key,gap_type,role,center_chunk,target_chunk,strategy,
+             _clamp(strategy_score),_clamp(expected_outcome),closure,overlap,no_candidate,read_status,read_count,attention,observation_ready,
+             closure,overlap,no_candidate,mapped_outcome,label,recommendation,
+             "observation_ready_projection" if observation_ready else "awaiting_observation_projection",
+             _json(sorted(set(missing))),BRIDGE_MODE,
+             _json({"source_reason": reason, "source_details": source_details, "projection_only": True}),
+             source_created_at,now,now),
+        )
+        if exists:
+            updated += 1
+        else:
+            created += 1
+    after = {
+        "outcomes": _count(con, "phase5g_experiment_outcomes"),
+        "memory": _count(con, "phase5h_strategy_outcome_memory"),
+        "facts": _count(con, "facts"),
+        "relations": _count(con, "relations"),
+        "questions": _count(con, "questions"),
+    }
+    safety_ok = int(before == after)
+    if not safety_ok:
+        con.rollback()
+        raise RuntimeError("Shadow bridge changed productive or safety row counts: before=" + repr(before) + " after=" + repr(after))
+    con.execute(
+        "INSERT INTO modern_outcome_bridge_shadow_cycles(phase,source_rows_seen,shadow_rows_created,shadow_rows_updated,"
+        "observation_ready,awaiting_observation,productive_outcomes_before,productive_outcomes_after,productive_memory_before,productive_memory_after,"
+        "facts_before,facts_after,relations_before,relations_after,questions_before,questions_after,safety_ok,bridge_mode,created_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (PHASE,len(rows),created,updated,ready_count,awaiting,before["outcomes"],after["outcomes"],before["memory"],after["memory"],
+         before["facts"],after["facts"],before["relations"],after["relations"],before["questions"],after["questions"],1,BRIDGE_MODE,now),
+    )
+    for key, value in {
+        "phase": PHASE, "bridge_mode": BRIDGE_MODE, "source_table": SOURCE_TABLE,
+        "productive_outcome_writes": "disabled", "productive_memory_writes": "disabled",
+        "direct_fact_writes": "disabled", "direct_relation_writes": "disabled", "question_writes": "disabled",
+        "fact_promotion": "disabled", "last_source_rows_seen": len(rows), "last_observation_ready": ready_count,
+        "last_awaiting_observation": awaiting, "last_safety_ok": True,
+    }.items():
+        _state_set(con, key, value, now)
+    con.commit()
+    return {
+        "status": "modern_outcome_bridge_shadow_complete", "phase": PHASE, "bridge_mode": BRIDGE_MODE,
+        "source_rows_seen": len(rows), "shadow_rows_created": created, "shadow_rows_updated": updated,
+        "observation_ready": ready_count, "awaiting_observation": awaiting,
+        "productive_counts_unchanged": True, "facts": after["facts"], "relations": after["relations"], "questions": after["questions"],
+    }
+
+===== END FILE: ki_system\v8_modern_outcome_bridge_shadow_release.py =====
+
 ===== FILE: ki_system\v8_perf0_runtime_acceleration_release.py =====
 # -*- coding: utf-8 -*-
 """
@@ -3307,7 +4381,13 @@ def integrated_control_step(mem: Any = None) -> Dict[str, Any]:
 def managed_cycle(self, progress=None):
     ensure_phase5a_schema(getattr(self, "mem", None))
     result = _PREV_CYCLE(self, progress) if _PREV_CYCLE is not None else {"status": "phase5a_no_previous_cycle"}
+    try:
+        from ki_system import v8_modern_gap_candidate_bridge_shadow_release as gap_shadow
+        shadow = gap_shadow.observe_shadow(getattr(self, "mem", None))
+    except Exception as exc:
+        shadow = {"status": "modern_gap_candidate_shadow_error", "error": str(exc), "bridge_mode": "shadow"}
     summary = integrated_control_step(getattr(self, "mem", None))
+    summary["modern_gap_candidate_shadow"] = shadow
     if isinstance(result, dict):
         result["phase5a_integrated_release"] = summary
         return result
@@ -3886,593 +4966,3 @@ except Exception as _phase5b_autoload_exc:
     print("[PHASE5B_AUTOLOAD_ERROR]", _phase5b_autoload_exc)
 
 ===== END FILE: ki_system\v8_phase5b_integrated_strategy_refinement_release.py =====
-
-===== FILE: ki_system\v8_phase5c_learning_outcome_closure_and_question_cluster_resolution.py =====
-
-# V8-phase5c_learning_outcome_closure_and_question_cluster_resolution
-# Integrated, no blacklist, no fact/relation/question writes.
-import os, sqlite3, time, json
-
-PHASE = "phase5c_learning_outcome_closure_and_question_cluster_resolution"
-
-def _now(): return int(time.time())
-def _json(obj): return json.dumps(obj, ensure_ascii=False, sort_keys=True)
-def _connect(): return sqlite3.connect('ki_memory.sqlite3')
-
-def _conn_from_memory(mem):
-    if mem is None: return _connect(), True
-    for name in ('conn','con','db','connection'):
-        c=getattr(mem,name,None)
-        if c is not None and hasattr(c,'execute'): return c, False
-    for name in ('db_path','path','database_path'):
-        p=getattr(mem,name,None)
-        if p: return sqlite3.connect(str(p)), True
-    return _connect(), True
-
-def _memory_from_loop(loop):
-    for name in ('mem','memory','m','store','memory_store'):
-        v=getattr(loop,name,None)
-        if v is not None: return v
-    return None
-
-def _table_exists(cur, table):
-    return cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
-
-def _cols(cur, table):
-    if not _table_exists(cur, table): return []
-    return [r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
-
-def _add_col(cur, table, col, spec, changes):
-    if not _table_exists(cur, table): return
-    if col not in _cols(cur, table):
-        cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {spec}")
-        changes.append(f"add_column:{table}.{col}")
-
-def _safe_unique(cur, table, col, changes):
-    if not _table_exists(cur, table) or col not in _cols(cur, table): return
-    dup = cur.execute(f"SELECT {col}, COUNT(*) FROM {table} WHERE {col} IS NOT NULL GROUP BY {col} HAVING COUNT(*)>1 LIMIT 1").fetchone()
-    if dup:
-        changes.append(f"skip_unique_duplicates:{table}.{col}")
-        return
-    idx=f"idx_{table}_{col}_phase5c_unique"
-    cur.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {idx} ON {table}({col})")
-    changes.append(f"unique_index:{table}.{col}")
-
-def ensure_schema(mem=None):
-    db, own = _conn_from_memory(mem); cur = db.cursor(); changes=[]
-    cur.execute("""CREATE TABLE IF NOT EXISTS question_cluster_resolution_events(
-        id INTEGER PRIMARY KEY AUTOINCREMENT, cluster_key TEXT, question_type TEXT, role TEXT,
-        question_count INTEGER DEFAULT 0, open_count INTEGER DEFAULT 0, improved_count INTEGER DEFAULT 0,
-        persistent_count INTEGER DEFAULT 0, avg_priority REAL DEFAULT 0, avg_resolution_score REAL DEFAULT 0,
-        avg_strategy_effectiveness REAL DEFAULT 0, avg_learning_outcome REAL DEFAULT 0,
-        before_status TEXT, after_status TEXT, decision TEXT, details TEXT, created_at INTEGER DEFAULT 0)""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS learning_outcome_closure_events(
-        id INTEGER PRIMARY KEY AUTOINCREMENT, target_type TEXT, target_key TEXT, target_id INTEGER,
-        before_priority REAL DEFAULT 0, after_priority REAL DEFAULT 0, resolution_score REAL DEFAULT 0,
-        strategy_effectiveness_score REAL DEFAULT 0, learning_outcome_score REAL DEFAULT 0,
-        closure_status TEXT, closure_reason TEXT, neuromodulator_reason TEXT, created_at INTEGER DEFAULT 0)""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS phase5c_cluster_resolution_memory(
-        memory_key TEXT PRIMARY KEY, question_type TEXT, role TEXT, observations INTEGER DEFAULT 0,
-        avg_resolution_score REAL DEFAULT 0, avg_strategy_effectiveness REAL DEFAULT 0, avg_learning_outcome REAL DEFAULT 0,
-        persistent_count INTEGER DEFAULT 0, improved_count INTEGER DEFAULT 0, recommended_strategy TEXT,
-        status TEXT DEFAULT 'observe', updated_at INTEGER DEFAULT 0)""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS phase5c_runtime_state(
-        key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER DEFAULT 0)""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS phase5c_read_outcome_events(
-        id INTEGER PRIMARY KEY AUTOINCREMENT, chunk_id INTEGER, previous_priority REAL DEFAULT 0, new_priority REAL DEFAULT 0,
-        previous_attention REAL DEFAULT 0, new_attention REAL DEFAULT 0, status TEXT, reason TEXT, details TEXT, created_at INTEGER DEFAULT 0)""")
-    if _table_exists(cur, 'phase5b_internal_question_clusters'):
-        for col, spec in [('resolution_score','REAL DEFAULT 0'),('learning_outcome_score','REAL DEFAULT 0'),('strategy_effectiveness_score','REAL DEFAULT 0'),('closure_status',"TEXT DEFAULT 'open'"),('closure_reason','TEXT'),('last_closure_evaluated_at','INTEGER DEFAULT 0'),('closure_attempts','INTEGER DEFAULT 0'),('persistent_count','INTEGER DEFAULT 0'),('improved_count','INTEGER DEFAULT 0'),('open_count','INTEGER DEFAULT 0'),('phase5c_recommended_strategy','TEXT'),('phase5c_priority','REAL DEFAULT 0')]: _add_col(cur,'phase5b_internal_question_clusters',col,spec,changes)
-    if _table_exists(cur, 'internal_learning_questions'):
-        for col, spec in [('resolution_score','REAL DEFAULT 0'),('learning_outcome_score','REAL DEFAULT 0'),('strategy_effectiveness_score','REAL DEFAULT 0'),('closure_status',"TEXT DEFAULT 'internal_open'"),('closure_reason','TEXT'),('last_closure_evaluated_at','INTEGER DEFAULT 0'),('closure_attempts','INTEGER DEFAULT 0'),('phase5c_cluster_key','TEXT'),('phase5c_resolution_priority','REAL DEFAULT 0'),('phase5c_recommended_strategy','TEXT')]: _add_col(cur,'internal_learning_questions',col,spec,changes)
-    if _table_exists(cur, 'internal_learning_gaps'):
-        for col, spec in [('resolution_score','REAL DEFAULT 0'),('learning_outcome_score','REAL DEFAULT 0'),('strategy_effectiveness_score','REAL DEFAULT 0'),('priority','REAL DEFAULT 0'),('closure_status',"TEXT DEFAULT 'open'"),('closure_reason','TEXT'),('last_closure_evaluated_at','INTEGER DEFAULT 0'),('closure_attempts','INTEGER DEFAULT 0'),('phase5c_gap_outcome_score','REAL DEFAULT 0'),('phase5c_recommended_strategy','TEXT')]: _add_col(cur,'internal_learning_gaps',col,spec,changes)
-    if _table_exists(cur, 'reading_queue'):
-        for col, spec in [('phase5c_outcome_penalty','REAL DEFAULT 0'),('phase5c_reason','TEXT'),('phase5c_last_adjusted_at','INTEGER DEFAULT 0'),('phase5c_read_outcome_score','REAL DEFAULT 0')]: _add_col(cur,'reading_queue',col,spec,changes)
-    if _table_exists(cur, 'chunk_attention_scores'):
-        for col, spec in [('phase5c_outcome_score','REAL DEFAULT 0'),('phase5c_reason','TEXT'),('phase5c_last_adjusted_at','INTEGER DEFAULT 0'),('read_no_candidate_penalty','REAL DEFAULT 0')]: _add_col(cur,'chunk_attention_scores',col,spec,changes)
-    for t,c in [('phase5c_runtime_state','key'),('phase5c_cluster_resolution_memory','memory_key'),('reading_queue','chunk_id'),('chunk_attention_scores','chunk_id')]: _safe_unique(cur,t,c,changes)
-    now=_now()
-    for k,v in [('phase',PHASE),('no_word_blacklists','true'),('fact_promotion','disabled'),('direct_fact_writes','disabled'),('direct_relation_writes','disabled'),('question_generation','internal_learning_questions_only'),('learning_mode','context_hypotheses_with_neuromodulators')]:
-        cur.execute("INSERT INTO phase5c_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",(k,v,now))
-    db.commit();
-    if own: db.close()
-    return {'status':'ok','phase':PHASE,'changes':changes,'no_word_blacklists':True,'fact_promotion':'disabled'}
-
-def _state_set(cur,key,value,now):
-    cur.execute("INSERT INTO phase5c_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",(key,str(value),now))
-
-def _cluster_rows(cur, limit=240):
-    if _table_exists(cur,'phase5b_internal_question_clusters'):
-        c=_cols(cur,'phase5b_internal_question_clusters')
-        def field(name, fallback): return name if name in c else fallback
-        ck=field('cluster_key',"COALESCE(question_type,'unknown')||':'||COALESCE(role,'unknown')")
-        qt=field('question_type',"'unknown'"); role=field('role',"'unknown'")
-        cnt=field('question_count', field('count','1')); pri=field('avg_priority', field('priority','0'))
-        res=field('resolution_score','0'); eff=field('strategy_effectiveness_score','0'); out=field('learning_outcome_score','0'); st=field('status',"'open'")
-        q=f"SELECT {ck},{qt},{role},{cnt},{pri},{res},{eff},{out},{st} FROM phase5b_internal_question_clusters ORDER BY COALESCE({pri},0) DESC LIMIT ?"
-        return cur.execute(q,(limit,)).fetchall()
-    if _table_exists(cur,'internal_learning_questions'):
-        c=_cols(cur,'internal_learning_questions')
-        qt='question_type' if 'question_type' in c else "'unknown'"; role='role' if 'role' in c else "'unknown'"
-        pri='priority' if 'priority' in c else '0'; res='resolution_score' if 'resolution_score' in c else '0'; eff='strategy_effectiveness_score' if 'strategy_effectiveness_score' in c else '0'; out='learning_outcome_score' if 'learning_outcome_score' in c else '0'
-        q=f"SELECT COALESCE({qt},'unknown')||':'||COALESCE({role},'unknown'), COALESCE({qt},'unknown'), COALESCE({role},'unknown'), COUNT(*), AVG(COALESCE({pri},0)), AVG(COALESCE({res},0)), AVG(COALESCE({eff},0)), AVG(COALESCE({out},0)), 'open' FROM internal_learning_questions GROUP BY COALESCE({qt},'unknown'), COALESCE({role},'unknown') ORDER BY COUNT(*) DESC LIMIT ?"
-        return cur.execute(q,(limit,)).fetchall()
-    return []
-
-def apply_learning_outcome_closure(mem=None):
-    ensure_schema(mem); db, own=_conn_from_memory(mem); cur=db.cursor(); now=_now()
-    clusters=_cluster_rows(cur,240); evaluated=improved=persistent=monitoring=event_rows=0; total_resolution=total_priority=0.0
-    for row in clusters:
-        cluster_key,qtype,role,count,priority,resolution,eff,outcome,status=row
-        count=int(count or 0); priority=float(priority or 0); resolution=float(resolution or 0); eff=float(eff or 0); outcome=float(outcome or 0)
-        closure_score=max(0.0,min(1.0,0.38*resolution+0.32*eff+0.20*outcome+0.10*(1.0-min(priority,1.0))))
-        if closure_score>=0.68 and count>=3: decision='monitoring'; monitoring+=1
-        elif closure_score>=0.35: decision='improving'; improved+=1
-        else: decision='persistent_gap'; persistent+=1
-        rec='broaden_context_and_compare_patterns' if decision=='persistent_gap' else ('continue_observe_and_consolidate' if decision=='improving' else 'monitor_for_regression')
-        total_resolution+=closure_score; total_priority+=priority; evaluated+=1
-        cur.execute("INSERT INTO question_cluster_resolution_events(cluster_key,question_type,role,question_count,open_count,improved_count,persistent_count,avg_priority,avg_resolution_score,avg_strategy_effectiveness,avg_learning_outcome,before_status,after_status,decision,details,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(cluster_key,qtype,role,count,1 if decision!='monitoring' else 0,1 if decision=='improving' else 0,1 if decision=='persistent_gap' else 0,priority,closure_score,eff,outcome,str(status),decision,rec,_json({'source':'phase5c_cluster_resolution','raw_resolution':resolution,'raw_effectiveness':eff,'raw_outcome':outcome}),now)); event_rows+=1
-        if _table_exists(cur,'phase5b_internal_question_clusters') and 'cluster_key' in _cols(cur,'phase5b_internal_question_clusters'):
-            cur.execute("UPDATE phase5b_internal_question_clusters SET resolution_score=?, learning_outcome_score=?, strategy_effectiveness_score=?, closure_status=?, closure_reason=?, last_closure_evaluated_at=?, closure_attempts=COALESCE(closure_attempts,0)+1, phase5c_recommended_strategy=?, phase5c_priority=? WHERE cluster_key=?",(closure_score,outcome,eff,decision,rec,now,rec,max(priority*(0.92 if decision!='persistent_gap' else 1.0),closure_score),cluster_key))
-        if _table_exists(cur,'internal_learning_questions') and 'cluster_key' in _cols(cur,'internal_learning_questions'):
-            cur.execute("UPDATE internal_learning_questions SET resolution_score=?, learning_outcome_score=?, strategy_effectiveness_score=?, closure_status=?, closure_reason=?, last_closure_evaluated_at=?, closure_attempts=COALESCE(closure_attempts,0)+1, phase5c_cluster_key=?, phase5c_recommended_strategy=?, phase5c_resolution_priority=? WHERE cluster_key=?",(closure_score,outcome,eff,decision,rec,now,cluster_key,rec,max(priority,closure_score),cluster_key))
-        cur.execute("INSERT OR REPLACE INTO phase5c_cluster_resolution_memory(memory_key,question_type,role,observations,avg_resolution_score,avg_strategy_effectiveness,avg_learning_outcome,persistent_count,improved_count,recommended_strategy,status,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(str(cluster_key),qtype,role,count,closure_score,eff,outcome,1 if decision=='persistent_gap' else 0,1 if decision=='improving' else 0,rec,decision,now))
-    adjusted=0
-    if _table_exists(cur,'reading_queue'):
-        rqcols=_cols(cur,'reading_queue')
-        if all(x in rqcols for x in ('priority','attention_score','status','chunk_id')):
-            for cid,pri,att,st in cur.execute("SELECT chunk_id,COALESCE(priority,0),COALESCE(attention_score,0),status FROM reading_queue WHERE status='read_no_candidate' AND COALESCE(priority,0)>=0.65 ORDER BY priority DESC LIMIT 120").fetchall():
-                newp=max(0.05,float(pri)*0.82); newa=max(0.05,float(att)*0.84)
-                cur.execute("UPDATE reading_queue SET priority=?,attention_score=?,phase5c_outcome_penalty=?,phase5c_reason=?,phase5c_last_adjusted_at=?,phase5c_read_outcome_score=? WHERE chunk_id=?",(newp,newa,1.0,'phase5c_high_priority_read_no_candidate_penalty',now,0.0,cid))
-                if _table_exists(cur,'chunk_attention_scores') and 'chunk_id' in _cols(cur,'chunk_attention_scores'):
-                    cur.execute("UPDATE chunk_attention_scores SET attention_score=?,phase5c_outcome_score=?,phase5c_reason=?,phase5c_last_adjusted_at=?,read_no_candidate_penalty=? WHERE chunk_id=?",(newa,0.0,'phase5c_high_priority_read_no_candidate_penalty',now,1.0,cid))
-                cur.execute("INSERT INTO learning_outcome_closure_events(target_type,target_key,target_id,before_priority,after_priority,resolution_score,strategy_effectiveness_score,learning_outcome_score,closure_status,closure_reason,neuromodulator_reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",('chunk',str(cid),cid,float(pri),newp,0.0,0.0,0.0,'penalized_read_no_candidate','high_priority_without_candidate','gaba_inhibition_and_exploration_rebalance',now)); adjusted+=1
-    avg_res=round(total_resolution/evaluated,6) if evaluated else 0.0; avg_pri=round(total_priority/evaluated,6) if evaluated else 0.0
-    for k,v in [('phase',PHASE),('no_word_blacklists','true'),('fact_promotion','disabled'),('question_generation','internal_learning_questions_only'),('last_evaluated_clusters',evaluated),('last_improved_clusters',improved),('last_persistent_clusters',persistent),('last_monitoring_clusters',monitoring),('last_avg_cluster_resolution_score',avg_res),('last_avg_cluster_priority',avg_pri),('last_read_no_candidate_penalties',adjusted)]: _state_set(cur,k,v,now)
-    db.commit();
-    if own: db.close()
-    return {'status':'phase5c_learning_outcome_closure_complete','phase':PHASE,'evaluated_clusters':evaluated,'improved_clusters':improved,'persistent_clusters':persistent,'monitoring_clusters':monitoring,'avg_cluster_resolution_score':avg_res,'avg_cluster_priority':avg_pri,'read_no_candidate_penalties':adjusted,'events':event_rows,'no_word_blacklists':True,'fact_promotion':'disabled'}
-
-_PREV_RUN=None; _PREV_CYCLE=None
-
-def managed_cycle(self, progress=None):
-    res=None
-    if _PREV_CYCLE and _PREV_CYCLE is not managed_cycle: res=_PREV_CYCLE(self, progress)
-    outcome=apply_learning_outcome_closure(_memory_from_loop(self))
-    if isinstance(res,dict): res['phase5c_learning_outcome_closure']=outcome; return res
-    return {'status':'phase5c_managed_cycle','base_result':res,'phase5c_learning_outcome_closure':outcome,'facts_relations_questions':'disabled'}
-
-def managed_run(self, cycles=1, progress=None):
-    out=None
-    if _PREV_RUN and _PREV_RUN is not managed_run: out=_PREV_RUN(self, cycles, progress)
-    outcome=apply_learning_outcome_closure(_memory_from_loop(self))
-    return {'status':'phase5c_managed_run','base_result':out,'phase5c_learning_outcome_closure':outcome,'fact_promotion':'disabled','no_word_blacklists':True}
-
-def patch_autonomous_loop(cls=None):
-    global _PREV_RUN,_PREV_CYCLE
-    if cls is None:
-        from ki_system.autonomous import AutonomousLoop as cls
-    if getattr(cls,'phase5c_learning_outcome_closure_and_question_cluster_resolution',False): return cls
-    _PREV_RUN=getattr(cls,'run',None); _PREV_CYCLE=getattr(cls,'cycle',None)
-    cls.run=managed_run; cls.cycle=managed_cycle
-    cls.phase5c_learning_outcome_closure_and_question_cluster_resolution=True
-    cls._phase5c_learning_outcome_closure_and_question_cluster_resolution=True
-    cls.no_word_blacklists=True; cls._no_word_blacklists=True
-    cls.learning_mode='context_hypotheses_with_neuromodulators'; cls._learning_mode='context_hypotheses_with_neuromodulators'
-    cls.fact_promotion='disabled'; cls._fact_promotion='disabled'
-    return cls
-
-===== END FILE: ki_system\v8_phase5c_learning_outcome_closure_and_question_cluster_resolution.py =====
-
-===== FILE: ki_system\v8_phase5d_integrated_observation_and_strategy_memory_release.py =====
-# V8-phase5d_integrated_observation_and_strategy_memory_release
-# Integrated observation + strategy memory release.
-# Project compass: no word blacklists, no direct facts/relations/questions, no fact promotion.
-
-from __future__ import annotations
-import os, time, json, sqlite3, traceback
-from pathlib import Path
-
-PHASE = "phase5d_integrated_observation_and_strategy_memory_release"
-LEARNING_MODE = "context_hypotheses_with_neuromodulators"
-NO_WORD_BLACKLISTS = True
-FACT_PROMOTION = "disabled"
-
-_PREV_RUN = None
-_PREV_CYCLE = None
-
-
-def _now() -> int:
-    return int(time.time())
-
-
-def _json(obj) -> str:
-    try:
-        return json.dumps(obj, ensure_ascii=False, sort_keys=True)
-    except Exception:
-        return json.dumps({"repr": repr(obj)}, ensure_ascii=False)
-
-
-def _project_root() -> Path:
-    return Path(__file__).resolve().parents[1]
-
-
-def _open_default_db():
-    return sqlite3.connect(str(_project_root() / "ki_memory.sqlite3"))
-
-
-def _resolve_conn(source=None):
-    """Return (conn, should_close). Be tolerant of Memory wrappers and old runtimes."""
-    if isinstance(source, sqlite3.Connection):
-        return source, False
-    candidates = []
-    if source is not None:
-        candidates.append(source)
-        for attr in ("mem", "memory", "m", "store", "memory_store", "db", "database"):
-            if hasattr(source, attr):
-                try: candidates.append(getattr(source, attr))
-                except Exception: pass
-    for obj in candidates:
-        if isinstance(obj, sqlite3.Connection):
-            return obj, False
-        for attr in ("conn", "con", "connection", "db", "sqlite", "sqlite_conn"):
-            if hasattr(obj, attr):
-                try:
-                    val = getattr(obj, attr)
-                    if isinstance(val, sqlite3.Connection):
-                        return val, False
-                except Exception:
-                    pass
-        for attr in ("db_path", "path", "filename"):
-            if hasattr(obj, attr):
-                try:
-                    p = getattr(obj, attr)
-                    if p and Path(str(p)).exists():
-                        return sqlite3.connect(str(p)), True
-                except Exception:
-                    pass
-        if hasattr(obj, "execute") and hasattr(obj, "cursor"):
-            return obj, False
-    return _open_default_db(), True
-
-
-def _table_exists(cur, table: str) -> bool:
-    return cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
-
-
-def _cols(cur, table: str):
-    if not _table_exists(cur, table):
-        return set()
-    return {r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()}
-
-
-def _add_col(cur, table: str, col: str, decl: str, changes: list):
-    if not _table_exists(cur, table):
-        return
-    if col not in _cols(cur, table):
-        cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
-        changes.append(f"add_column:{table}.{col}")
-
-
-def _unique(cur, table: str, col: str, changes: list):
-    if not _table_exists(cur, table) or col not in _cols(cur, table):
-        return
-    idx = f"idx_{table}_{col}_phase5d_unique"
-    try:
-        cur.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {idx} ON {table}({col})")
-        changes.append(f"unique_index:{table}.{col}")
-    except sqlite3.IntegrityError:
-        # Existing duplicates: do not destructively cleanup here. Keep learning safe.
-        changes.append(f"skip_unique_duplicates:{table}.{col}")
-
-
-def ensure_phase5d_schema(db_or_mem=None):
-    db, close = _resolve_conn(db_or_mem)
-    cur = db.cursor()
-    changes = []
-    cur.execute("""CREATE TABLE IF NOT EXISTS phase5d_observation_memory(
-        memory_key TEXT PRIMARY KEY,
-        observation_type TEXT,
-        scope TEXT,
-        observations INTEGER DEFAULT 0,
-        avg_outcome_score REAL DEFAULT 0,
-        avg_resolution_score REAL DEFAULT 0,
-        avg_error_pressure REAL DEFAULT 0,
-        avg_uncertainty_pressure REAL DEFAULT 0,
-        avg_stability_gain REAL DEFAULT 0,
-        avg_strategy_effectiveness REAL DEFAULT 0,
-        persistent_gap_pressure REAL DEFAULT 0,
-        read_no_candidate_pressure REAL DEFAULT 0,
-        trend TEXT,
-        recommendation TEXT,
-        details TEXT,
-        first_seen INTEGER DEFAULT 0,
-        last_seen INTEGER DEFAULT 0,
-        updated_at INTEGER DEFAULT 0
-    )""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS phase5d_strategy_memory_events(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_type TEXT,
-        memory_key TEXT,
-        metric_name TEXT,
-        old_value REAL DEFAULT 0,
-        new_value REAL DEFAULT 0,
-        delta REAL DEFAULT 0,
-        recommendation TEXT,
-        details TEXT,
-        created_at INTEGER DEFAULT 0
-    )""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS phase5d_observation_cycles(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        phase TEXT,
-        hypotheses INTEGER DEFAULT 0,
-        gaps INTEGER DEFAULT 0,
-        internal_questions INTEGER DEFAULT 0,
-        feedback_events INTEGER DEFAULT 0,
-        resolution_events INTEGER DEFAULT 0,
-        progress_evaluations INTEGER DEFAULT 0,
-        strategy_feedback_events INTEGER DEFAULT 0,
-        long_term_patterns INTEGER DEFAULT 0,
-        outcome_score REAL DEFAULT 0,
-        avg_resolution_score REAL DEFAULT 0,
-        avg_error_pressure REAL DEFAULT 0,
-        avg_uncertainty_pressure REAL DEFAULT 0,
-        avg_stability_gain REAL DEFAULT 0,
-        persistent_gap_count INTEGER DEFAULT 0,
-        read_no_candidate_penalties INTEGER DEFAULT 0,
-        integrated_health_score REAL DEFAULT 0,
-        safety_ok INTEGER DEFAULT 0,
-        details TEXT,
-        created_at INTEGER DEFAULT 0
-    )""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS phase5d_strategy_recommendations(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        strategy_key TEXT,
-        recommendation_type TEXT,
-        target TEXT,
-        strength REAL DEFAULT 0,
-        reason TEXT,
-        neuromodulator_adjustment TEXT,
-        status TEXT DEFAULT 'open',
-        details TEXT,
-        created_at INTEGER DEFAULT 0
-    )""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS phase5d_runtime_state(
-        key TEXT PRIMARY KEY,
-        value TEXT,
-        updated_at INTEGER DEFAULT 0
-    )""")
-    # Future-tolerant columns in existing tables.
-    for table in ("internal_learning_gaps", "internal_learning_questions", "context_hypotheses", "chunk_attention_scores", "reading_queue", "strategy_outcome_memory", "strategy_gap_resolution_memory"):
-        if _table_exists(cur, table):
-            for col, decl in [
-                ("phase5d_observation_score", "REAL DEFAULT 0"),
-                ("phase5d_strategy_memory_score", "REAL DEFAULT 0"),
-                ("phase5d_trend", "TEXT"),
-                ("phase5d_recommendation", "TEXT"),
-                ("phase5d_last_observed_at", "INTEGER DEFAULT 0"),
-                ("phase5d_reason", "TEXT"),
-                ("phase5d_outcome_score", "REAL DEFAULT 0"),
-                ("phase5d_resolution_score", "REAL DEFAULT 0"),
-                ("phase5d_persistent_pressure", "REAL DEFAULT 0"),
-            ]:
-                _add_col(cur, table, col, decl, changes)
-    for table, col in [
-        ("phase5d_observation_memory", "memory_key"),
-        ("phase5d_runtime_state", "key"),
-        ("internal_learning_gaps", "gap_key"),
-        ("internal_learning_questions", "question_key"),
-        ("reading_queue", "chunk_id"),
-        ("chunk_attention_scores", "chunk_id"),
-        ("phase5a_integrated_runtime_state", "key"),
-        ("phase5b_strategy_refinement_state", "key"),
-        ("phase5c_runtime_state", "key"),
-    ]:
-        _unique(cur, table, col, changes)
-    now = _now()
-    for k, v in {
-        "phase": PHASE,
-        "learning_mode": LEARNING_MODE,
-        "no_word_blacklists": "true",
-        "fact_promotion": FACT_PROMOTION,
-        "direct_fact_writes": "disabled",
-        "direct_relation_writes": "disabled",
-        "question_generation": "internal_learning_questions_only",
-    }.items():
-        cur.execute("INSERT INTO phase5d_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at", (k, str(v), now))
-    db.commit()
-    if close: db.close()
-    return {"status": "ok", "phase": PHASE, "changes": changes, "no_word_blacklists": True, "fact_promotion": FACT_PROMOTION}
-
-
-def _count(cur, table):
-    if not _table_exists(cur, table): return 0
-    try: return int(cur.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] or 0)
-    except Exception: return 0
-
-
-def _avg(cur, table, col, where="1=1"):
-    if not _table_exists(cur, table) or col not in _cols(cur, table): return 0.0
-    try:
-        v = cur.execute(f"SELECT AVG(COALESCE({col},0)) FROM {table} WHERE {where}").fetchone()[0]
-        return float(v or 0.0)
-    except Exception:
-        return 0.0
-
-
-def _latest_state_float(cur, table, key, default=0.0):
-    if not _table_exists(cur, table): return default
-    cols = _cols(cur, table)
-    if not {"key", "value"}.issubset(cols): return default
-    row = cur.execute(f"SELECT value FROM {table} WHERE key=?", (key,)).fetchone()
-    if not row: return default
-    try: return float(str(row[0]).strip("'\""))
-    except Exception: return default
-
-
-def _upsert_memory(cur, key, observation_type, scope, values, recommendation, details, now):
-    old = cur.execute("SELECT avg_outcome_score, avg_resolution_score, avg_error_pressure, avg_uncertainty_pressure, avg_stability_gain, observations FROM phase5d_observation_memory WHERE memory_key=?", (key,)).fetchone()
-    observations = int((old[5] if old else 0) or 0) + 1
-    def evolve(old_val, new_val):
-        if old is None: return new_val
-        return round((float(old_val or 0) * 0.75) + (float(new_val or 0) * 0.25), 6)
-    avg_outcome = evolve(old[0] if old else 0, values.get("outcome_score", 0))
-    avg_resolution = evolve(old[1] if old else 0, values.get("resolution_score", 0))
-    avg_error = evolve(old[2] if old else 0, values.get("error_pressure", 0))
-    avg_unc = evolve(old[3] if old else 0, values.get("uncertainty_pressure", 0))
-    avg_stab = evolve(old[4] if old else 0, values.get("stability_gain", 0))
-    trend = "improving" if values.get("resolution_score", 0) > avg_resolution else "observe"
-    cur.execute("""INSERT INTO phase5d_observation_memory(
-        memory_key,observation_type,scope,observations,avg_outcome_score,avg_resolution_score,avg_error_pressure,
-        avg_uncertainty_pressure,avg_stability_gain,avg_strategy_effectiveness,persistent_gap_pressure,
-        read_no_candidate_pressure,trend,recommendation,details,first_seen,last_seen,updated_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ON CONFLICT(memory_key) DO UPDATE SET observations=excluded.observations, avg_outcome_score=excluded.avg_outcome_score,
-        avg_resolution_score=excluded.avg_resolution_score, avg_error_pressure=excluded.avg_error_pressure,
-        avg_uncertainty_pressure=excluded.avg_uncertainty_pressure, avg_stability_gain=excluded.avg_stability_gain,
-        avg_strategy_effectiveness=excluded.avg_strategy_effectiveness, persistent_gap_pressure=excluded.persistent_gap_pressure,
-        read_no_candidate_pressure=excluded.read_no_candidate_pressure, trend=excluded.trend, recommendation=excluded.recommendation,
-        details=excluded.details, last_seen=excluded.last_seen, updated_at=excluded.updated_at""",
-        (key, observation_type, scope, observations, avg_outcome, avg_resolution, avg_error, avg_unc, avg_stab,
-         values.get("strategy_effectiveness", 0), values.get("persistent_gap_pressure", 0), values.get("read_no_candidate_pressure", 0),
-         trend, recommendation, _json(details), now, now, now))
-    cur.execute("INSERT INTO phase5d_strategy_memory_events(event_type,memory_key,metric_name,old_value,new_value,delta,recommendation,details,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-                ("strategy_memory_update", key, "resolution_score", float(old[1] if old else 0), values.get("resolution_score", 0), values.get("resolution_score", 0)-float(old[1] if old else 0), recommendation, _json(details), now))
-
-
-def apply_integrated_observation_and_strategy_memory(db_or_mem=None):
-    db, close = _resolve_conn(db_or_mem)
-    ensure_phase5d_schema(db)
-    cur = db.cursor(); now = _now()
-    facts, relations, questions = _count(cur,"facts"), _count(cur,"relations"), _count(cur,"questions")
-    safety_ok = int(facts == 0 and relations == 0 and questions == 0)
-    metrics = {
-        "hypotheses": _count(cur, "context_hypotheses"),
-        "gaps": _count(cur, "internal_learning_gaps"),
-        "internal_questions": _count(cur, "internal_learning_questions"),
-        "feedback_events": _count(cur, "strategy_feedback_events"),
-        "resolution_events": _count(cur, "gap_resolution_outcomes"),
-        "progress_evaluations": _count(cur, "learning_progress_evaluations"),
-        "strategy_feedback_events": _count(cur, "strategy_feedback_events"),
-        "long_term_patterns": _count(cur, "long_term_pattern_memory"),
-    }
-    outcome = _avg(cur, "strategy_feedback_events", "outcome_score") or _avg(cur, "strategy_outcome_memory", "avg_outcome_score")
-    resolution = _avg(cur, "gap_resolution_outcomes", "resolution_score") or _avg(cur, "internal_learning_gaps", "resolution_score")
-    error_pressure = _latest_state_float(cur, "progress_evaluation_state", "last_error_pressure", _avg(cur,"internal_learning_gaps","error_weight"))
-    unc_pressure = _latest_state_float(cur, "progress_evaluation_state", "last_uncertainty_pressure", _avg(cur,"internal_learning_gaps","uncertainty"))
-    stability_gain = _latest_state_float(cur, "progress_evaluation_state", "last_stability_gain", _avg(cur,"long_term_pattern_memory","stability"))
-    persistent = 0
-    if _table_exists(cur, "internal_learning_gaps") and "resolution_status" in _cols(cur, "internal_learning_gaps"):
-        persistent = int(cur.execute("SELECT COUNT(*) FROM internal_learning_gaps WHERE COALESCE(resolution_status,'open') IN ('persistent_gap','open','persistent')").fetchone()[0] or 0)
-    read_no_candidate = 0
-    if _table_exists(cur, "reading_queue"):
-        read_no_candidate = int(cur.execute("SELECT COUNT(*) FROM reading_queue WHERE status='read_no_candidate' AND COALESCE(priority,0) >= 0.6").fetchone()[0] or 0)
-    persistent_pressure = min(1.0, persistent / max(1, metrics["gaps"]))
-    read_no_candidate_pressure = min(1.0, read_no_candidate / max(1, _count(cur,"reading_queue")))
-    recommendation = "observe_and_keep_strategy"
-    if persistent_pressure > 0.4 and resolution < 0.25:
-        recommendation = "increase_diverse_context_and_strengthen_gap_closure"
-    elif outcome > 0.65 and stability_gain > 0.05:
-        recommendation = "reinforce_current_strategy_memory"
-    elif read_no_candidate_pressure > 0.05:
-        recommendation = "reduce_unproductive_read_no_candidate_paths"
-    values = {
-        "outcome_score": round(outcome,6), "resolution_score": round(resolution,6), "error_pressure": round(error_pressure,6),
-        "uncertainty_pressure": round(unc_pressure,6), "stability_gain": round(stability_gain,6),
-        "strategy_effectiveness": round((outcome + resolution + stability_gain) / 3.0, 6),
-        "persistent_gap_pressure": round(persistent_pressure,6), "read_no_candidate_pressure": round(read_no_candidate_pressure,6)
-    }
-    _upsert_memory(cur, "global_integrated_strategy_memory", "global_strategy", "global", values, recommendation, metrics, now)
-    _upsert_memory(cur, "persistent_gap_strategy_memory", "gap_resolution", "internal_learning_gaps", values, recommendation, {"persistent": persistent}, now)
-    _upsert_memory(cur, "read_outcome_strategy_memory", "read_outcome", "reading_queue", values, recommendation, {"read_no_candidate_high_priority": read_no_candidate}, now)
-    # Backpropagate scores to existing tables, tolerant and bounded.
-    for table, order_col in [("internal_learning_gaps", "priority"), ("internal_learning_questions", "priority"), ("chunk_attention_scores", "attention_score")]:
-        if _table_exists(cur, table):
-            cols = _cols(cur, table)
-            sets=[]; params=[]
-            if "phase5d_observation_score" in cols: sets.append("phase5d_observation_score=?"); params.append(round((outcome+resolution)/2, 6))
-            if "phase5d_strategy_memory_score" in cols: sets.append("phase5d_strategy_memory_score=?"); params.append(values["strategy_effectiveness"])
-            if "phase5d_trend" in cols: sets.append("phase5d_trend=?"); params.append("persistent" if persistent_pressure>0.4 else "observe")
-            if "phase5d_recommendation" in cols: sets.append("phase5d_recommendation=?"); params.append(recommendation)
-            if "phase5d_last_observed_at" in cols: sets.append("phase5d_last_observed_at=?"); params.append(now)
-            if "phase5d_reason" in cols: sets.append("phase5d_reason=?"); params.append(PHASE)
-            if sets:
-                sql = f"UPDATE {table} SET "+", ".join(sets)+f" WHERE rowid IN (SELECT rowid FROM {table} ORDER BY COALESCE({order_col},0) DESC, rowid DESC LIMIT 250)"
-                try: cur.execute(sql, tuple(params))
-                except Exception: pass
-    cur.execute("INSERT INTO phase5d_observation_cycles(phase,hypotheses,gaps,internal_questions,feedback_events,resolution_events,progress_evaluations,strategy_feedback_events,long_term_patterns,outcome_score,avg_resolution_score,avg_error_pressure,avg_uncertainty_pressure,avg_stability_gain,persistent_gap_count,read_no_candidate_penalties,integrated_health_score,safety_ok,details,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (PHASE, metrics["hypotheses"], metrics["gaps"], metrics["internal_questions"], metrics["feedback_events"], metrics["resolution_events"], metrics["progress_evaluations"], metrics["strategy_feedback_events"], metrics["long_term_patterns"], values["outcome_score"], values["resolution_score"], values["error_pressure"], values["uncertainty_pressure"], values["stability_gain"], persistent, read_no_candidate, 1.0 if safety_ok else 0.0, safety_ok, _json({"recommendation": recommendation}), now))
-    cur.execute("INSERT INTO phase5d_strategy_recommendations(strategy_key,recommendation_type,target,strength,reason,neuromodulator_adjustment,status,details,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-                ("integrated_strategy_memory", recommendation, "global", values["strategy_effectiveness"], PHASE, _json({"error_weight":"adaptive", "exploration":"adaptive", "inhibition":"adaptive"}), "open", _json(values), now))
-    for k, v in {
-        "phase": PHASE, "learning_mode": LEARNING_MODE, "no_word_blacklists": "true", "fact_promotion": FACT_PROMOTION,
-        "direct_fact_writes": "disabled", "direct_relation_writes": "disabled", "question_generation": "internal_learning_questions_only",
-        "last_outcome_score": values["outcome_score"], "last_resolution_score": values["resolution_score"],
-        "last_strategy_effectiveness": values["strategy_effectiveness"], "last_persistent_gap_pressure": values["persistent_gap_pressure"],
-        "last_read_no_candidate_pressure": values["read_no_candidate_pressure"], "last_recommendation": recommendation,
-        "last_safety_ok": str(bool(safety_ok)).lower()
-    }.items():
-        cur.execute("INSERT INTO phase5d_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at", (k, str(v), now))
-    db.commit()
-    result = {"status": "phase5d_observation_strategy_memory_complete", "phase": PHASE, "metrics": metrics, "values": values, "recommendation": recommendation, "safety_ok": bool(safety_ok), "no_word_blacklists": True, "fact_promotion": FACT_PROMOTION}
-    if close: db.close()
-    return result
-
-
-def managed_cycle(self, progress=None):
-    result = None
-    if _PREV_CYCLE is not None:
-        result = _PREV_CYCLE(self, progress)
-    summary = apply_integrated_observation_and_strategy_memory(self)
-    if isinstance(result, dict):
-        result["phase5d_integrated_observation_and_strategy_memory"] = summary
-        return result
-    return {"cycle_result": result, "phase5d_integrated_observation_and_strategy_memory": summary}
-
-
-def managed_run(self, cycles=1, progress=None):
-    result = None
-    if _PREV_RUN is not None:
-        result = _PREV_RUN(self, cycles, progress)
-    summary = apply_integrated_observation_and_strategy_memory(self)
-    if isinstance(result, list):
-        result.append({"phase5d_integrated_observation_and_strategy_memory": summary})
-        return result
-    if isinstance(result, dict):
-        result["phase5d_integrated_observation_and_strategy_memory"] = summary
-        return result
-    return [{"run_result": result, "phase5d_integrated_observation_and_strategy_memory": summary}]
-
-
-def patch_autonomous_loop(cls=None):
-    global _PREV_RUN, _PREV_CYCLE
-    if cls is None:
-        from ki_system.autonomous import AutonomousLoop as cls
-    if getattr(cls, "phase5d_integrated_observation_and_strategy_memory_release", False):
-        return cls
-    current_run = getattr(cls, "run", None)
-    current_cycle = getattr(cls, "cycle", None)
-    if getattr(current_run, "__module__", "") != __name__:
-        _PREV_RUN = current_run
-    if getattr(current_cycle, "__module__", "") != __name__:
-        _PREV_CYCLE = current_cycle
-    cls.run = managed_run
-    cls.cycle = managed_cycle
-    cls.phase5d_integrated_observation_and_strategy_memory_release = True
-    cls._phase5d_integrated_observation_and_strategy_memory_release = True
-    cls.no_word_blacklists = True
-    cls._no_word_blacklists = True
-    cls.learning_mode = LEARNING_MODE
-    cls._learning_mode = LEARNING_MODE
-    cls.fact_promotion = FACT_PROMOTION
-    cls._fact_promotion = FACT_PROMOTION
-    return cls
-
-try:
-    patch_autonomous_loop()
-except Exception:
-    # Import-time patch can fail during isolated compilation; installer autoload retries in project runtime.
-    pass
-
-===== END FILE: ki_system\v8_phase5d_integrated_observation_and_strategy_memory_release.py =====

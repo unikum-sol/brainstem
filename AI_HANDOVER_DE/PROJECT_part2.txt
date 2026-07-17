@@ -1,4 +1,594 @@
 
+===== FILE: ki_system\v8_phase5c_learning_outcome_closure_and_question_cluster_resolution.py =====
+
+# V8-phase5c_learning_outcome_closure_and_question_cluster_resolution
+# Integrated, no blacklist, no fact/relation/question writes.
+import os, sqlite3, time, json
+
+PHASE = "phase5c_learning_outcome_closure_and_question_cluster_resolution"
+
+def _now(): return int(time.time())
+def _json(obj): return json.dumps(obj, ensure_ascii=False, sort_keys=True)
+def _connect(): return sqlite3.connect('ki_memory.sqlite3')
+
+def _conn_from_memory(mem):
+    if mem is None: return _connect(), True
+    for name in ('conn','con','db','connection'):
+        c=getattr(mem,name,None)
+        if c is not None and hasattr(c,'execute'): return c, False
+    for name in ('db_path','path','database_path'):
+        p=getattr(mem,name,None)
+        if p: return sqlite3.connect(str(p)), True
+    return _connect(), True
+
+def _memory_from_loop(loop):
+    for name in ('mem','memory','m','store','memory_store'):
+        v=getattr(loop,name,None)
+        if v is not None: return v
+    return None
+
+def _table_exists(cur, table):
+    return cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
+
+def _cols(cur, table):
+    if not _table_exists(cur, table): return []
+    return [r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
+
+def _add_col(cur, table, col, spec, changes):
+    if not _table_exists(cur, table): return
+    if col not in _cols(cur, table):
+        cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {spec}")
+        changes.append(f"add_column:{table}.{col}")
+
+def _safe_unique(cur, table, col, changes):
+    if not _table_exists(cur, table) or col not in _cols(cur, table): return
+    dup = cur.execute(f"SELECT {col}, COUNT(*) FROM {table} WHERE {col} IS NOT NULL GROUP BY {col} HAVING COUNT(*)>1 LIMIT 1").fetchone()
+    if dup:
+        changes.append(f"skip_unique_duplicates:{table}.{col}")
+        return
+    idx=f"idx_{table}_{col}_phase5c_unique"
+    cur.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {idx} ON {table}({col})")
+    changes.append(f"unique_index:{table}.{col}")
+
+def ensure_schema(mem=None):
+    db, own = _conn_from_memory(mem); cur = db.cursor(); changes=[]
+    cur.execute("""CREATE TABLE IF NOT EXISTS question_cluster_resolution_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, cluster_key TEXT, question_type TEXT, role TEXT,
+        question_count INTEGER DEFAULT 0, open_count INTEGER DEFAULT 0, improved_count INTEGER DEFAULT 0,
+        persistent_count INTEGER DEFAULT 0, avg_priority REAL DEFAULT 0, avg_resolution_score REAL DEFAULT 0,
+        avg_strategy_effectiveness REAL DEFAULT 0, avg_learning_outcome REAL DEFAULT 0,
+        before_status TEXT, after_status TEXT, decision TEXT, details TEXT, created_at INTEGER DEFAULT 0)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS learning_outcome_closure_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, target_type TEXT, target_key TEXT, target_id INTEGER,
+        before_priority REAL DEFAULT 0, after_priority REAL DEFAULT 0, resolution_score REAL DEFAULT 0,
+        strategy_effectiveness_score REAL DEFAULT 0, learning_outcome_score REAL DEFAULT 0,
+        closure_status TEXT, closure_reason TEXT, neuromodulator_reason TEXT, created_at INTEGER DEFAULT 0)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS phase5c_cluster_resolution_memory(
+        memory_key TEXT PRIMARY KEY, question_type TEXT, role TEXT, observations INTEGER DEFAULT 0,
+        avg_resolution_score REAL DEFAULT 0, avg_strategy_effectiveness REAL DEFAULT 0, avg_learning_outcome REAL DEFAULT 0,
+        persistent_count INTEGER DEFAULT 0, improved_count INTEGER DEFAULT 0, recommended_strategy TEXT,
+        status TEXT DEFAULT 'observe', updated_at INTEGER DEFAULT 0)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS phase5c_runtime_state(
+        key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER DEFAULT 0)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS phase5c_read_outcome_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, chunk_id INTEGER, previous_priority REAL DEFAULT 0, new_priority REAL DEFAULT 0,
+        previous_attention REAL DEFAULT 0, new_attention REAL DEFAULT 0, status TEXT, reason TEXT, details TEXT, created_at INTEGER DEFAULT 0)""")
+    if _table_exists(cur, 'phase5b_internal_question_clusters'):
+        for col, spec in [('resolution_score','REAL DEFAULT 0'),('learning_outcome_score','REAL DEFAULT 0'),('strategy_effectiveness_score','REAL DEFAULT 0'),('closure_status',"TEXT DEFAULT 'open'"),('closure_reason','TEXT'),('last_closure_evaluated_at','INTEGER DEFAULT 0'),('closure_attempts','INTEGER DEFAULT 0'),('persistent_count','INTEGER DEFAULT 0'),('improved_count','INTEGER DEFAULT 0'),('open_count','INTEGER DEFAULT 0'),('phase5c_recommended_strategy','TEXT'),('phase5c_priority','REAL DEFAULT 0')]: _add_col(cur,'phase5b_internal_question_clusters',col,spec,changes)
+    if _table_exists(cur, 'internal_learning_questions'):
+        for col, spec in [('resolution_score','REAL DEFAULT 0'),('learning_outcome_score','REAL DEFAULT 0'),('strategy_effectiveness_score','REAL DEFAULT 0'),('closure_status',"TEXT DEFAULT 'internal_open'"),('closure_reason','TEXT'),('last_closure_evaluated_at','INTEGER DEFAULT 0'),('closure_attempts','INTEGER DEFAULT 0'),('phase5c_cluster_key','TEXT'),('phase5c_resolution_priority','REAL DEFAULT 0'),('phase5c_recommended_strategy','TEXT')]: _add_col(cur,'internal_learning_questions',col,spec,changes)
+    if _table_exists(cur, 'internal_learning_gaps'):
+        for col, spec in [('resolution_score','REAL DEFAULT 0'),('learning_outcome_score','REAL DEFAULT 0'),('strategy_effectiveness_score','REAL DEFAULT 0'),('priority','REAL DEFAULT 0'),('closure_status',"TEXT DEFAULT 'open'"),('closure_reason','TEXT'),('last_closure_evaluated_at','INTEGER DEFAULT 0'),('closure_attempts','INTEGER DEFAULT 0'),('phase5c_gap_outcome_score','REAL DEFAULT 0'),('phase5c_recommended_strategy','TEXT')]: _add_col(cur,'internal_learning_gaps',col,spec,changes)
+    if _table_exists(cur, 'reading_queue'):
+        for col, spec in [('phase5c_outcome_penalty','REAL DEFAULT 0'),('phase5c_reason','TEXT'),('phase5c_last_adjusted_at','INTEGER DEFAULT 0'),('phase5c_read_outcome_score','REAL DEFAULT 0')]: _add_col(cur,'reading_queue',col,spec,changes)
+    if _table_exists(cur, 'chunk_attention_scores'):
+        for col, spec in [('phase5c_outcome_score','REAL DEFAULT 0'),('phase5c_reason','TEXT'),('phase5c_last_adjusted_at','INTEGER DEFAULT 0'),('read_no_candidate_penalty','REAL DEFAULT 0')]: _add_col(cur,'chunk_attention_scores',col,spec,changes)
+    for t,c in [('phase5c_runtime_state','key'),('phase5c_cluster_resolution_memory','memory_key'),('reading_queue','chunk_id'),('chunk_attention_scores','chunk_id')]: _safe_unique(cur,t,c,changes)
+    now=_now()
+    for k,v in [('phase',PHASE),('no_word_blacklists','true'),('fact_promotion','disabled'),('direct_fact_writes','disabled'),('direct_relation_writes','disabled'),('question_generation','internal_learning_questions_only'),('learning_mode','context_hypotheses_with_neuromodulators')]:
+        cur.execute("INSERT INTO phase5c_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",(k,v,now))
+    db.commit();
+    if own: db.close()
+    return {'status':'ok','phase':PHASE,'changes':changes,'no_word_blacklists':True,'fact_promotion':'disabled'}
+
+def _state_set(cur,key,value,now):
+    cur.execute("INSERT INTO phase5c_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",(key,str(value),now))
+
+def _cluster_rows(cur, limit=240):
+    if _table_exists(cur,'phase5b_internal_question_clusters'):
+        c=_cols(cur,'phase5b_internal_question_clusters')
+        def field(name, fallback): return name if name in c else fallback
+        ck=field('cluster_key',"COALESCE(question_type,'unknown')||':'||COALESCE(role,'unknown')")
+        qt=field('question_type',"'unknown'"); role=field('role',"'unknown'")
+        cnt=field('question_count', field('count','1')); pri=field('avg_priority', field('priority','0'))
+        res=field('resolution_score','0'); eff=field('strategy_effectiveness_score','0'); out=field('learning_outcome_score','0'); st=field('status',"'open'")
+        q=f"SELECT {ck},{qt},{role},{cnt},{pri},{res},{eff},{out},{st} FROM phase5b_internal_question_clusters ORDER BY COALESCE({pri},0) DESC LIMIT ?"
+        return cur.execute(q,(limit,)).fetchall()
+    if _table_exists(cur,'internal_learning_questions'):
+        c=_cols(cur,'internal_learning_questions')
+        qt='question_type' if 'question_type' in c else "'unknown'"; role='role' if 'role' in c else "'unknown'"
+        pri='priority' if 'priority' in c else '0'; res='resolution_score' if 'resolution_score' in c else '0'; eff='strategy_effectiveness_score' if 'strategy_effectiveness_score' in c else '0'; out='learning_outcome_score' if 'learning_outcome_score' in c else '0'
+        q=f"SELECT COALESCE({qt},'unknown')||':'||COALESCE({role},'unknown'), COALESCE({qt},'unknown'), COALESCE({role},'unknown'), COUNT(*), AVG(COALESCE({pri},0)), AVG(COALESCE({res},0)), AVG(COALESCE({eff},0)), AVG(COALESCE({out},0)), 'open' FROM internal_learning_questions GROUP BY COALESCE({qt},'unknown'), COALESCE({role},'unknown') ORDER BY COUNT(*) DESC LIMIT ?"
+        return cur.execute(q,(limit,)).fetchall()
+    return []
+
+def apply_learning_outcome_closure(mem=None):
+    ensure_schema(mem); db, own=_conn_from_memory(mem); cur=db.cursor(); now=_now()
+    clusters=_cluster_rows(cur,240); evaluated=improved=persistent=monitoring=event_rows=0; total_resolution=total_priority=0.0
+    for row in clusters:
+        cluster_key,qtype,role,count,priority,resolution,eff,outcome,status=row
+        count=int(count or 0); priority=float(priority or 0); resolution=float(resolution or 0); eff=float(eff or 0); outcome=float(outcome or 0)
+        closure_score=max(0.0,min(1.0,0.38*resolution+0.32*eff+0.20*outcome+0.10*(1.0-min(priority,1.0))))
+        if closure_score>=0.68 and count>=3: decision='monitoring'; monitoring+=1
+        elif closure_score>=0.35: decision='improving'; improved+=1
+        else: decision='persistent_gap'; persistent+=1
+        rec='broaden_context_and_compare_patterns' if decision=='persistent_gap' else ('continue_observe_and_consolidate' if decision=='improving' else 'monitor_for_regression')
+        total_resolution+=closure_score; total_priority+=priority; evaluated+=1
+        cur.execute("INSERT INTO question_cluster_resolution_events(cluster_key,question_type,role,question_count,open_count,improved_count,persistent_count,avg_priority,avg_resolution_score,avg_strategy_effectiveness,avg_learning_outcome,before_status,after_status,decision,details,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(cluster_key,qtype,role,count,1 if decision!='monitoring' else 0,1 if decision=='improving' else 0,1 if decision=='persistent_gap' else 0,priority,closure_score,eff,outcome,str(status),decision,rec,_json({'source':'phase5c_cluster_resolution','raw_resolution':resolution,'raw_effectiveness':eff,'raw_outcome':outcome}),now)); event_rows+=1
+        if _table_exists(cur,'phase5b_internal_question_clusters') and 'cluster_key' in _cols(cur,'phase5b_internal_question_clusters'):
+            cur.execute("UPDATE phase5b_internal_question_clusters SET resolution_score=?, learning_outcome_score=?, strategy_effectiveness_score=?, closure_status=?, closure_reason=?, last_closure_evaluated_at=?, closure_attempts=COALESCE(closure_attempts,0)+1, phase5c_recommended_strategy=?, phase5c_priority=? WHERE cluster_key=?",(closure_score,outcome,eff,decision,rec,now,rec,max(priority*(0.92 if decision!='persistent_gap' else 1.0),closure_score),cluster_key))
+        if _table_exists(cur,'internal_learning_questions') and 'cluster_key' in _cols(cur,'internal_learning_questions'):
+            cur.execute("UPDATE internal_learning_questions SET resolution_score=?, learning_outcome_score=?, strategy_effectiveness_score=?, closure_status=?, closure_reason=?, last_closure_evaluated_at=?, closure_attempts=COALESCE(closure_attempts,0)+1, phase5c_cluster_key=?, phase5c_recommended_strategy=?, phase5c_resolution_priority=? WHERE cluster_key=?",(closure_score,outcome,eff,decision,rec,now,cluster_key,rec,max(priority,closure_score),cluster_key))
+        cur.execute("INSERT OR REPLACE INTO phase5c_cluster_resolution_memory(memory_key,question_type,role,observations,avg_resolution_score,avg_strategy_effectiveness,avg_learning_outcome,persistent_count,improved_count,recommended_strategy,status,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(str(cluster_key),qtype,role,count,closure_score,eff,outcome,1 if decision=='persistent_gap' else 0,1 if decision=='improving' else 0,rec,decision,now))
+    adjusted=0
+    if _table_exists(cur,'reading_queue'):
+        rqcols=_cols(cur,'reading_queue')
+        if all(x in rqcols for x in ('priority','attention_score','status','chunk_id')):
+            for cid,pri,att,st in cur.execute("SELECT chunk_id,COALESCE(priority,0),COALESCE(attention_score,0),status FROM reading_queue WHERE status='read_no_candidate' AND COALESCE(priority,0)>=0.65 ORDER BY priority DESC LIMIT 120").fetchall():
+                newp=max(0.05,float(pri)*0.82); newa=max(0.05,float(att)*0.84)
+                cur.execute("UPDATE reading_queue SET priority=?,attention_score=?,phase5c_outcome_penalty=?,phase5c_reason=?,phase5c_last_adjusted_at=?,phase5c_read_outcome_score=? WHERE chunk_id=?",(newp,newa,1.0,'phase5c_high_priority_read_no_candidate_penalty',now,0.0,cid))
+                if _table_exists(cur,'chunk_attention_scores') and 'chunk_id' in _cols(cur,'chunk_attention_scores'):
+                    cur.execute("UPDATE chunk_attention_scores SET attention_score=?,phase5c_outcome_score=?,phase5c_reason=?,phase5c_last_adjusted_at=?,read_no_candidate_penalty=? WHERE chunk_id=?",(newa,0.0,'phase5c_high_priority_read_no_candidate_penalty',now,1.0,cid))
+                cur.execute("INSERT INTO learning_outcome_closure_events(target_type,target_key,target_id,before_priority,after_priority,resolution_score,strategy_effectiveness_score,learning_outcome_score,closure_status,closure_reason,neuromodulator_reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",('chunk',str(cid),cid,float(pri),newp,0.0,0.0,0.0,'penalized_read_no_candidate','high_priority_without_candidate','gaba_inhibition_and_exploration_rebalance',now)); adjusted+=1
+    avg_res=round(total_resolution/evaluated,6) if evaluated else 0.0; avg_pri=round(total_priority/evaluated,6) if evaluated else 0.0
+    for k,v in [('phase',PHASE),('no_word_blacklists','true'),('fact_promotion','disabled'),('question_generation','internal_learning_questions_only'),('last_evaluated_clusters',evaluated),('last_improved_clusters',improved),('last_persistent_clusters',persistent),('last_monitoring_clusters',monitoring),('last_avg_cluster_resolution_score',avg_res),('last_avg_cluster_priority',avg_pri),('last_read_no_candidate_penalties',adjusted)]: _state_set(cur,k,v,now)
+    db.commit();
+    if own: db.close()
+    return {'status':'phase5c_learning_outcome_closure_complete','phase':PHASE,'evaluated_clusters':evaluated,'improved_clusters':improved,'persistent_clusters':persistent,'monitoring_clusters':monitoring,'avg_cluster_resolution_score':avg_res,'avg_cluster_priority':avg_pri,'read_no_candidate_penalties':adjusted,'events':event_rows,'no_word_blacklists':True,'fact_promotion':'disabled'}
+
+_PREV_RUN=None; _PREV_CYCLE=None
+
+def managed_cycle(self, progress=None):
+    res=None
+    if _PREV_CYCLE and _PREV_CYCLE is not managed_cycle: res=_PREV_CYCLE(self, progress)
+    outcome=apply_learning_outcome_closure(_memory_from_loop(self))
+    if isinstance(res,dict): res['phase5c_learning_outcome_closure']=outcome; return res
+    return {'status':'phase5c_managed_cycle','base_result':res,'phase5c_learning_outcome_closure':outcome,'facts_relations_questions':'disabled'}
+
+def managed_run(self, cycles=1, progress=None):
+    out=None
+    if _PREV_RUN and _PREV_RUN is not managed_run: out=_PREV_RUN(self, cycles, progress)
+    outcome=apply_learning_outcome_closure(_memory_from_loop(self))
+    return {'status':'phase5c_managed_run','base_result':out,'phase5c_learning_outcome_closure':outcome,'fact_promotion':'disabled','no_word_blacklists':True}
+
+def patch_autonomous_loop(cls=None):
+    global _PREV_RUN,_PREV_CYCLE
+    if cls is None:
+        from ki_system.autonomous import AutonomousLoop as cls
+    if getattr(cls,'phase5c_learning_outcome_closure_and_question_cluster_resolution',False): return cls
+    _PREV_RUN=getattr(cls,'run',None); _PREV_CYCLE=getattr(cls,'cycle',None)
+    cls.run=managed_run; cls.cycle=managed_cycle
+    cls.phase5c_learning_outcome_closure_and_question_cluster_resolution=True
+    cls._phase5c_learning_outcome_closure_and_question_cluster_resolution=True
+    cls.no_word_blacklists=True; cls._no_word_blacklists=True
+    cls.learning_mode='context_hypotheses_with_neuromodulators'; cls._learning_mode='context_hypotheses_with_neuromodulators'
+    cls.fact_promotion='disabled'; cls._fact_promotion='disabled'
+    return cls
+
+===== END FILE: ki_system\v8_phase5c_learning_outcome_closure_and_question_cluster_resolution.py =====
+
+===== FILE: ki_system\v8_phase5d_integrated_observation_and_strategy_memory_release.py =====
+# V8-phase5d_integrated_observation_and_strategy_memory_release
+# Integrated observation + strategy memory release.
+# Project compass: no word blacklists, no direct facts/relations/questions, no fact promotion.
+
+from __future__ import annotations
+import os, time, json, sqlite3, traceback
+from pathlib import Path
+
+PHASE = "phase5d_integrated_observation_and_strategy_memory_release"
+LEARNING_MODE = "context_hypotheses_with_neuromodulators"
+NO_WORD_BLACKLISTS = True
+FACT_PROMOTION = "disabled"
+
+_PREV_RUN = None
+_PREV_CYCLE = None
+
+
+def _now() -> int:
+    return int(time.time())
+
+
+def _json(obj) -> str:
+    try:
+        return json.dumps(obj, ensure_ascii=False, sort_keys=True)
+    except Exception:
+        return json.dumps({"repr": repr(obj)}, ensure_ascii=False)
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _open_default_db():
+    return sqlite3.connect(str(_project_root() / "ki_memory.sqlite3"))
+
+
+def _resolve_conn(source=None):
+    """Return (conn, should_close). Be tolerant of Memory wrappers and old runtimes."""
+    if isinstance(source, sqlite3.Connection):
+        return source, False
+    candidates = []
+    if source is not None:
+        candidates.append(source)
+        for attr in ("mem", "memory", "m", "store", "memory_store", "db", "database"):
+            if hasattr(source, attr):
+                try: candidates.append(getattr(source, attr))
+                except Exception: pass
+    for obj in candidates:
+        if isinstance(obj, sqlite3.Connection):
+            return obj, False
+        for attr in ("conn", "con", "connection", "db", "sqlite", "sqlite_conn"):
+            if hasattr(obj, attr):
+                try:
+                    val = getattr(obj, attr)
+                    if isinstance(val, sqlite3.Connection):
+                        return val, False
+                except Exception:
+                    pass
+        for attr in ("db_path", "path", "filename"):
+            if hasattr(obj, attr):
+                try:
+                    p = getattr(obj, attr)
+                    if p and Path(str(p)).exists():
+                        return sqlite3.connect(str(p)), True
+                except Exception:
+                    pass
+        if hasattr(obj, "execute") and hasattr(obj, "cursor"):
+            return obj, False
+    return _open_default_db(), True
+
+
+def _table_exists(cur, table: str) -> bool:
+    return cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
+
+
+def _cols(cur, table: str):
+    if not _table_exists(cur, table):
+        return set()
+    return {r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _add_col(cur, table: str, col: str, decl: str, changes: list):
+    if not _table_exists(cur, table):
+        return
+    if col not in _cols(cur, table):
+        cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+        changes.append(f"add_column:{table}.{col}")
+
+
+def _unique(cur, table: str, col: str, changes: list):
+    if not _table_exists(cur, table) or col not in _cols(cur, table):
+        return
+    idx = f"idx_{table}_{col}_phase5d_unique"
+    try:
+        cur.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {idx} ON {table}({col})")
+        changes.append(f"unique_index:{table}.{col}")
+    except sqlite3.IntegrityError:
+        # Existing duplicates: do not destructively cleanup here. Keep learning safe.
+        changes.append(f"skip_unique_duplicates:{table}.{col}")
+
+
+def ensure_phase5d_schema(db_or_mem=None):
+    db, close = _resolve_conn(db_or_mem)
+    cur = db.cursor()
+    changes = []
+    cur.execute("""CREATE TABLE IF NOT EXISTS phase5d_observation_memory(
+        memory_key TEXT PRIMARY KEY,
+        observation_type TEXT,
+        scope TEXT,
+        observations INTEGER DEFAULT 0,
+        avg_outcome_score REAL DEFAULT 0,
+        avg_resolution_score REAL DEFAULT 0,
+        avg_error_pressure REAL DEFAULT 0,
+        avg_uncertainty_pressure REAL DEFAULT 0,
+        avg_stability_gain REAL DEFAULT 0,
+        avg_strategy_effectiveness REAL DEFAULT 0,
+        persistent_gap_pressure REAL DEFAULT 0,
+        read_no_candidate_pressure REAL DEFAULT 0,
+        trend TEXT,
+        recommendation TEXT,
+        details TEXT,
+        first_seen INTEGER DEFAULT 0,
+        last_seen INTEGER DEFAULT 0,
+        updated_at INTEGER DEFAULT 0
+    )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS phase5d_strategy_memory_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT,
+        memory_key TEXT,
+        metric_name TEXT,
+        old_value REAL DEFAULT 0,
+        new_value REAL DEFAULT 0,
+        delta REAL DEFAULT 0,
+        recommendation TEXT,
+        details TEXT,
+        created_at INTEGER DEFAULT 0
+    )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS phase5d_observation_cycles(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        phase TEXT,
+        hypotheses INTEGER DEFAULT 0,
+        gaps INTEGER DEFAULT 0,
+        internal_questions INTEGER DEFAULT 0,
+        feedback_events INTEGER DEFAULT 0,
+        resolution_events INTEGER DEFAULT 0,
+        progress_evaluations INTEGER DEFAULT 0,
+        strategy_feedback_events INTEGER DEFAULT 0,
+        long_term_patterns INTEGER DEFAULT 0,
+        outcome_score REAL DEFAULT 0,
+        avg_resolution_score REAL DEFAULT 0,
+        avg_error_pressure REAL DEFAULT 0,
+        avg_uncertainty_pressure REAL DEFAULT 0,
+        avg_stability_gain REAL DEFAULT 0,
+        persistent_gap_count INTEGER DEFAULT 0,
+        read_no_candidate_penalties INTEGER DEFAULT 0,
+        integrated_health_score REAL DEFAULT 0,
+        safety_ok INTEGER DEFAULT 0,
+        details TEXT,
+        created_at INTEGER DEFAULT 0
+    )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS phase5d_strategy_recommendations(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        strategy_key TEXT,
+        recommendation_type TEXT,
+        target TEXT,
+        strength REAL DEFAULT 0,
+        reason TEXT,
+        neuromodulator_adjustment TEXT,
+        status TEXT DEFAULT 'open',
+        details TEXT,
+        created_at INTEGER DEFAULT 0
+    )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS phase5d_runtime_state(
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at INTEGER DEFAULT 0
+    )""")
+    # Future-tolerant columns in existing tables.
+    for table in ("internal_learning_gaps", "internal_learning_questions", "context_hypotheses", "chunk_attention_scores", "reading_queue", "strategy_outcome_memory", "strategy_gap_resolution_memory"):
+        if _table_exists(cur, table):
+            for col, decl in [
+                ("phase5d_observation_score", "REAL DEFAULT 0"),
+                ("phase5d_strategy_memory_score", "REAL DEFAULT 0"),
+                ("phase5d_trend", "TEXT"),
+                ("phase5d_recommendation", "TEXT"),
+                ("phase5d_last_observed_at", "INTEGER DEFAULT 0"),
+                ("phase5d_reason", "TEXT"),
+                ("phase5d_outcome_score", "REAL DEFAULT 0"),
+                ("phase5d_resolution_score", "REAL DEFAULT 0"),
+                ("phase5d_persistent_pressure", "REAL DEFAULT 0"),
+            ]:
+                _add_col(cur, table, col, decl, changes)
+    for table, col in [
+        ("phase5d_observation_memory", "memory_key"),
+        ("phase5d_runtime_state", "key"),
+        ("internal_learning_gaps", "gap_key"),
+        ("internal_learning_questions", "question_key"),
+        ("reading_queue", "chunk_id"),
+        ("chunk_attention_scores", "chunk_id"),
+        ("phase5a_integrated_runtime_state", "key"),
+        ("phase5b_strategy_refinement_state", "key"),
+        ("phase5c_runtime_state", "key"),
+    ]:
+        _unique(cur, table, col, changes)
+    now = _now()
+    for k, v in {
+        "phase": PHASE,
+        "learning_mode": LEARNING_MODE,
+        "no_word_blacklists": "true",
+        "fact_promotion": FACT_PROMOTION,
+        "direct_fact_writes": "disabled",
+        "direct_relation_writes": "disabled",
+        "question_generation": "internal_learning_questions_only",
+    }.items():
+        cur.execute("INSERT INTO phase5d_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at", (k, str(v), now))
+    db.commit()
+    if close: db.close()
+    return {"status": "ok", "phase": PHASE, "changes": changes, "no_word_blacklists": True, "fact_promotion": FACT_PROMOTION}
+
+
+def _count(cur, table):
+    if not _table_exists(cur, table): return 0
+    try: return int(cur.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] or 0)
+    except Exception: return 0
+
+
+def _avg(cur, table, col, where="1=1"):
+    if not _table_exists(cur, table) or col not in _cols(cur, table): return 0.0
+    try:
+        v = cur.execute(f"SELECT AVG(COALESCE({col},0)) FROM {table} WHERE {where}").fetchone()[0]
+        return float(v or 0.0)
+    except Exception:
+        return 0.0
+
+
+def _latest_state_float(cur, table, key, default=0.0):
+    if not _table_exists(cur, table): return default
+    cols = _cols(cur, table)
+    if not {"key", "value"}.issubset(cols): return default
+    row = cur.execute(f"SELECT value FROM {table} WHERE key=?", (key,)).fetchone()
+    if not row: return default
+    try: return float(str(row[0]).strip("'\""))
+    except Exception: return default
+
+
+def _upsert_memory(cur, key, observation_type, scope, values, recommendation, details, now):
+    old = cur.execute("SELECT avg_outcome_score, avg_resolution_score, avg_error_pressure, avg_uncertainty_pressure, avg_stability_gain, observations FROM phase5d_observation_memory WHERE memory_key=?", (key,)).fetchone()
+    observations = int((old[5] if old else 0) or 0) + 1
+    def evolve(old_val, new_val):
+        if old is None: return new_val
+        return round((float(old_val or 0) * 0.75) + (float(new_val or 0) * 0.25), 6)
+    avg_outcome = evolve(old[0] if old else 0, values.get("outcome_score", 0))
+    avg_resolution = evolve(old[1] if old else 0, values.get("resolution_score", 0))
+    avg_error = evolve(old[2] if old else 0, values.get("error_pressure", 0))
+    avg_unc = evolve(old[3] if old else 0, values.get("uncertainty_pressure", 0))
+    avg_stab = evolve(old[4] if old else 0, values.get("stability_gain", 0))
+    trend = "improving" if values.get("resolution_score", 0) > avg_resolution else "observe"
+    cur.execute("""INSERT INTO phase5d_observation_memory(
+        memory_key,observation_type,scope,observations,avg_outcome_score,avg_resolution_score,avg_error_pressure,
+        avg_uncertainty_pressure,avg_stability_gain,avg_strategy_effectiveness,persistent_gap_pressure,
+        read_no_candidate_pressure,trend,recommendation,details,first_seen,last_seen,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(memory_key) DO UPDATE SET observations=excluded.observations, avg_outcome_score=excluded.avg_outcome_score,
+        avg_resolution_score=excluded.avg_resolution_score, avg_error_pressure=excluded.avg_error_pressure,
+        avg_uncertainty_pressure=excluded.avg_uncertainty_pressure, avg_stability_gain=excluded.avg_stability_gain,
+        avg_strategy_effectiveness=excluded.avg_strategy_effectiveness, persistent_gap_pressure=excluded.persistent_gap_pressure,
+        read_no_candidate_pressure=excluded.read_no_candidate_pressure, trend=excluded.trend, recommendation=excluded.recommendation,
+        details=excluded.details, last_seen=excluded.last_seen, updated_at=excluded.updated_at""",
+        (key, observation_type, scope, observations, avg_outcome, avg_resolution, avg_error, avg_unc, avg_stab,
+         values.get("strategy_effectiveness", 0), values.get("persistent_gap_pressure", 0), values.get("read_no_candidate_pressure", 0),
+         trend, recommendation, _json(details), now, now, now))
+    cur.execute("INSERT INTO phase5d_strategy_memory_events(event_type,memory_key,metric_name,old_value,new_value,delta,recommendation,details,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                ("strategy_memory_update", key, "resolution_score", float(old[1] if old else 0), values.get("resolution_score", 0), values.get("resolution_score", 0)-float(old[1] if old else 0), recommendation, _json(details), now))
+
+
+def apply_integrated_observation_and_strategy_memory(db_or_mem=None):
+    db, close = _resolve_conn(db_or_mem)
+    ensure_phase5d_schema(db)
+    cur = db.cursor(); now = _now()
+    facts, relations, questions = _count(cur,"facts"), _count(cur,"relations"), _count(cur,"questions")
+    safety_ok = int(facts == 0 and relations == 0 and questions == 0)
+    metrics = {
+        "hypotheses": _count(cur, "context_hypotheses"),
+        "gaps": _count(cur, "internal_learning_gaps"),
+        "internal_questions": _count(cur, "internal_learning_questions"),
+        "feedback_events": _count(cur, "strategy_feedback_events"),
+        "resolution_events": _count(cur, "gap_resolution_outcomes"),
+        "progress_evaluations": _count(cur, "learning_progress_evaluations"),
+        "strategy_feedback_events": _count(cur, "strategy_feedback_events"),
+        "long_term_patterns": _count(cur, "long_term_pattern_memory"),
+    }
+    outcome = _avg(cur, "strategy_feedback_events", "outcome_score") or _avg(cur, "strategy_outcome_memory", "avg_outcome_score")
+    resolution = _avg(cur, "gap_resolution_outcomes", "resolution_score") or _avg(cur, "internal_learning_gaps", "resolution_score")
+    error_pressure = _latest_state_float(cur, "progress_evaluation_state", "last_error_pressure", _avg(cur,"internal_learning_gaps","error_weight"))
+    unc_pressure = _latest_state_float(cur, "progress_evaluation_state", "last_uncertainty_pressure", _avg(cur,"internal_learning_gaps","uncertainty"))
+    stability_gain = _latest_state_float(cur, "progress_evaluation_state", "last_stability_gain", _avg(cur,"long_term_pattern_memory","stability"))
+    persistent = 0
+    if _table_exists(cur, "internal_learning_gaps") and "resolution_status" in _cols(cur, "internal_learning_gaps"):
+        persistent = int(cur.execute("SELECT COUNT(*) FROM internal_learning_gaps WHERE COALESCE(resolution_status,'open') IN ('persistent_gap','open','persistent')").fetchone()[0] or 0)
+    read_no_candidate = 0
+    if _table_exists(cur, "reading_queue"):
+        read_no_candidate = int(cur.execute("SELECT COUNT(*) FROM reading_queue WHERE status='read_no_candidate' AND COALESCE(priority,0) >= 0.6").fetchone()[0] or 0)
+    persistent_pressure = min(1.0, persistent / max(1, metrics["gaps"]))
+    read_no_candidate_pressure = min(1.0, read_no_candidate / max(1, _count(cur,"reading_queue")))
+    recommendation = "observe_and_keep_strategy"
+    if persistent_pressure > 0.4 and resolution < 0.25:
+        recommendation = "increase_diverse_context_and_strengthen_gap_closure"
+    elif outcome > 0.65 and stability_gain > 0.05:
+        recommendation = "reinforce_current_strategy_memory"
+    elif read_no_candidate_pressure > 0.05:
+        recommendation = "reduce_unproductive_read_no_candidate_paths"
+    values = {
+        "outcome_score": round(outcome,6), "resolution_score": round(resolution,6), "error_pressure": round(error_pressure,6),
+        "uncertainty_pressure": round(unc_pressure,6), "stability_gain": round(stability_gain,6),
+        "strategy_effectiveness": round((outcome + resolution + stability_gain) / 3.0, 6),
+        "persistent_gap_pressure": round(persistent_pressure,6), "read_no_candidate_pressure": round(read_no_candidate_pressure,6)
+    }
+    _upsert_memory(cur, "global_integrated_strategy_memory", "global_strategy", "global", values, recommendation, metrics, now)
+    _upsert_memory(cur, "persistent_gap_strategy_memory", "gap_resolution", "internal_learning_gaps", values, recommendation, {"persistent": persistent}, now)
+    _upsert_memory(cur, "read_outcome_strategy_memory", "read_outcome", "reading_queue", values, recommendation, {"read_no_candidate_high_priority": read_no_candidate}, now)
+    # Backpropagate scores to existing tables, tolerant and bounded.
+    for table, order_col in [("internal_learning_gaps", "priority"), ("internal_learning_questions", "priority"), ("chunk_attention_scores", "attention_score")]:
+        if _table_exists(cur, table):
+            cols = _cols(cur, table)
+            sets=[]; params=[]
+            if "phase5d_observation_score" in cols: sets.append("phase5d_observation_score=?"); params.append(round((outcome+resolution)/2, 6))
+            if "phase5d_strategy_memory_score" in cols: sets.append("phase5d_strategy_memory_score=?"); params.append(values["strategy_effectiveness"])
+            if "phase5d_trend" in cols: sets.append("phase5d_trend=?"); params.append("persistent" if persistent_pressure>0.4 else "observe")
+            if "phase5d_recommendation" in cols: sets.append("phase5d_recommendation=?"); params.append(recommendation)
+            if "phase5d_last_observed_at" in cols: sets.append("phase5d_last_observed_at=?"); params.append(now)
+            if "phase5d_reason" in cols: sets.append("phase5d_reason=?"); params.append(PHASE)
+            if sets:
+                sql = f"UPDATE {table} SET "+", ".join(sets)+f" WHERE rowid IN (SELECT rowid FROM {table} ORDER BY COALESCE({order_col},0) DESC, rowid DESC LIMIT 250)"
+                try: cur.execute(sql, tuple(params))
+                except Exception: pass
+    cur.execute("INSERT INTO phase5d_observation_cycles(phase,hypotheses,gaps,internal_questions,feedback_events,resolution_events,progress_evaluations,strategy_feedback_events,long_term_patterns,outcome_score,avg_resolution_score,avg_error_pressure,avg_uncertainty_pressure,avg_stability_gain,persistent_gap_count,read_no_candidate_penalties,integrated_health_score,safety_ok,details,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (PHASE, metrics["hypotheses"], metrics["gaps"], metrics["internal_questions"], metrics["feedback_events"], metrics["resolution_events"], metrics["progress_evaluations"], metrics["strategy_feedback_events"], metrics["long_term_patterns"], values["outcome_score"], values["resolution_score"], values["error_pressure"], values["uncertainty_pressure"], values["stability_gain"], persistent, read_no_candidate, 1.0 if safety_ok else 0.0, safety_ok, _json({"recommendation": recommendation}), now))
+    cur.execute("INSERT INTO phase5d_strategy_recommendations(strategy_key,recommendation_type,target,strength,reason,neuromodulator_adjustment,status,details,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                ("integrated_strategy_memory", recommendation, "global", values["strategy_effectiveness"], PHASE, _json({"error_weight":"adaptive", "exploration":"adaptive", "inhibition":"adaptive"}), "open", _json(values), now))
+    for k, v in {
+        "phase": PHASE, "learning_mode": LEARNING_MODE, "no_word_blacklists": "true", "fact_promotion": FACT_PROMOTION,
+        "direct_fact_writes": "disabled", "direct_relation_writes": "disabled", "question_generation": "internal_learning_questions_only",
+        "last_outcome_score": values["outcome_score"], "last_resolution_score": values["resolution_score"],
+        "last_strategy_effectiveness": values["strategy_effectiveness"], "last_persistent_gap_pressure": values["persistent_gap_pressure"],
+        "last_read_no_candidate_pressure": values["read_no_candidate_pressure"], "last_recommendation": recommendation,
+        "last_safety_ok": str(bool(safety_ok)).lower()
+    }.items():
+        cur.execute("INSERT INTO phase5d_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at", (k, str(v), now))
+    db.commit()
+    result = {"status": "phase5d_observation_strategy_memory_complete", "phase": PHASE, "metrics": metrics, "values": values, "recommendation": recommendation, "safety_ok": bool(safety_ok), "no_word_blacklists": True, "fact_promotion": FACT_PROMOTION}
+    if close: db.close()
+    return result
+
+
+def managed_cycle(self, progress=None):
+    result = None
+    if _PREV_CYCLE is not None:
+        result = _PREV_CYCLE(self, progress)
+    summary = apply_integrated_observation_and_strategy_memory(self)
+    if isinstance(result, dict):
+        result["phase5d_integrated_observation_and_strategy_memory"] = summary
+        return result
+    return {"cycle_result": result, "phase5d_integrated_observation_and_strategy_memory": summary}
+
+
+def managed_run(self, cycles=1, progress=None):
+    result = None
+    if _PREV_RUN is not None:
+        result = _PREV_RUN(self, cycles, progress)
+    summary = apply_integrated_observation_and_strategy_memory(self)
+    if isinstance(result, list):
+        result.append({"phase5d_integrated_observation_and_strategy_memory": summary})
+        return result
+    if isinstance(result, dict):
+        result["phase5d_integrated_observation_and_strategy_memory"] = summary
+        return result
+    return [{"run_result": result, "phase5d_integrated_observation_and_strategy_memory": summary}]
+
+
+def patch_autonomous_loop(cls=None):
+    global _PREV_RUN, _PREV_CYCLE
+    if cls is None:
+        from ki_system.autonomous import AutonomousLoop as cls
+    if getattr(cls, "phase5d_integrated_observation_and_strategy_memory_release", False):
+        return cls
+    current_run = getattr(cls, "run", None)
+    current_cycle = getattr(cls, "cycle", None)
+    if getattr(current_run, "__module__", "") != __name__:
+        _PREV_RUN = current_run
+    if getattr(current_cycle, "__module__", "") != __name__:
+        _PREV_CYCLE = current_cycle
+    cls.run = managed_run
+    cls.cycle = managed_cycle
+    cls.phase5d_integrated_observation_and_strategy_memory_release = True
+    cls._phase5d_integrated_observation_and_strategy_memory_release = True
+    cls.no_word_blacklists = True
+    cls._no_word_blacklists = True
+    cls.learning_mode = LEARNING_MODE
+    cls._learning_mode = LEARNING_MODE
+    cls.fact_promotion = FACT_PROMOTION
+    cls._fact_promotion = FACT_PROMOTION
+    return cls
+
+try:
+    patch_autonomous_loop()
+except Exception:
+    # Import-time patch can fail during isolated compilation; installer autoload retries in project runtime.
+    pass
+
+===== END FILE: ki_system\v8_phase5d_integrated_observation_and_strategy_memory_release.py =====
+
 ===== FILE: ki_system\v8_phase5e_context_expansion_and_gap_closure_release.py =====
 from __future__ import annotations
 import sqlite3, time, json
@@ -703,6 +1293,47 @@ def _unique(db: sqlite3.Connection, table: str, col: str, changes: List[str]) ->
         changes.append(f"skip_unique_duplicate:{table}.{col}")
 
 
+PHASE5H_REQUIRED_SCHEMA = {
+    "phase5h_experiment_outcome_cycles": (
+        "id", "phase", "experiments_seen", "outcomes_written", "memory_updates",
+        "avg_outcome_score", "avg_closure_delta", "avg_no_candidate_rate",
+        "avg_overlap_score", "recommendation", "safety_ok",
+        "no_word_blacklists", "fact_promotion", "created_at",
+    ),
+    "phase5h_strategy_outcome_memory": (
+        "memory_key", "selected_strategy", "gap_type", "role", "observations",
+        "avg_outcome_score", "avg_closure_delta", "avg_no_candidate_rate",
+        "avg_overlap_score", "avg_strategy_score", "recommendation",
+        "neuromodulator_profile", "details", "first_seen", "last_seen", "updated_at",
+    ),
+    "phase5g_strategy_selection_memory": (
+        "memory_key", "strategy", "gap_type", "role", "observations",
+        "avg_outcome_score", "avg_closure_delta", "avg_no_candidate_rate",
+        "avg_overlap_score", "avg_strategy_score", "recommendation",
+        "neuromodulator_profile", "details", "first_seen", "last_seen", "updated_at",
+    ),
+    "phase5g_experiment_outcomes": (
+        "outcome_key", "experiment_key", "gap_type", "role", "selected_strategy",
+        "target_chunk_id", "closure_delta", "no_candidate_rate", "overlap_score",
+        "strategy_score", "outcome_score", "recommendation", "learning_rate",
+        "error_weight", "revision_pressure", "exploration_pressure",
+        "inhibition_level", "consolidation_gain", "details", "created_at", "updated_at",
+    ),
+}
+
+def _self_check_schema(db: sqlite3.Connection) -> bool:
+    missing: List[str] = []
+    for table, required in PHASE5H_REQUIRED_SCHEMA.items():
+        existing = set(_cols(db, table))
+        if not existing:
+            missing.append(table)
+            continue
+        missing.extend(table + "." + col for col in required if col not in existing)
+    if missing:
+        raise RuntimeError("Phase5h schema missing: " + ", ".join(missing))
+    return True
+
+
 def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
     db = _get_db(mem_or_conn)
     cur = db.cursor()
@@ -723,7 +1354,10 @@ def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
         safety_ok INTEGER DEFAULT 1,
         no_word_blacklists TEXT DEFAULT 'true',
         fact_promotion TEXT DEFAULT 'disabled',
-        created_at INTEGER
+        facts INTEGER DEFAULT 0,
+        relations INTEGER DEFAULT 0,
+        questions INTEGER DEFAULT 0,
+        created_at INTEGER DEFAULT 0
     )""")
     cur.execute("""
     CREATE TABLE IF NOT EXISTS phase5h_strategy_outcome_memory(
@@ -737,12 +1371,6 @@ def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
         avg_no_candidate_rate REAL DEFAULT 0,
         avg_overlap_score REAL DEFAULT 0,
         avg_strategy_score REAL DEFAULT 0,
-        avg_learning_rate REAL DEFAULT 0,
-        avg_error_weight REAL DEFAULT 0,
-        avg_revision_pressure REAL DEFAULT 0,
-        avg_exploration_pressure REAL DEFAULT 0,
-        avg_inhibition_level REAL DEFAULT 0,
-        avg_consolidation_gain REAL DEFAULT 0,
         recommendation TEXT,
         neuromodulator_profile TEXT,
         details TEXT,
@@ -839,6 +1467,20 @@ def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
     )""")
     # Future-proof important tables.
     table_cols = {
+        'phase5h_experiment_outcome_cycles': {
+            'recommendation':'TEXT','safety_ok':'INTEGER DEFAULT 1',
+            'no_word_blacklists':"TEXT DEFAULT 'true'",'fact_promotion':"TEXT DEFAULT 'disabled'",
+            'facts':'INTEGER DEFAULT 0','relations':'INTEGER DEFAULT 0','questions':'INTEGER DEFAULT 0',
+            'created_at':'INTEGER DEFAULT 0'
+        },
+        'phase5h_strategy_outcome_memory': {
+            'selected_strategy':'TEXT','gap_type':'TEXT','role':'TEXT','observations':'INTEGER DEFAULT 0',
+            'avg_outcome_score':'REAL DEFAULT 0','avg_closure_delta':'REAL DEFAULT 0',
+            'avg_no_candidate_rate':'REAL DEFAULT 0','avg_overlap_score':'REAL DEFAULT 0',
+            'avg_strategy_score':'REAL DEFAULT 0','recommendation':'TEXT',
+            'neuromodulator_profile':'TEXT','details':'TEXT','first_seen':'INTEGER',
+            'last_seen':'INTEGER','updated_at':'INTEGER DEFAULT 0'
+        },
         'phase5g_strategy_experiments': {
             'experiment_key':'TEXT','gap_id':'INTEGER','gap_key':'TEXT','gap_type':'TEXT','role':'TEXT',
             'center_chunk_id':'INTEGER','target_chunk_id':'INTEGER','selected_strategy':'TEXT','window_strategy':'TEXT',
@@ -856,7 +1498,7 @@ def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
             'details':'TEXT','created_at':'INTEGER','updated_at':'INTEGER'
         },
         'phase5g_strategy_selection_memory': {
-            'avg_outcome_score':'REAL DEFAULT 0','avg_closure_delta':'REAL DEFAULT 0','avg_no_candidate_rate':'REAL DEFAULT 0',
+            'strategy':'TEXT','avg_outcome_score':'REAL DEFAULT 0','avg_closure_delta':'REAL DEFAULT 0','avg_no_candidate_rate':'REAL DEFAULT 0',
             'avg_overlap_score':'REAL DEFAULT 0','avg_strategy_score':'REAL DEFAULT 0','recommendation':'TEXT',
             'neuromodulator_profile':'TEXT','first_seen':'INTEGER','last_seen':'INTEGER','updated_at':'INTEGER'
         },
@@ -891,6 +1533,9 @@ def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
         ('chunk_attention_scores','chunk_id'),
     ]:
         _unique(db, tbl, col, changes)
+    # No write may proceed with an incomplete active Phase5g/5h contract.
+    _self_check_schema(db)
+
     # Safety state
     now = _now()
     for k, v in {
@@ -1079,23 +1724,29 @@ def evaluate_strategy_experiment_outcomes(mem_or_conn: Any = None, limit: int = 
             key = f'{strategy}:{gap_type}:{role}'
             rec = _memory_recommendation(_clamp(avg_out), _clamp(avg_cl), _clamp(avg_no), _clamp(avg_ov))
             profile = {'learning_rate':lr,'error_weight':ew,'revision_pressure':rp,'exploration_pressure':ep,'inhibition_level':inh,'consolidation_gain':cg}
-            for table in ('phase5h_strategy_outcome_memory','phase5g_strategy_selection_memory'):
-                db.execute(f"""
-                    INSERT INTO {table}(memory_key,selected_strategy,gap_type,role,observations,avg_outcome_score,avg_closure_delta,avg_no_candidate_rate,avg_overlap_score,avg_strategy_score,recommendation,neuromodulator_profile,details,first_seen,last_seen,updated_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    ON CONFLICT(memory_key) DO UPDATE SET
-                        observations=excluded.observations,
-                        avg_outcome_score=excluded.avg_outcome_score,
-                        avg_closure_delta=excluded.avg_closure_delta,
-                        avg_no_candidate_rate=excluded.avg_no_candidate_rate,
-                        avg_overlap_score=excluded.avg_overlap_score,
-                        avg_strategy_score=excluded.avg_strategy_score,
-                        recommendation=excluded.recommendation,
-                        neuromodulator_profile=excluded.neuromodulator_profile,
-                        details=excluded.details,
-                        last_seen=excluded.last_seen,
-                        updated_at=excluded.updated_at
-                """, (key,strategy,gap_type,role,int(n or 0),_clamp(avg_out),_clamp(avg_cl),_clamp(avg_no),_clamp(avg_ov),_clamp(avg_str),rec,_j(profile),_j({'phase':PHASE}),now,now,now))
+            memory_values = (key,strategy,gap_type,role,int(n or 0),_clamp(avg_out),_clamp(avg_cl),_clamp(avg_no),_clamp(avg_ov),_clamp(avg_str),rec,_j(profile),_j({'phase':PHASE}),now,now,now)
+            db.execute("""
+                INSERT INTO phase5h_strategy_outcome_memory(memory_key,selected_strategy,gap_type,role,observations,avg_outcome_score,avg_closure_delta,avg_no_candidate_rate,avg_overlap_score,avg_strategy_score,recommendation,neuromodulator_profile,details,first_seen,last_seen,updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(memory_key) DO UPDATE SET
+                    selected_strategy=excluded.selected_strategy,
+                    observations=excluded.observations, avg_outcome_score=excluded.avg_outcome_score,
+                    avg_closure_delta=excluded.avg_closure_delta, avg_no_candidate_rate=excluded.avg_no_candidate_rate,
+                    avg_overlap_score=excluded.avg_overlap_score, avg_strategy_score=excluded.avg_strategy_score,
+                    recommendation=excluded.recommendation, neuromodulator_profile=excluded.neuromodulator_profile,
+                    details=excluded.details, last_seen=excluded.last_seen, updated_at=excluded.updated_at
+            """, memory_values)
+            db.execute("""
+                INSERT INTO phase5g_strategy_selection_memory(memory_key,strategy,gap_type,role,observations,avg_outcome_score,avg_closure_delta,avg_no_candidate_rate,avg_overlap_score,avg_strategy_score,recommendation,neuromodulator_profile,details,first_seen,last_seen,updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(memory_key) DO UPDATE SET
+                    strategy=excluded.strategy,
+                    observations=excluded.observations, avg_outcome_score=excluded.avg_outcome_score,
+                    avg_closure_delta=excluded.avg_closure_delta, avg_no_candidate_rate=excluded.avg_no_candidate_rate,
+                    avg_overlap_score=excluded.avg_overlap_score, avg_strategy_score=excluded.avg_strategy_score,
+                    recommendation=excluded.recommendation, neuromodulator_profile=excluded.neuromodulator_profile,
+                    details=excluded.details, last_seen=excluded.last_seen, updated_at=excluded.updated_at
+            """, memory_values)
             memory_updates += 1
             # Backpropagate to matching gaps/chunks for future selection.
             if _table_exists(db, 'internal_learning_gaps'):
@@ -1150,7 +1801,12 @@ def managed_cycle(self, progress=None):
         result = {'phase5g_cycle_error': str(exc)}
     db = _get_db(self)
     outcome = evaluate_strategy_experiment_outcomes(db)
-    return {'phase': PHASE, 'base_result': result, 'outcome_learning': outcome, 'facts': outcome.get('facts',0), 'relations': outcome.get('relations',0), 'questions': outcome.get('questions',0)}
+    try:
+        from ki_system import v8_modern_outcome_bridge_shadow_release as shadow_bridge
+        shadow = shadow_bridge.observe_shadow(db)
+    except Exception as exc:
+        shadow = {'status':'modern_outcome_bridge_shadow_error','error':str(exc),'bridge_mode':'shadow'}
+    return {'phase': PHASE, 'base_result': result, 'outcome_learning': outcome, 'modern_outcome_bridge_shadow': shadow, 'facts': outcome.get('facts',0), 'relations': outcome.get('relations',0), 'questions': outcome.get('questions',0)}
 
 
 def managed_run(self, cycles=1, progress=None):
@@ -1360,6 +2016,33 @@ import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+def _canonical_outcome_observation_count(con):
+    try:
+        if not _table_exists(con, "phase5g_experiment_outcomes"):
+            return 0
+        return int(con.execute("SELECT COUNT(*) FROM phase5g_experiment_outcomes").fetchone()[0] or 0)
+    except Exception:
+        return 0
+
+def _canonical_outcome_observation_available(con):
+    return 1 if _canonical_outcome_observation_count(con) > 0 else 0
+
+def _canonical_phase6a_evidence_state(con, candidate_count, replay_events):
+    population = int(candidate_count or 0) > 0 or int(replay_events or 0) > 0
+    if not population:
+        return "no_population"
+    if not _canonical_outcome_observation_available(con):
+        return "population_without_outcome_observation"
+    return "outcome_observed_insufficient_comparison"
+
+def _canonical_phase6a_evidence_reason(con, candidate_count, replay_events):
+    state = _canonical_phase6a_evidence_state(con, candidate_count, replay_events)
+    if state == "no_population":
+        return "no_replay_population_observed"
+    if state == "population_without_outcome_observation":
+        return "replay_population_present_but_phase5g_outcome_observation_absent"
+    return "outcome_observation_present_comparison_deferred_to_phase6b"
+
 
 PHASE = "phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release"
 LEARNING_MODE = "context_hypotheses_with_neuromodulators"
@@ -1466,25 +2149,7 @@ def kv_set(db: sqlite3.Connection, table: str, key: str, value: Any, now: Option
 def ensure_phase6a_schema(db: sqlite3.Connection) -> Dict[str, Any]:
     changes: List[str] = []
 
-    db.execute("""
-    CREATE TABLE IF NOT EXISTS phase6a_sleep_replay_cycles(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        replay_mode TEXT,
-        candidate_count INTEGER DEFAULT 0,
-        replay_events INTEGER DEFAULT 0,
-        avg_outcome_score REAL DEFAULT 0,
-        avg_closure_delta REAL DEFAULT 0,
-        avg_overlap_score REAL DEFAULT 0,
-        persistent_gap_pressure REAL DEFAULT 0,
-        plasticity_level REAL DEFAULT 0,
-        exploration_bias REAL DEFAULT 0,
-        consolidation_bias REAL DEFAULT 0,
-        inhibition_bias REAL DEFAULT 0,
-        revision_bias REAL DEFAULT 0,
-        safety_ok INTEGER DEFAULT 1,
-        details TEXT,
-        created_at INTEGER
-    )""")
+    db.execute('\n    CREATE TABLE IF NOT EXISTS phase6a_sleep_replay_cycles(\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        replay_mode TEXT,\n        candidate_count INTEGER DEFAULT 0,\n        replay_events INTEGER DEFAULT 0,\n        avg_outcome_score REAL DEFAULT 0,\n        avg_closure_delta REAL DEFAULT 0,\n        avg_overlap_score REAL DEFAULT 0,\n        persistent_gap_pressure REAL DEFAULT 0,\n        plasticity_level REAL DEFAULT 0,\n        exploration_bias REAL DEFAULT 0,\n        consolidation_bias REAL DEFAULT 0,\n        inhibition_bias REAL DEFAULT 0,\n        revision_bias REAL DEFAULT 0,\n        safety_ok INTEGER DEFAULT 1,\n        details TEXT,\n        created_at INTEGER,\n        population_available INTEGER DEFAULT 0,\n        outcome_observation_available INTEGER DEFAULT 0,\n        outcome_observation_count INTEGER DEFAULT 0,\n        evidence_state TEXT,\n        evidence_reason TEXT\n    )')
 
     db.execute("""
     CREATE TABLE IF NOT EXISTS phase6a_sleep_replay_events(
@@ -1894,9 +2559,8 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
         )
 
     db.execute(
-        "INSERT INTO phase6a_sleep_replay_cycles(replay_mode,candidate_count,replay_events,avg_outcome_score,avg_closure_delta,avg_overlap_score,persistent_gap_pressure,plasticity_level,exploration_bias,consolidation_bias,inhibition_bias,revision_bias,safety_ok,details,created_at) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        ("offline_replay_after_wake_cycle", len(candidates), replayed, avg_outcome, avg_closure, avg_overlap, persistent_pressure, plasticity, exploration_bias, consolidation_bias, inhibition_bias, revision_bias, 1 if _safety(db) == {"facts": 0, "relations": 0, "questions": 0} else 0, _j({"neuromodulators": nm, "no_word_blacklists": True}), now),
+        "INSERT INTO phase6a_sleep_replay_cycles(replay_mode,candidate_count,replay_events,avg_outcome_score,avg_closure_delta,avg_overlap_score,persistent_gap_pressure,plasticity_level,exploration_bias,consolidation_bias,inhibition_bias,revision_bias,safety_ok,details,created_at,population_available,outcome_observation_available,outcome_observation_count,evidence_state,evidence_reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("offline_replay_after_wake_cycle", len(candidates), replayed, avg_outcome, avg_closure, avg_overlap, persistent_pressure, plasticity, exploration_bias, consolidation_bias, inhibition_bias, revision_bias, 1 if _safety(db) == {"facts": 0, "relations": 0, "questions": 0} else 0, _j({"neuromodulators": nm, "no_word_blacklists": True}), now, (1 if (int(len(candidates) or 0)>0 or int(replayed or 0)>0) else 0), _canonical_outcome_observation_available(db), _canonical_outcome_observation_count(db), _canonical_phase6a_evidence_state(db, len(candidates), replayed), _canonical_phase6a_evidence_reason(db, len(candidates), replayed))
     )
 
     # State tables.
@@ -2081,6 +2745,10 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {
         ("effectiveness_avg",   "REAL"),
         ("state_json",          "TEXT"),
         ("active",              "INTEGER DEFAULT 1"),
+    
+        ('measurement_event_id', 'INTEGER'),
+        ('evidence_state', 'TEXT'),
+        ('snapshot_owner', 'TEXT')
     ],
     "phase6b_effectiveness_events": [
         ("id",                    "INTEGER PRIMARY KEY AUTOINCREMENT"),
@@ -2110,6 +2778,17 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {
         ("glutamate",             "REAL"),
         ("gaba",                  "REAL"),
         ("notes",                 "TEXT"),
+    
+        ('measurement_owner', 'TEXT'),
+        ('population_available', 'INTEGER DEFAULT 0'),
+        ('outcome_observation_available', 'INTEGER DEFAULT 0'),
+        ('comparison_window_available', 'INTEGER DEFAULT 0'),
+        ('evidence_state', 'TEXT'),
+        ('evidence_reason', 'TEXT')
+    ,
+        ('source_phase6a_cycle_id', 'INTEGER'),
+        ('source_phase6a_created_at', 'INTEGER'),
+        ('source_phase6a_fresh', 'INTEGER DEFAULT 0')
     ],
     "phase6b_plasticity_adjustments": [
         ("id",                        "INTEGER PRIMARY KEY AUTOINCREMENT"),
@@ -2137,6 +2816,10 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {
         ("gaba",                      "REAL"),
         ("critic_gate_result",        "TEXT"),
         ("notes",                     "TEXT"),
+    
+        ('measurement_event_id', 'INTEGER'),
+        ('evidence_state', 'TEXT'),
+        ('state_change_allowed', 'INTEGER DEFAULT 0')
     ],
     "phase6b_distilled_knowledge": [
         ("id",                    "INTEGER PRIMARY KEY AUTOINCREMENT"),
@@ -2164,6 +2847,9 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {
         ("anchor_stability",         "REAL"),
         ("alert_flag",               "INTEGER DEFAULT 0"),
         ("alert_reason",             "TEXT"),
+    
+        ('measurement_event_id', 'INTEGER'),
+        ('evidence_state', 'TEXT')
     ],
 }
 
@@ -2341,22 +3027,33 @@ def _read_kv(con, table):
     return dict(con.execute("SELECT key,value FROM " + table).fetchall())
 
 
+def _phase6c_cfg(con):
+    if not _table_exists(con, "phase6c_meta_control_parameters"):
+        return {}
+    try:
+        return {str(k): _to_float(v, 0.0) for k,v in con.execute("SELECT parameter_key,current_value FROM phase6c_meta_control_parameters").fetchall()}
+    except Exception:
+        return {}
+
+def _cfg_value(cfg, key, default):
+    return _to_float(cfg.get(key), default) if key in cfg else default
+
+
 def _read_recent_cycles(con: sqlite3.Connection, n: int = 20) -> List[Dict[str, Any]]:
     if not _table_exists(con, "phase6a_sleep_replay_cycles"):
         return []
-    wanted = [
-        "candidate_count", "replay_events", "avg_outcome_score",
-        "avg_closure_delta", "avg_overlap_score", "persistent_gap_pressure",
-        "plasticity_level", "exploration_bias", "consolidation_bias", "created_at",
-    ]
-    existing = set(_columns(con, "phase6a_sleep_replay_cycles"))
-    select_cols = [c for c in wanted if c in existing]
-    if not select_cols:
-        return []
-    order_col = "created_at" if "created_at" in existing else "rowid"
-    sql = ("SELECT " + ", ".join(select_cols) +
-           " FROM phase6a_sleep_replay_cycles ORDER BY " + order_col + " DESC LIMIT ?")
-    return [dict(zip(select_cols, r)) for r in con.execute(sql, (int(n),)).fetchall()]
+    wanted = ["id","candidate_count","replay_events","avg_outcome_score","avg_closure_delta","avg_overlap_score",
+              "persistent_gap_pressure","plasticity_level","exploration_bias","consolidation_bias","created_at",
+              "population_available","outcome_observation_available","outcome_observation_count","evidence_state","evidence_reason"]
+    existing=set(_columns(con,"phase6a_sleep_replay_cycles")); select_cols=[c for c in wanted if c in existing]
+    if not select_cols: return []
+    order_col="id" if "id" in existing else ("created_at" if "created_at" in existing else "rowid")
+    sql="SELECT "+", ".join(select_cols)+" FROM phase6a_sleep_replay_cycles ORDER BY "+order_col+" DESC LIMIT ?"
+    return [dict(zip(select_cols,r)) for r in con.execute(sql,(int(n),)).fetchall()]
+
+
+
+
 
 
 def _neuromodulators(sleep_state: Dict[str, Any]) -> Dict[str, float]:
@@ -2444,151 +3141,66 @@ def _promote_anchors(con: sqlite3.Connection,
     return promoted
 
 
-def _select_replay_batch(con: sqlite3.Connection,
-                         neuromod: Dict[str, float],
-                         batch_size: int = 180) -> Dict[str, Any]:
-    """Interleaved replay: novel + anchor. GABA inhibits recently replayed
-    ineffective candidates. Noradrenaline boosts novelty ratio."""
-    gaba = neuromod["gaba"]
-    na = neuromod["noradrenaline"]
-    novel_ratio = _clamp(0.6 - 0.3 * gaba + 0.2 * na, 0.3, 0.9)
-    n_anchor = int(batch_size * (1.0 - novel_ratio))
-    n_novel = batch_size - n_anchor
-
-    now = _now()
-
-    anchors = con.execute(
-        "SELECT id, source_table, source_id, stability_score "
-        "FROM phase6b_anchor_pool WHERE active=1 "
-        "ORDER BY stability_score DESC, last_replayed_at ASC LIMIT ?",
-        (n_anchor,),
-    ).fetchall()
-
-    novel = []
-    if _table_exists(con, "phase5g_experiment_outcomes"):
-        ncols = set(_columns(con, "phase5g_experiment_outcomes"))
-        id_col = "id" if "id" in ncols else "rowid"
-        score_col = "outcome_score" if "outcome_score" in ncols else None
-        sql = "SELECT " + id_col + " FROM phase5g_experiment_outcomes "
-        if score_col:
-            sql += "ORDER BY " + score_col + " ASC LIMIT ?"
-        else:
-            sql += "ORDER BY " + id_col + " DESC LIMIT ?"
-        raw = con.execute(sql, (int(n_novel * 3),)).fetchall()
-        rnd = random.Random(now)
+def _select_replay_batch(con: sqlite3.Connection, neuromod: Dict[str, float], batch_size: int = 180) -> Dict[str, Any]:
+    cfg=_phase6c_cfg(con); gaba=neuromod["gaba"]; na=neuromod["noradrenaline"]
+    base=_cfg_value(cfg,"novel_ratio_base",0.6); gw=_cfg_value(cfg,"novel_ratio_gaba_weight",0.3); nw=_cfg_value(cfg,"novel_ratio_na_weight",0.2)
+    novel_ratio=_clamp(base-gw*gaba+nw*na,0.3,0.9); n_anchor=int(batch_size*(1.0-novel_ratio)); n_novel=batch_size-n_anchor; now=_now()
+    anchors=con.execute("SELECT id,source_table,source_id,stability_score FROM phase6b_anchor_pool WHERE active=1 ORDER BY stability_score DESC,last_replayed_at ASC LIMIT ?",(n_anchor,)).fetchall()
+    novel=[]
+    if _table_exists(con,"phase5g_experiment_outcomes"):
+        ncols=set(_columns(con,"phase5g_experiment_outcomes")); id_col="id" if "id" in ncols else "rowid"; score_col="outcome_score" if "outcome_score" in ncols else None
+        sql="SELECT "+id_col+" FROM phase5g_experiment_outcomes ORDER BY "+(score_col+" ASC" if score_col else id_col+" DESC")+" LIMIT ?"
+        raw=con.execute(sql,(int(n_novel*3),)).fetchall(); inhibit=_cfg_value(cfg,"gaba_novel_inhibition",0.5); rnd=random.Random(now)
         for r in raw:
-            if rnd.random() < gaba * 0.5:
-                continue
+            if rnd.random() < gaba*inhibit: continue
             novel.append(_to_int(r[0]))
-            if len(novel) >= n_novel:
-                break
-
+            if len(novel)>=n_novel: break
     if anchors:
-        anchor_ids = [a[0] for a in anchors]
-        placeholders = ",".join("?" for _ in anchor_ids)
-        con.execute(
-            "UPDATE phase6b_anchor_pool "
-            "SET replay_count = COALESCE(replay_count,0) + 1, "
-            "    last_replayed_at = ?, updated_at = ? "
-            "WHERE id IN (" + placeholders + ")",
-            [now, now] + anchor_ids,
-        )
+        ids=[a[0] for a in anchors]; ph=",".join("?" for _ in ids)
+        con.execute("UPDATE phase6b_anchor_pool SET replay_count=COALESCE(replay_count,0)+1,last_replayed_at=?,updated_at=? WHERE id IN ("+ph+")",[now,now]+ids)
     con.commit()
-
-    return {
-        "batch_size": batch_size,
-        "novel_ratio_target": round(novel_ratio, 3),
-        "anchor_count": len(anchors),
-        "novel_count": len(novel),
-        "anchor_ids": [a[0] for a in anchors],
-        "novel_ids": novel,
-    }
+    return {"batch_size":batch_size,"novel_ratio_target":round(novel_ratio,3),"anchor_count":len(anchors),"novel_count":len(novel),"anchor_ids":[a[0] for a in anchors],"novel_ids":novel}
 
 
-def _measure_effectiveness(con: sqlite3.Connection,
-                           recent: List[Dict[str, Any]],
-                           batch: Dict[str, Any],
-                           neuromod: Dict[str, float],
-                           cycle_index: int,
-                           window_size: int = 5) -> Dict[str, Any]:
-    """Compute effectiveness by comparing latest cycle metrics to a window
-    of previous cycles. Neuromodulator-weighted scoring."""
-    if len(recent) >= 2:
-        cur = recent[0]
-        prev_window = recent[1:1 + window_size]
-    else:
-        cur = recent[0] if recent else {}
-        prev_window = []
 
-    def _avg(rows, key):
-        vals = [_to_float(r.get(key), None) for r in rows]
-        vals = [v for v in vals if v is not None]
-        return sum(vals) / len(vals) if vals else 0.0
 
-    pre_o = _avg(prev_window, "avg_outcome_score")
-    pre_c = _avg(prev_window, "avg_closure_delta")
-    pre_ov = _avg(prev_window, "avg_overlap_score")
-    post_o = _to_float(cur.get("avg_outcome_score"), pre_o)
-    post_c = _to_float(cur.get("avg_closure_delta"), pre_c)
-    post_ov = _to_float(cur.get("avg_overlap_score"), pre_ov)
+def _measure_effectiveness(con, recent, batch, neuromod, cycle_index, window_size=5):
+    cur=recent[0] if recent else {}; source_id=_to_int(cur.get("id"),0); source_created=_to_int(cur.get("created_at"),0)
+    state_kv=_read_kv(con,"phase6b_state"); last_source=_to_int(state_kv.get("last_consumed_phase6a_cycle_id"),0)
+    fresh=1 if source_id>0 and source_id>last_source else 0
+    if not fresh:
+        return {"skip_no_fresh_source":True,"measurement_event_id":None,"cycle_index":cycle_index,"window_size":window_size,
+                "effectiveness_score":0.0,"plateau_flag":0,"anchor_consistency":0.0,"population_available":0,
+                "outcome_observation_available":0,"comparison_window_available":0,"evidence_state":"stale_source_observation",
+                "evidence_reason":"no_unconsumed_phase6a_cycle","state_change_allowed":0,
+                "source_phase6a_cycle_id":source_id,"source_phase6a_created_at":source_created,"source_phase6a_fresh":0}
+    population=1 if (_to_int(cur.get("population_available"),0)>0 or _to_int(cur.get("candidate_count"),0)>0 or _to_int(cur.get("replay_events"),0)>0) else 0
+    outcome_obs=1 if _to_int(cur.get("outcome_observation_available"),0)>0 else 0
+    observed_prev=[r for r in recent[1:1+window_size] if _to_int(r.get("outcome_observation_available"),0)>0]
+    comparison=1 if outcome_obs and observed_prev else 0
+    def avg(rows,key):
+        vals=[_to_float(r.get(key),None) for r in rows]; vals=[v for v in vals if v is not None]; return sum(vals)/len(vals) if vals else 0.0
+    pre_o=avg(observed_prev,"avg_outcome_score"); pre_c=avg(observed_prev,"avg_closure_delta"); pre_ov=avg(observed_prev,"avg_overlap_score")
+    post_o=_to_float(cur.get("avg_outcome_score"),pre_o); post_c=_to_float(cur.get("avg_closure_delta"),pre_c); post_ov=_to_float(cur.get("avg_overlap_score"),pre_ov)
+    d_o=post_o-pre_o if comparison else 0.0; d_c=post_c-pre_c if comparison else 0.0; d_ov=post_ov-pre_ov if comparison else 0.0
+    cfg=_phase6c_cfg(con); eps=_cfg_value(cfg,"plateau_eps",0.005)
+    if not population: state="no_population"; reason="no_replay_population_observed"
+    elif not outcome_obs: state="population_without_outcome_observation"; reason="population_present_but_outcome_observation_absent"
+    elif not comparison: state="outcome_observed_insufficient_comparison"; reason="outcome_observed_without_prior_observed_window"
+    elif abs(d_o)<eps and abs(d_c)<eps and abs(d_ov)<eps: state="outcome_observed_no_change"; reason="observed_comparison_within_plateau_epsilon"
+    else: state="outcome_observed_change"; reason="observed_comparison_changed"
+    allowed=1 if state in ("outcome_observed_change","outcome_observed_no_change") else 0; plateau=1 if state=="outcome_observed_no_change" else 0
+    eff=(0.5+0.3*neuromod["dopamine"])*d_o+(0.3+0.2*neuromod["noradrenaline"])*d_c+(0.2+0.2*neuromod["acetylcholine"])*d_ov if allowed else 0.0
+    row=con.execute("SELECT AVG(stability_score) FROM phase6b_anchor_pool WHERE active=1").fetchone(); anchor=_to_float(row[0] if row else 0.0,0.0)
+    notes=json.dumps({"novel_ratio_target":batch.get("novel_ratio_target"),"anchor_count":batch.get("anchor_count"),"novel_count":batch.get("novel_count"),"plateau_eps":eps,"source_phase6a_cycle_id":source_id})
+    sql="INSERT INTO phase6b_effectiveness_events (created_at,cycle_index,window_size,replay_batch_size,novel_count,anchor_count,pre_outcome_score,post_outcome_score,pre_closure_delta,post_closure_delta,pre_overlap_score,post_overlap_score,delta_outcome,delta_closure,delta_overlap,effectiveness_score,plateau_flag,critic_penalty,anchor_consistency,dopamine,serotonin,noradrenaline,acetylcholine,glutamate,gaba,notes,measurement_owner,population_available,outcome_observation_available,comparison_window_available,evidence_state,evidence_reason,source_phase6a_cycle_id,source_phase6a_created_at,source_phase6a_fresh) VALUES("+",".join("?" for _ in range(35))+")"
+    curx=con.execute(sql,(_now(),cycle_index,window_size,batch.get("batch_size",0),batch.get("novel_count",0),batch.get("anchor_count",0),pre_o,post_o,pre_c,post_c,pre_ov,post_ov,d_o,d_c,d_ov,eff,plateau,0.0,anchor,neuromod["dopamine"],neuromod["serotonin"],neuromod["noradrenaline"],neuromod["acetylcholine"],neuromod["glutamate"],neuromod["gaba"],notes,"canonical_phase6b",population,outcome_obs,comparison,state,reason,source_id,source_created,1))
+    _kv_set(con,"phase6b_state","last_consumed_phase6a_cycle_id",source_id); _kv_set(con,"phase6b_state","last_consumed_phase6a_created_at",source_created); con.commit()
+    return {"skip_no_fresh_source":False,"measurement_event_id":int(curx.lastrowid),"cycle_index":cycle_index,"window_size":window_size,"delta_outcome":d_o,"delta_closure":d_c,"delta_overlap":d_ov,"effectiveness_score":eff,"plateau_flag":plateau,"anchor_consistency":anchor,"population_available":population,"outcome_observation_available":outcome_obs,"comparison_window_available":comparison,"evidence_state":state,"evidence_reason":reason,"state_change_allowed":allowed,"source_phase6a_cycle_id":source_id,"source_phase6a_created_at":source_created,"source_phase6a_fresh":1}
 
-    d_o = post_o - pre_o
-    d_c = post_c - pre_c
-    d_ov = post_ov - pre_ov
 
-    da = neuromod["dopamine"]
-    na = neuromod["noradrenaline"]
-    ach = neuromod["acetylcholine"]
-    w_out = 0.5 + 0.3 * da
-    w_clo = 0.3 + 0.2 * na
-    w_ovl = 0.2 + 0.2 * ach
-    eff = w_out * d_o + w_clo * d_c + w_ovl * d_ov
 
-    eps = 0.005
-    plateau = 1 if (abs(d_o) < eps and abs(d_c) < eps and abs(d_ov) < eps) else 0
 
-    row = con.execute(
-        "SELECT AVG(stability_score) FROM phase6b_anchor_pool WHERE active=1"
-    ).fetchone()
-    anchor_stab = _to_float(row[0] if row else 0.0, 0.0)
-
-    notes = json.dumps({
-        "novel_ratio_target": batch.get("novel_ratio_target"),
-        "anchor_count": batch.get("anchor_count"),
-        "novel_count": batch.get("novel_count"),
-    })
-
-    con.execute(
-        "INSERT INTO phase6b_effectiveness_events ("
-        "created_at, cycle_index, window_size, replay_batch_size, "
-        "novel_count, anchor_count, "
-        "pre_outcome_score, post_outcome_score, "
-        "pre_closure_delta, post_closure_delta, "
-        "pre_overlap_score, post_overlap_score, "
-        "delta_outcome, delta_closure, delta_overlap, "
-        "effectiveness_score, plateau_flag, critic_penalty, anchor_consistency, "
-        "dopamine, serotonin, noradrenaline, acetylcholine, glutamate, gaba, "
-        "notes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (_now(), cycle_index, window_size, batch.get("batch_size", 0),
-         batch.get("novel_count", 0), batch.get("anchor_count", 0),
-         pre_o, post_o, pre_c, post_c, pre_ov, post_ov,
-         d_o, d_c, d_ov, eff, plateau, 0.0, anchor_stab,
-         neuromod["dopamine"], neuromod["serotonin"], neuromod["noradrenaline"],
-         neuromod["acetylcholine"], neuromod["glutamate"], neuromod["gaba"],
-         notes),
-    )
-    con.commit()
-
-    return {
-        "cycle_index": cycle_index,
-        "window_size": window_size,
-        "pre_outcome_score": pre_o, "post_outcome_score": post_o,
-        "pre_closure_delta": pre_c, "post_closure_delta": post_c,
-        "pre_overlap_score": pre_ov, "post_overlap_score": post_ov,
-        "delta_outcome": d_o, "delta_closure": d_c, "delta_overlap": d_ov,
-        "effectiveness_score": eff, "plateau_flag": plateau,
-        "anchor_consistency": anchor_stab,
-    }
 
 
 def _critic_gate(con: sqlite3.Connection,
@@ -2626,125 +3238,34 @@ def _critic_gate(con: sqlite3.Connection,
 
 
 def _apply_plasticity_adjustment(con, eff, neuromod, meta_state):
-    """Option b: aggressive homeostatic adjustment when plateau detected.
-    All post-values are clamped and gated by critic snapshot."""
-    pre_plast = _to_float(meta_state.get("last_plasticity_level"), 0.5)
-    pre_expl = _to_float(meta_state.get("last_exploration_bias"), 0.5)
-    pre_cons = _to_float(meta_state.get("last_consolidation_bias"), 0.5)
-    pre_inh = _to_float(meta_state.get("last_inhibition_bias"), 0.3)
-    pre_rev = _to_float(meta_state.get("last_revision_bias"), 0.5)
+    if eff.get("skip_no_fresh_source"):
+        return {"adjustment_type":"skipped_no_fresh_source","pre":{},"post":{},"critic_gate_result":"not_run",
+                "critic_penalty":0.0,"evidence_state":"stale_source_observation","state_change_allowed":0}
+    pre_plast=_to_float(meta_state.get("last_plasticity_level"),0.5); pre_expl=_to_float(meta_state.get("last_exploration_bias"),0.5); pre_cons=_to_float(meta_state.get("last_consolidation_bias"),0.5); pre_inh=_to_float(meta_state.get("last_inhibition_bias"),0.3); pre_rev=_to_float(meta_state.get("last_revision_bias"),0.5)
+    post_plast,post_expl,post_cons,post_inh,post_rev=pre_plast,pre_expl,pre_cons,pre_inh,pre_rev
+    state=str(eff.get("evidence_state") or "historical_unclassified"); allowed_state=1 if _to_int(eff.get("state_change_allowed"),0)>0 else 0; plateau=_to_int(eff.get("plateau_flag"),0); score=_to_float(eff.get("effectiveness_score"),0.0)
+    cfg=_phase6c_cfg(con); adj="hold_no_evidence" if not allowed_state else "hold"; scale=1.0; reasons=["evidence_state:"+state]
+    if allowed_state and plateau:
+        adj="plateau_break"; scale=_clamp(_cfg_value(cfg,"plateau_break_scale",0.85)-0.10*neuromod["gaba"],0.55,0.98)
+        post_plast=_clamp(pre_plast*scale); post_expl=_clamp(pre_expl+_cfg_value(cfg,"exploration_delta",0.15)*(1-neuromod["gaba"])+0.05*neuromod["noradrenaline"]); post_inh=_clamp(pre_inh+_cfg_value(cfg,"inhibition_delta",0.10)*neuromod["gaba"]+0.05*(1-neuromod["dopamine"])); post_rev=_clamp(pre_rev+_cfg_value(cfg,"revision_delta",0.10)*neuromod["serotonin"]+0.05*neuromod["acetylcholine"]); post_cons=_clamp(pre_cons-0.05*(1-score)); reasons.append("plateau_break_canonical")
+    elif allowed_state and score>_cfg_value(cfg,"stabilize_threshold",0.02):
+        adj="stabilize_gains"; post_cons=_clamp(pre_cons+_cfg_value(cfg,"consolidation_delta",0.05)*neuromod["dopamine"]+0.05*neuromod["glutamate"]); post_rev=_clamp(pre_rev-0.03*neuromod["serotonin"]); post_plast=_clamp(pre_plast+0.02*neuromod["dopamine"]); reasons.append("stabilize_positive_effectiveness")
+    proposed={"plasticity_level":post_plast,"exploration_bias":post_expl,"consolidation_bias":post_cons,"inhibition_bias":post_inh,"revision_bias":post_rev}
+    if allowed_state: gate,penalty,critic=_critic_gate(con,proposed,_to_float(eff.get("anchor_consistency"),0.0))
+    else: gate,penalty,critic=False,0.0,"state_change_blocked_by_evidence_state"
+    if not gate: post_plast,post_expl,post_cons,post_inh,post_rev=pre_plast,pre_expl,pre_cons,pre_inh,pre_rev
+    elif penalty>0:
+        blend=lambda a,b:_clamp(a+(b-a)*(1-penalty)); post_plast=blend(pre_plast,post_plast); post_expl=blend(pre_expl,post_expl); post_cons=blend(pre_cons,post_cons); post_inh=blend(pre_inh,post_inh); post_rev=blend(pre_rev,post_rev)
+    con.execute("INSERT INTO phase6b_plasticity_adjustments (created_at,cycle_index,adjustment_type,reason,scale_factor,window_size,pre_plasticity_level,post_plasticity_level,pre_exploration_bias,post_exploration_bias,pre_consolidation_bias,post_consolidation_bias,pre_inhibition_bias,post_inhibition_bias,pre_revision_bias,post_revision_bias,dopamine,serotonin,noradrenaline,acetylcholine,glutamate,gaba,critic_gate_result,notes,measurement_event_id,evidence_state,state_change_allowed) VALUES("+",".join("?" for _ in range(27))+")",
+      (_now(),_to_int(eff.get("cycle_index"),0),adj,";".join(reasons),scale,_to_int(eff.get("window_size"),5),pre_plast,post_plast,pre_expl,post_expl,pre_cons,post_cons,pre_inh,post_inh,pre_rev,post_rev,neuromod["dopamine"],neuromod["serotonin"],neuromod["noradrenaline"],neuromod["acetylcholine"],neuromod["glutamate"],neuromod["gaba"],critic,json.dumps({"eff":score,"plateau":plateau}),eff.get("measurement_event_id"),state,1 if gate and allowed_state else 0))
+    if gate and allowed_state:
+        for k,v in (("last_plasticity_level",post_plast),("last_exploration_bias",post_expl),("last_consolidation_bias",post_cons),("last_inhibition_bias",post_inh),("last_revision_bias",post_rev)):
+            _kv_set(con,"phase6a_meta_plasticity_state",k,round(v,6)); _kv_set(con,"phase6a_neuromodulated_sleep_state",k,round(v,6))
+    con.commit(); return {"adjustment_type":adj,"pre":{"plasticity_level":pre_plast,"exploration_bias":pre_expl,"consolidation_bias":pre_cons,"inhibition_bias":pre_inh,"revision_bias":pre_rev},"post":{"plasticity_level":post_plast,"exploration_bias":post_expl,"consolidation_bias":post_cons,"inhibition_bias":post_inh,"revision_bias":post_rev},"critic_gate_result":critic,"critic_penalty":penalty,"evidence_state":state,"state_change_allowed":1 if gate and allowed_state else 0}
 
-    da = neuromod["dopamine"]
-    sero = neuromod["serotonin"]
-    na = neuromod["noradrenaline"]
-    ach = neuromod["acetylcholine"]
-    glu = neuromod["glutamate"]
-    gaba = neuromod["gaba"]
 
-    plateau = int(eff.get("plateau_flag", 0))
-    eff_score = _to_float(eff.get("effectiveness_score"), 0.0)
 
-    post_plast = pre_plast
-    post_expl = pre_expl
-    post_cons = pre_cons
-    post_inh = pre_inh
-    post_rev = pre_rev
 
-    reason_parts = []
-    scale = 1.0
-    adj_type = "no_change"
-
-    if plateau == 1:
-        adj_type = "plateau_break"
-        scale = _clamp(0.85 - 0.10 * gaba, 0.70, 0.98)
-        post_plast = _clamp(pre_plast * scale)
-        post_expl = _clamp(pre_expl + 0.15 * (1.0 - gaba) + 0.05 * na)
-        post_inh = _clamp(pre_inh + 0.10 * gaba + 0.05 * (1.0 - da))
-        post_rev = _clamp(pre_rev + 0.10 * sero + 0.05 * ach)
-        post_cons = _clamp(pre_cons - 0.05 * (1.0 - eff_score))
-        reason_parts.append("plateau_break_aggressive")
-    elif eff_score > 0.02:
-        adj_type = "stabilize_gains"
-        post_cons = _clamp(pre_cons + 0.10 * da + 0.05 * glu)
-        post_rev = _clamp(pre_rev - 0.03 * sero)
-        post_plast = _clamp(pre_plast + 0.02 * da)
-        reason_parts.append("stabilize_positive_effectiveness")
-    else:
-        adj_type = "hold"
-        reason_parts.append("hold_within_normal_variance")
-
-    proposed = {
-        "plasticity_level": post_plast,
-        "exploration_bias": post_expl,
-        "consolidation_bias": post_cons,
-        "inhibition_bias": post_inh,
-        "revision_bias": post_rev,
-    }
-    anchor_cons = _to_float(eff.get("anchor_consistency"), 0.0)
-    allowed, penalty, critic_reason = _critic_gate(con, proposed, anchor_cons)
-
-    if not allowed:
-        post_plast, post_expl, post_cons, post_inh, post_rev = (
-            pre_plast, pre_expl, pre_cons, pre_inh, pre_rev
-        )
-        reason_parts.append("critic_rejected:" + critic_reason)
-        adj_type = "critic_rejected"
-    elif penalty > 0.0:
-        def _blend(pre, post):
-            return _clamp(pre + (post - pre) * (1.0 - penalty))
-        post_plast = _blend(pre_plast, post_plast)
-        post_expl = _blend(pre_expl, post_expl)
-        post_cons = _blend(pre_cons, post_cons)
-        post_inh = _blend(pre_inh, post_inh)
-        post_rev = _blend(pre_rev, post_rev)
-        reason_parts.append("critic_scaled:" + critic_reason)
-
-    reason = ";".join(reason_parts) if reason_parts else "n/a"
-
-    con.execute(
-        "INSERT INTO phase6b_plasticity_adjustments ("
-        "created_at, cycle_index, adjustment_type, reason, scale_factor, "
-        "window_size, "
-        "pre_plasticity_level, post_plasticity_level, "
-        "pre_exploration_bias, post_exploration_bias, "
-        "pre_consolidation_bias, post_consolidation_bias, "
-        "pre_inhibition_bias, post_inhibition_bias, "
-        "pre_revision_bias, post_revision_bias, "
-        "dopamine, serotonin, noradrenaline, acetylcholine, glutamate, gaba, "
-        "critic_gate_result, notes) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (_now(), int(eff.get("cycle_index", 0)), adj_type, reason, scale,
-         int(eff.get("window_size", 5)),
-         pre_plast, post_plast, pre_expl, post_expl,
-         pre_cons, post_cons, pre_inh, post_inh, pre_rev, post_rev,
-         da, sero, na, ach, glu, gaba,
-         critic_reason, json.dumps({"eff": eff_score, "plateau": plateau})),
-    )
-
-    if allowed:
-        for k, v in (
-            ("last_plasticity_level", post_plast),
-            ("last_exploration_bias", post_expl),
-            ("last_consolidation_bias", post_cons),
-            ("last_inhibition_bias", post_inh),
-            ("last_revision_bias", post_rev),
-        ):
-            _kv_set(con, "phase6a_meta_plasticity_state", k, round(v, 6))
-            _kv_set(con, "phase6a_neuromodulated_sleep_state", k, round(v, 6))
-
-    con.commit()
-    return {
-        "adjustment_type": adj_type,
-        "scale_factor": scale,
-        "pre":  {"plasticity_level": pre_plast,  "exploration_bias": pre_expl,
-                 "consolidation_bias": pre_cons, "inhibition_bias": pre_inh,
-                 "revision_bias": pre_rev},
-        "post": {"plasticity_level": post_plast, "exploration_bias": post_expl,
-                 "consolidation_bias": post_cons, "inhibition_bias": post_inh,
-                 "revision_bias": post_rev},
-        "critic_gate_result": critic_reason,
-        "critic_penalty": penalty,
-    }
 
 
 def _distill_knowledge(con, cycle_index, eff_score, stability_threshold=0.7):
@@ -2786,121 +3307,33 @@ def _distill_knowledge(con, cycle_index, eff_score, stability_threshold=0.7):
 
 
 def _compute_l2m_metrics(con, cycle_index, eff):
-    row = con.execute(
-        "SELECT AVG(stability_score) FROM phase6b_anchor_pool WHERE active=1"
-    ).fetchone()
-    anchor_stab = _to_float(row[0] if row else 0.0, 0.0)
-
-    prev_row = con.execute(
-        "SELECT anchor_consistency FROM phase6b_effectiveness_events "
-        "WHERE cycle_index < ? ORDER BY id DESC LIMIT 1",
-        (int(cycle_index),),
-    ).fetchone()
-    prev_stab = _to_float(prev_row[0] if prev_row else anchor_stab, anchor_stab)
-
-    pm = anchor_stab
-    ft = _to_float(eff.get("delta_outcome"), 0.0)
-    bt = anchor_stab - prev_stab
-    batch = max(1, _to_int(eff.get("window_size"), 1) * 1)
-    se = _to_float(eff.get("effectiveness_score"), 0.0) / float(batch)
-
-    rows = con.execute(
-        "SELECT plateau_flag, delta_outcome FROM phase6b_effectiveness_events "
-        "ORDER BY id DESC LIMIT 20"
-    ).fetchall()
-    if rows:
-        recoveries = 0
-        plateaus = 0
-        prev_p = 0
-        for r in rows:
-            p = _to_int(r[0])
-            d = _to_float(r[1])
-            if prev_p == 1 and d > 0:
-                recoveries += 1
-            if p == 1:
-                plateaus += 1
-            prev_p = p
-        pr = recoveries / max(1, plateaus)
-    else:
-        pr = 0.0
-
-    alert = 1 if bt < -0.05 else 0
-    reason = "backward_transfer_negative" if alert else "ok"
-
-    con.execute(
-        "INSERT INTO phase6b_l2m_metrics ("
-        "created_at, cycle_index, performance_maintenance, forward_transfer, "
-        "backward_transfer, sample_efficiency, performance_recovery, "
-        "anchor_stability, alert_flag, alert_reason) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?)",
-        (_now(), int(cycle_index), pm, ft, bt, se, pr, anchor_stab, alert, reason),
-    )
-    con.commit()
-    return {
-        "performance_maintenance": pm,
-        "forward_transfer": ft,
-        "backward_transfer": bt,
-        "sample_efficiency": se,
-        "performance_recovery": pr,
-        "anchor_stability": anchor_stab,
-        "alert_flag": alert,
-        "alert_reason": reason,
-    }
+    if eff.get("skip_no_fresh_source"):
+        return {"skipped":True,"reason":"no_fresh_phase6a_source","evidence_state":"stale_source_observation"}
+    row=con.execute("SELECT AVG(stability_score) FROM phase6b_anchor_pool WHERE active=1").fetchone(); anchor=_to_float(row[0] if row else 0.0,0.0)
+    prev=con.execute("SELECT anchor_consistency FROM phase6b_effectiveness_events WHERE cycle_index<? AND measurement_owner='canonical_phase6b' ORDER BY id DESC LIMIT 1",(int(cycle_index),)).fetchone(); prev_stab=_to_float(prev[0] if prev else anchor,anchor)
+    ft=_to_float(eff.get("delta_outcome"),0.0); bt=anchor-prev_stab; se=_to_float(eff.get("effectiveness_score"),0.0)/max(1,_to_int(eff.get("window_size"),1)); state=str(eff.get("evidence_state") or "historical_unclassified")
+    alert=1 if bt < -0.05 else 0; reason="backward_transfer_negative" if alert else ("evidence_unavailable" if not state.startswith("outcome_observed_") else "ok")
+    con.execute("INSERT INTO phase6b_l2m_metrics (created_at,cycle_index,performance_maintenance,forward_transfer,backward_transfer,sample_efficiency,performance_recovery,anchor_stability,alert_flag,alert_reason,measurement_event_id,evidence_state) VALUES("+",".join("?" for _ in range(12))+")",(_now(),int(cycle_index),anchor,ft,bt,se,0.0,anchor,alert,reason,eff.get("measurement_event_id"),state)); con.commit()
+    return {"performance_maintenance":anchor,"forward_transfer":ft,"backward_transfer":bt,"sample_efficiency":se,"performance_recovery":0.0,"anchor_stability":anchor,"alert_flag":alert,"alert_reason":reason,"evidence_state":state}
 
 
-def _maybe_snapshot_critic(con, neuromod, eff_score, adj):
-    sero = neuromod["serotonin"]
-    p = _clamp(0.05 + 0.5 * sero, 0.05, 0.8)
 
-    stable_count = _to_int(_read_kv(con, "phase6b_state").get("stable_cycles_since_snapshot"), 0)
-    if eff_score >= 0.0 and adj.get("adjustment_type") != "critic_rejected":
-        stable_count += 1
-    _kv_set(con, "phase6b_state", "stable_cycles_since_snapshot", stable_count)
 
-    min_stable = max(3, int(round(5 * (1.0 - sero) + 3)))
-    if stable_count < min_stable:
-        con.commit()
-        return {"snapshot": False, "reason": "not_enough_stable_cycles",
-                "stable_cycles": stable_count, "min_required": min_stable,
-                "probability": p}
 
-    rnd = random.random()
-    if rnd > p:
-        con.commit()
-        return {"snapshot": False, "reason": "probabilistic_skip",
-                "probability": p, "roll": rnd}
 
-    con.execute("UPDATE phase6b_critic_snapshot SET active=0 WHERE active=1")
-    row = con.execute(
-        "SELECT COUNT(*) FROM phase6b_anchor_pool WHERE active=1"
-    ).fetchone()
-    anchor_count = _to_int(row[0] if row else 0, 0)
-    state_dump = json.dumps({"eff_score": eff_score,
-                             "adjustment": adj.get("adjustment_type"),
-                             "neuromod": neuromod})
-    post = adj.get("post", {})
-    con.execute(
-        "INSERT INTO phase6b_critic_snapshot ("
-        "created_at, reason, dopamine, serotonin, noradrenaline, "
-        "acetylcholine, glutamate, gaba, plasticity_level, "
-        "exploration_bias, consolidation_bias, inhibition_bias, revision_bias, "
-        "anchor_count, effectiveness_avg, state_json, active) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)",
-        (_now(), "serotonin_gated_snapshot",
-         neuromod["dopamine"], neuromod["serotonin"], neuromod["noradrenaline"],
-         neuromod["acetylcholine"], neuromod["glutamate"], neuromod["gaba"],
-         _to_float(post.get("plasticity_level")),
-         _to_float(post.get("exploration_bias")),
-         _to_float(post.get("consolidation_bias")),
-         _to_float(post.get("inhibition_bias")),
-         _to_float(post.get("revision_bias")),
-         anchor_count, eff_score, state_dump),
-    )
-    _kv_set(con, "phase6b_state", "stable_cycles_since_snapshot", 0)
-    con.commit()
-    return {"snapshot": True, "reason": "serotonin_gated",
-            "probability": p, "anchor_count": anchor_count,
-            "stable_cycles_since_previous": stable_count}
+def _maybe_snapshot_critic(con, neuromod, eff_score, adj, eff=None):
+    eff=eff or {}; state=str(eff.get("evidence_state") or adj.get("evidence_state") or "historical_unclassified")
+    if _to_int(adj.get("state_change_allowed"),0)<=0:
+        return {"snapshot":False,"reason":"evidence_state_blocks_snapshot","evidence_state":state}
+    sero=neuromod["serotonin"]; cfg=_phase6c_cfg(con); p=_clamp(_cfg_value(cfg,"critic_snapshot_p_base",0.05)+_cfg_value(cfg,"critic_snapshot_p_range",0.5)*sero,0.02,0.85)
+    stable=_to_int(_read_kv(con,"phase6b_state").get("stable_cycles_since_snapshot"),0)+1; _kv_set(con,"phase6b_state","stable_cycles_since_snapshot",stable)
+    minimum=max(3,int(round(_cfg_value(cfg,"critic_min_stable_base",3.0)+(1-sero)*4)))
+    if stable<minimum: con.commit(); return {"snapshot":False,"reason":"not_enough_stable_cycles"}
+    if random.random()>p: con.commit(); return {"snapshot":False,"reason":"probabilistic_skip"}
+    con.execute("UPDATE phase6b_critic_snapshot SET active=0 WHERE active=1"); cnt=_to_int(con.execute("SELECT COUNT(*) FROM phase6b_anchor_pool WHERE active=1").fetchone()[0],0); post=adj.get("post",{})
+    con.execute("INSERT INTO phase6b_critic_snapshot (created_at,reason,dopamine,serotonin,noradrenaline,acetylcholine,glutamate,gaba,plasticity_level,exploration_bias,consolidation_bias,inhibition_bias,revision_bias,anchor_count,effectiveness_avg,state_json,active,measurement_event_id,evidence_state,snapshot_owner) VALUES("+",".join("?" for _ in range(20))+")",(_now(),"canonical_phase6b_snapshot",neuromod["dopamine"],neuromod["serotonin"],neuromod["noradrenaline"],neuromod["acetylcholine"],neuromod["glutamate"],neuromod["gaba"],_to_float(post.get("plasticity_level")),_to_float(post.get("exploration_bias")),_to_float(post.get("consolidation_bias")),_to_float(post.get("inhibition_bias")),_to_float(post.get("revision_bias")),cnt,eff_score,json.dumps({"evidence_state":state}),1,eff.get("measurement_event_id"),state,"canonical_phase6b")); _kv_set(con,"phase6b_state","stable_cycles_since_snapshot",0); con.commit(); return {"snapshot":True,"reason":"canonical_phase6b","evidence_state":state}
+
+
 
 
 def run_phase6b_cycle(db_or_obj=None, cycle_index=None):
@@ -2926,7 +3359,7 @@ def run_phase6b_cycle(db_or_obj=None, cycle_index=None):
     adj = _apply_plasticity_adjustment(con, eff, neuromod, meta_state)
     l2m = _compute_l2m_metrics(con, cycle_index, eff)
     dist = _distill_knowledge(con, cycle_index, eff.get("effectiveness_score", 0.0))
-    snap = _maybe_snapshot_critic(con, neuromod, eff.get("effectiveness_score", 0.0), adj)
+    snap = _maybe_snapshot_critic(con, neuromod, eff.get("effectiveness_score", 0.0), adj, eff)
 
     _kv_set(con, "phase6b_state", "cycle_count", cycle_index)
     _kv_set(con, "phase6b_state", "last_cycle_at", _now())
