@@ -11,6 +11,33 @@ import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+def _canonical_outcome_observation_count(con):
+    try:
+        if not _table_exists(con, "phase5g_experiment_outcomes"):
+            return 0
+        return int(con.execute("SELECT COUNT(*) FROM phase5g_experiment_outcomes").fetchone()[0] or 0)
+    except Exception:
+        return 0
+
+def _canonical_outcome_observation_available(con):
+    return 1 if _canonical_outcome_observation_count(con) > 0 else 0
+
+def _canonical_phase6a_evidence_state(con, candidate_count, replay_events):
+    population = int(candidate_count or 0) > 0 or int(replay_events or 0) > 0
+    if not population:
+        return "no_population"
+    if not _canonical_outcome_observation_available(con):
+        return "population_without_outcome_observation"
+    return "outcome_observed_insufficient_comparison"
+
+def _canonical_phase6a_evidence_reason(con, candidate_count, replay_events):
+    state = _canonical_phase6a_evidence_state(con, candidate_count, replay_events)
+    if state == "no_population":
+        return "no_replay_population_observed"
+    if state == "population_without_outcome_observation":
+        return "replay_population_present_but_phase5g_outcome_observation_absent"
+    return "outcome_observation_present_comparison_deferred_to_phase6b"
+
 
 PHASE = "phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release"
 LEARNING_MODE = "context_hypotheses_with_neuromodulators"
@@ -117,25 +144,7 @@ def kv_set(db: sqlite3.Connection, table: str, key: str, value: Any, now: Option
 def ensure_phase6a_schema(db: sqlite3.Connection) -> Dict[str, Any]:
     changes: List[str] = []
 
-    db.execute("""
-    CREATE TABLE IF NOT EXISTS phase6a_sleep_replay_cycles(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        replay_mode TEXT,
-        candidate_count INTEGER DEFAULT 0,
-        replay_events INTEGER DEFAULT 0,
-        avg_outcome_score REAL DEFAULT 0,
-        avg_closure_delta REAL DEFAULT 0,
-        avg_overlap_score REAL DEFAULT 0,
-        persistent_gap_pressure REAL DEFAULT 0,
-        plasticity_level REAL DEFAULT 0,
-        exploration_bias REAL DEFAULT 0,
-        consolidation_bias REAL DEFAULT 0,
-        inhibition_bias REAL DEFAULT 0,
-        revision_bias REAL DEFAULT 0,
-        safety_ok INTEGER DEFAULT 1,
-        details TEXT,
-        created_at INTEGER
-    )""")
+    db.execute('\n    CREATE TABLE IF NOT EXISTS phase6a_sleep_replay_cycles(\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        replay_mode TEXT,\n        candidate_count INTEGER DEFAULT 0,\n        replay_events INTEGER DEFAULT 0,\n        avg_outcome_score REAL DEFAULT 0,\n        avg_closure_delta REAL DEFAULT 0,\n        avg_overlap_score REAL DEFAULT 0,\n        persistent_gap_pressure REAL DEFAULT 0,\n        plasticity_level REAL DEFAULT 0,\n        exploration_bias REAL DEFAULT 0,\n        consolidation_bias REAL DEFAULT 0,\n        inhibition_bias REAL DEFAULT 0,\n        revision_bias REAL DEFAULT 0,\n        safety_ok INTEGER DEFAULT 1,\n        details TEXT,\n        created_at INTEGER,\n        population_available INTEGER DEFAULT 0,\n        outcome_observation_available INTEGER DEFAULT 0,\n        outcome_observation_count INTEGER DEFAULT 0,\n        evidence_state TEXT,\n        evidence_reason TEXT\n    )')
 
     db.execute("""
     CREATE TABLE IF NOT EXISTS phase6a_sleep_replay_events(
@@ -545,9 +554,8 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
         )
 
     db.execute(
-        "INSERT INTO phase6a_sleep_replay_cycles(replay_mode,candidate_count,replay_events,avg_outcome_score,avg_closure_delta,avg_overlap_score,persistent_gap_pressure,plasticity_level,exploration_bias,consolidation_bias,inhibition_bias,revision_bias,safety_ok,details,created_at) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        ("offline_replay_after_wake_cycle", len(candidates), replayed, avg_outcome, avg_closure, avg_overlap, persistent_pressure, plasticity, exploration_bias, consolidation_bias, inhibition_bias, revision_bias, 1 if _safety(db) == {"facts": 0, "relations": 0, "questions": 0} else 0, _j({"neuromodulators": nm, "no_word_blacklists": True}), now),
+        "INSERT INTO phase6a_sleep_replay_cycles(replay_mode,candidate_count,replay_events,avg_outcome_score,avg_closure_delta,avg_overlap_score,persistent_gap_pressure,plasticity_level,exploration_bias,consolidation_bias,inhibition_bias,revision_bias,safety_ok,details,created_at,population_available,outcome_observation_available,outcome_observation_count,evidence_state,evidence_reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("offline_replay_after_wake_cycle", len(candidates), replayed, avg_outcome, avg_closure, avg_overlap, persistent_pressure, plasticity, exploration_bias, consolidation_bias, inhibition_bias, revision_bias, 1 if _safety(db) == {"facts": 0, "relations": 0, "questions": 0} else 0, _j({"neuromodulators": nm, "no_word_blacklists": True}), now, (1 if (int(len(candidates) or 0)>0 or int(replayed or 0)>0) else 0), _canonical_outcome_observation_available(db), _canonical_outcome_observation_count(db), _canonical_phase6a_evidence_state(db, len(candidates), replayed), _canonical_phase6a_evidence_reason(db, len(candidates), replayed))
     )
 
     # State tables.
