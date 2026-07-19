@@ -13,7 +13,8 @@ BrainStem is a biologically inspired, neuro-symbolic cognitive architecture for 
 >One CPU Core /
 >No GPU needed
 
-[Open NotebookLM for code exploration](https://notebooklm.google.com/notebook/22f86efd-8cd6-447b-a43f-65f252259ab4?utm_source=nlmm_share)
+[NotebookLM codebase exploration](https://notebooklm.google.com/notebook/22f86efd-8cd6-447b-a43f-65f252259ab4?utm_source=nlmm_share)
+[Revibe codebase analysis](https://app.revibe.codes/shared/1WMamYip9Amived6mf-OF6OF0VNhcMWrekHg3c5bqkY)
 
 > [!IMPORTANT]
 > BrainStem is a research and calibration system, not a production-ready assistant. Permanent fact, relation, and question writes remain locked while the learning core and its candidate flow are being validated.
