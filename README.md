@@ -22,7 +22,7 @@ BrainStem is a biologically inspired, neuro-symbolic cognitive architecture for 
 
 ## Current State
 
-Project-Structure
+### Project-Structure
 
 <a href="assets/Project-Structure.png" target="_blank">
   <img src="assets/Project-Structure.png" alt="Project-Structure" width="250" />
