@@ -1,0 +1,266 @@
+Der Preflight liefert jetzt genau das erwartete Ergebnis: Der nicht-produktive Shadow-Projektionsvertrag ist vollständig, während der produktive Phase-5f-Anschluss ausschließlich an der fehlenden echten gap_id geschlossen bleibt.
+
+Gesamturteil
+
+gap_phase5f_contract_preflight_v1_1_report.txt meldet:
+
+AUDIT_OK_SHADOW_CONTRACT_COMPLETE_PRODUCTIVE_ATTACHMENT_BLOCKED
+
+Es wurden 512 Shadow-Kandidaten untersucht:
+
+Shadow-Vertrag vollständig: 512
+Shadow-Vertrag unvollständig: 0
+produktiv an Phase 5f anschließbar: 0
+produktiver Anschluss blockiert: 512
+einziger produktiver Contract-Break: gap_id
+sonstige fehlende Shadow-Vertragselemente: keine
+
+Damit ist die zuvor gewünschte Trennung jetzt sauber nachgewiesen:
+
+Der Modern Gap Candidate Shadow kann einen vollständigen nicht-produktiven Projektionsrahmen bereitstellen. Dieser Rahmen darf jedoch noch nicht an den produktiven Phase-5f-Vertrag angeschlossen werden, weil im observed_only-Modus keine produktive Identität aus internal_learning_gaps existiert.
+
+Die Strategieerkennung ist jetzt korrekt
+
+Der Preflight hat sechs konkrete Strategiewerte gefunden:
+
+near_context_window
+shift_away_from_no_candidate_context
+low_overlap_context_window
+wider_context_window
+contrastive_context_window
+reinforce_effective_window
+
+Diese Werte stammen nicht mehr aus einer allgemeinen Wortsuche nach „window“. Das JSON weist für jeden Wert die tatsächliche Bindung im aktiven Phase-5f-Code aus.
+
+Beispiele:
+
+near_context_window wird über old_s aus dem Ausdruck g.get('phase5f_window_strategy') or 'near_context_window' abgeleitet.
+Die übrigen fünf Werte werden direkt new_s zugewiesen.
+Alle Fundstellen liegen in apply_adaptive_windowing.
+Die dokumentierten Quellzeilen reichen von 190 bis 200.
+
+Die problematischen V1-Werte sind verschwunden. Nicht mehr als Strategien aufgeführt werden beispielsweise:
+
+Modulnamen
+avg_window_radius
+new_window_radius
+old_window_radius
+increase_window
+reduce_no_candidate_window
+try_contrastive_window
+das allgemeine Token windowing
+
+Damit ist die Strategie-Provenienz jetzt sauber.
+
+Radius-Datenfluss ist nachgewiesen
+
+Der Preflight meldet sechs Radius-Datenflussparameter:
+
+[1, 2, 3, 7, 9, 10]
+
+Diese Werte besitzen jetzt konkrete Herkunftsnachweise:
+
+3 ist der Ausgangswert von old_r.
+2 und 1 stammen aus max(2, old_r - 1).
+9 und 2 stammen aus min(9, old_r + 2).
+7 und 1 stammen aus min(7, old_r + 1).
+10 und 1 stammen aus min(10, new_r + 1).
+Ein weiterer 1-Schritt wird über min(new_r, old_r + 1) nachgewiesen.
+
+Die Werte werden im Report korrekt als Datenflussparameter bezeichnet, nicht als frei auswählbare Radiusliste. Das ist wichtig, weil sie unterschiedliche Rollen haben:
+
+Startwert
+Untergrenze
+Obergrenze
+Erhöhungsschritt
+Verringerungsschritt
+
+Der Preflight trifft daraus keine produktive Radiusentscheidung. production_radius_selection bleibt not_made.
+
+Target-Quelle ist statisch belegt
+
+Der Preflight dokumentiert zwölf Target-bezogene Quellspuren. Darunter befinden sich echte read-only Stellen:
+
+Ermittlung eines Center Chunks aus context_hypotheses
+möglicher Center-Chunk-Fallback aus reading_queue
+Statusabfrage aus reading_queue
+Target-Ermittlung in der Funktion neighbors
+SELECT id FROM chunks WHERE id IN (...)
+Overlap-Prüfungen gegen vorhandene target_chunk_id-Einträge in phase5f_context_window_experiments
+
+Die entscheidende Target-Quelle ist damit nicht mehr eine vom Audit selbst erzeugte Suche. Der Preflight verweist auf die aktive Phase-5f-Funktion neighbors und deren Zugriff auf chunks.
+
+Gleichzeitig bleiben korrekt:
+
+target_candidates_materialized = false
+target_selected = null
+target_selection_executed = false
+synthetic_id_neighborhood_used = false
+
+Das bedeutet präzise:
+
+Der Preflight hat nachgewiesen, wo und über welchen aktiven Codepfad Phase 5f seine Target-Kandidaten bestimmt. Er hat diese Auswahl aber weder ausgeführt noch für einen Shadow-Kandidaten nachgebildet.
+
+Das ist für diesen read-only Preflight korrekt.
+
+Kleiner Parser-Schönheitsfehler
+
+In source_tables erscheint zusätzlich der Eintrag:
+
+SET
+
+Das ist keine reale Tabelle. Er stammt erkennbar aus der einfachen SQL-Tokenanalyse eines UPDATE ... SET ...-Ausdrucks. Die tatsächlich dokumentierten Quellspuren nennen dagegen konkrete Tabellen wie:
+
+chunks
+context_hypotheses
+reading_queue
+gap_closure_attempts
+phase5f_context_window_experiments
+phase5f_adaptive_window_events
+
+Dieser Eintrag beeinflusst weder das Shadow-Vertragsurteil noch den Produktivblocker. Er ist ein reiner Report-Artefakt. Vor einem späteren allgemeinen SQL-Lineage-Werkzeug sollte der Parser SET ausschließen, aber für den jetzigen Entwicklungsschritt ist kein weiterer Preflight-Fix erforderlich.
+
+Der Shadow-Vertrag ist vollständig
+
+Für alle 512 untersuchten Projektionen gilt:
+
+candidate_state = observed_only
+bridge_mode = shadow
+Shadow-Key vorhanden
+Source-Hypothese vorhanden
+Source-Hypothese existiert
+Center Chunk vorhanden
+Center Chunk existiert
+deterministischer Projection Key vorhanden
+Observation-Schema vollständig
+Strategie-Provenienz vorhanden
+Radius-Provenienz vorhanden
+Target-Quellpfad vorhanden
+missing_elements = []
+
+Das JSON zeigt beispielsweise für die erste Projektion:
+
+Source-Hypothese 108848
+Center Chunk 11108
+Shadow-Key context_hypothesis:108848
+Source-Hypothese live vorhanden
+Center Chunk live vorhanden
+eigener deterministischer shadow-phase5f-Projektionsschlüssel
+
+Damit ist der nicht-produktive Projektionsrahmen nach dem aktuell definierten Preflight-Vertrag vollständig.
+
+Produktiver Anschluss bleibt korrekt geschlossen
+
+Für jede der 512 Projektionen bleibt:
+
+gap_id = null
+produktiv attachable: false
+Contract-Break: gap_id
+Status: unavailable_by_design
+synthetischer Wert verwendet: false
+Workaround angewandt: false
+produktive Gap-Klassifikation ausgeführt: false
+produktive Gap-ID erzeugt: false
+
+Damit hat der Preflight die wichtigste Architekturgrenze nicht umgangen.
+
+Es wurde weder:
+
+eine Dummy-ID,
+eine Hypothesen-ID,
+eine Hash-ID,
+eine negative ID,
+noch die Zahl 0
+
+als produktive gap_id verwendet. Das Ergebnis weist ausdrücklich synthetic_gap_ids = 0 aus.
+
+Idempotenzvertrag bleibt korrekt aufgeschoben
+
+Für jeden Kandidaten existiert ein deterministischer Basis-Key. Die endgültigen Idempotenzfelder bleiben jedoch:
+
+target_chunk_id
+window_strategy
+window_radius
+
+Diese Felder sind weiterhin aufgeschoben. Der Preflight erzeugt keine Kombinationen daraus:
+
+candidate_combination_keys_generated = false
+
+Das ist richtig. Wir hätten andernfalls wieder Schlüssel aus Kandidaten erzeugt, die noch nicht durch eine reale, nicht-produktive Auswahlentscheidung bestimmt wurden.
+
+Observation-Vertrag ist vollständig vorhanden
+
+Folgende Felder existieren vollständig im Zielvertrag:
+
+closure_delta
+read_outcome
+no_candidate_signal
+overlap_score
+experiment_score
+status
+
+Es fehlen keine Observation-Spalten. Alle Initialwerte bleiben null, observation_ready bleibt false, und die Semantik lautet deferred_until_real_observation.
+
+Es wurde damit kein Ergebnis vorgetäuscht, bevor ein reales Shadow-Experiment stattgefunden hat.
+
+Schema-Alignment ist grün
+
+Beim Shadow-Schema gilt:
+
+declared_missing_live = []
+live_not_declared = []
+
+Beim Phase-5f-Experiment-Schema gilt ebenfalls:
+
+keine deklarierte Spalte fehlt live,
+zusätzlich live vorhanden sind lediglich die beiden Phase-5g-Erweiterungen phase5g_used_for_strategy_selection und phase5g_last_used_at.
+
+Damit gibt es keinen Bootstrap- oder Schema-Blocker für den geprüften read-only Vertrag.
+
+Sicherheitsstatus vollständig grün
+
+Die Datenbank wurde query-only geöffnet:
+
+query_only = 1
+quick_check = ok
+integrity_check = ok
+
+Der Sicherheitsvertrag meldet:
+
+Runtime-Cycles: 0
+direkte Bridge-Aufrufe: 0
+direkte Phase-5f-Aufrufe: 0
+synthetische Evidenz: 0
+synthetische Gap-IDs: 0
+synthetische Target-Kandidaten: 0
+Datenbankwrites: 0
+produktive Entscheidungen: 0
+Projektion ausschließlich im JSON
+
+Vor und nach dem Lauf blieben unter anderem unverändert bei 0:
+
+internal_learning_gaps
+chunk_attention_scores
+phase5f_context_window_experiments
+phase5f_gap_window_state
+phase5f_window_strategy_memory
+phase5g_strategy_experiments
+phase5g_experiment_outcomes
+phase5i_outcome_driven_experiments
+Facts
+Relations
+Questions
+Ehrliches Abschlussurteil
+
+
+Nachgewiesen ist jetzt:
+
+Alle 512 geprüften Shadow-Kandidaten besitzen einen vollständigen nicht-produktiven Projektionsvertrag.
+Die sechs Phase-5f-Strategiewerte sind über konkrete Datenflussstellen belegt.
+Radius-Startwerte, Grenzen und Schritte sind über old_r und new_r belegt.
+Der aktive Target-Quellpfad über neighbors, chunks und begleitende Tabellen ist statisch nachgewiesen.
+Keine Target-Auswahl wurde ausgeführt oder simuliert.
+Keine produktive Eligibility-, Strategie-, Radius- oder Target-Entscheidung wurde getroffen.
+Der produktive Anschluss bleibt ausschließlich wegen der fehlenden echten gap_id geschlossen.
+Es wurden keinerlei produktive Writes geöffnet.
+
