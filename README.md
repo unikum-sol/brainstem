@@ -22,6 +22,10 @@ BrainStem is a biologically inspired, neuro-symbolic cognitive architecture for 
 
 ## Current State
 
+<a href="assets/project_structure.png" target="_blank">
+  <img src="assets/project_structure.png" alt="Vorschaubild" width="250" />
+</a>
+
 ### Completed
 
 - **Stage A — learning-core stabilization**
