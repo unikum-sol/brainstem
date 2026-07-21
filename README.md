@@ -139,7 +139,7 @@ Core principles:
 
 ## Architecture
 
-### What is BraiStem realy
+### What is BrainStem realy
 
 **BrainStem** is an autonomous software architecture designed for continuous, self-improving data processing and knowledge management. At its core, the system operates through an Autonomous Loop that orchestrates a chain of learning phases to ingest, analyze, and refine information without manual intervention.
 
