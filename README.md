@@ -1,6 +1,6 @@
 # BrainStem
 
-Update 16.07.26
+Update 21.07.26
 
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
@@ -29,60 +29,98 @@ BrainStem is a biologically inspired, neuro-symbolic cognitive architecture for 
 </a>
 
 ### Completed
-
-- **Stage A — learning-core stabilization**
-- sensory-deprivation drift test covering 1,344 cycles was successfully completed
+- **Stage A foundation and post-legacy revalidation**
 - Legacy Cleanup large slices **A–C**
 - removal of historical and unused learning paths
-- removal of the obsolete `nlp.py` path and the legacy CorpusReader / Phase-3d word-role and filter path
+- removal of the obsolete nlp.py path and the legacy CorpusReader / Phase-3d word-role and filter path
 - cleanup of the historical Phase-4def–4p cluster in favor of the canonical observation/signature path
 - one canonical runtime chain through the current Phase-7cort top path
+- Phase-6a / Phase-6b canonical single-pass and fresh-source contract validated
+- one-cycle runtime trace and five-cycle canonical single-pass smoke completed without blockers
+- continuous **1,344-cycle** validation completed with the adapter verdict **convergence**
+- exactly 1,344 Phase-6a cycles, Phase-6b measurements, adjustments and L2M records created
+- 1,344 unique fresh Phase-6a sources consumed by the canonical Phase-6b owner
+- protected productive write counts remained unchanged during validation
+- final SQLite quick_check and integrity_check completed successfully
 - all **12 digital neuromodulators** statically and at runtime connected to the GUI: **12/12, overall true**
 - performance indexes and bounded pruning for approved history tables
 - cooperative GUI worker shutdown
 - bounded/downsampled GUI diagnostics and graphs
 - database bootstrap and schema-contract consolidation
+- modernized learning reset validated against the current database in read-only dry-run mode
 
 ### Current Shadow Path
-
-**Modern Gap Candidate Bridge + Bootstrap Shadow V1** is installed.
-
+  
+**Modern Gap Candidate Bridge + Bootstrap Shadow V1** is installed and active in the untouched canonical runtime.  
 The bridge currently operates under the following restrictions:
-
-- mode: `observed_only`
-- execution: checkpoint-based
+- mode: observed_only
+- execution: automatic from Phase 5a, checkpoint-based
 - maximum batch: **512 hypotheses per cycle**
+- canonical outer runtime owner: **Phase 7cort**
 - productive writes remain closed for:
-  - `internal_learning_gaps`
-  - attention targets
-  - Phase-5f / Phase-5g / Phase-5i experiments
-  - facts
-  - relations
-  - questions
-
-Latest observed Shadow result:
-
-| Signal | Result |
-|---|---:|
-| Phase-5i source rows | 0 |
-| Shadow rows | 0 |
-| Missing signals | none |
-| Productive writes | `[0, 0]` |
-| Mode | `shadow` |
-
-These zero values are currently treated as a **measurement**, not automatically as a defect. The next investigation must determine whether no eligible Phase-5i candidates existed or whether an upstream path did not deliver candidates.
+- internal_learning_gaps
+- attention targets
+- Phase-5f / Phase-5g / Phase-5i experiments
+- facts
+- relations
+- questions
+- direct fact promotion
+Current verified Shadow behavior:
+<table>
+<tr>
+<th>  
+Signal
+</th>
+<th>  
+Result
+</th>
+</tr>
+<tr>
+<td>Automatic Gap-Shadow owner</td>
+<td>Phase 5a, exactly once per verified canonical cycle</td>
+</tr>
+<tr>
+<td>Shadow source mode</td>
+<td>observed_only</td>
+</tr>
+<tr>
+<td>Projection batch</td>
+<td>512 Shadow candidates</td>
+</tr>
+<tr>
+<td>Non-productive Phase-5f projections</td>
+<td>512 created, 0 errors</td>
+</tr>
+<tr>
+<td>Projected strategy / radius / action</td>
+<td>wider_context_window / 5 / increase_window</td>
+</tr>
+<tr>
+<td>Observation basis</td>
+<td>default path only; no real productive gap history</td>
+</tr>
+<tr>
+<td>Productive writes</td>
+<td>none</td>
+</tr>
+<tr>
+<td>Productive Phase-5f attachment</td>
+<td>blocked by unavailable real gap_id</td>
+</tr>
+</table>
+The current Shadow path processes real context-hypothesis candidates and advances its checkpoint automatically. The non-productive Phase-5f envelope executes the active target, strategy and radius logic, but captures all results before the first Phase-5f write.
 
 ### Immediate Next Step
+  
+The next controlled step is to evaluate the Shadow experiment envelopes without opening productive writes:
+- verify projection diversity across source candidates and context regions
+- separate default-path projections from projections supported by real outcome observations
+- verify deterministic idempotency keys across repeated read-only runs
+- preserve the productive gap_id boundary without synthetic or proxy identifiers
+- keep observation_ready false until a real outcome observation exists
+- keep internal_learning_gaps, attention, Phase-5f / Phase-5g / Phase-5i and knowledge writes closed
+Only after real outcome evidence, stable replay/consolidation evidence and explicit gate validation exist will Stage B preparation continue.
 
-Before opening any productive write path, BrainStem will measure the missing candidate flow:
-
-1. inspect the Phase-5i source
-2. verify checkpoint behavior
-3. verify candidate-selection conditions
-4. verify the bootstrap/schema contract
-5. demonstrate that the Shadow path processes real candidates
-
-Only after this evidence exists will Stage B preparation continue.
 
 ## Core Philosophy
 
