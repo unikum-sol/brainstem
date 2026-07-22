@@ -4,7 +4,9 @@ Status date: 22 July 2026
 
 1. PURPOSE AND END GOAL
 
-BrainStem, formerly KI-System V8, is a self-learning language and text understanding architecture. Its intended end state is a system that learns meaning, contextual structure and dialogue behavior from experience rather than from hard-coded language rules.
+BrainStem, formerly KI-System V8, is a self-learning language and text understanding architecture. 
+Its intended end state is a system that learns meaning, contextual structure and dialogue behavior 
+from experience rather than from hard-coded language rules.
 
 The planned learning architecture combines:
 
