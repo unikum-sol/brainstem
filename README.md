@@ -13,7 +13,7 @@ BrainStem is a biologically inspired, neuro-symbolic cognitive architecture for 
 >One CPU Core /
 >No GPU needed
 
-<video src="BrainStem Project AI conversation by NotebookLM_low.mp4" controls width="300"></video>
+<video src="https://raw.githubusercontent.com/unikum-sol/brainstem/main/assets/BrainStem Project AI conversation by NotebookLM_low.mp4" controls width="400"></video>
 
 [NotebookLM codebase exploration](https://notebooklm.google.com/notebook/22f86efd-8cd6-447b-a43f-65f252259ab4?utm_source=nlmm_share) 22.07.26
 
