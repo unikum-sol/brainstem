@@ -4,6 +4,11 @@ from __future__ import annotations
 import os, sqlite3, importlib
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+from ki_system import v8_modern_gap_phase5f_shadow_observation_release as _gap_phase5f_shadow_observation
+from ki_system import v8_modern_gap_phase5f_shadow_history_release as _gap_phase5f_shadow_history
+from ki_system import v8_modern_gap_phase5f_shadow_observation_v2_release as _gap_phase5f_shadow_v2
+from ki_system import v8_stable_obs_content_fp_shadow_classifier_release as _content_fp_shadow_classifier
+from ki_system import v8_phase6a_replay_control_shadow_release as _phase6a_replay_control_shadow
 
 SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
            ('subject', 'TEXT'),
@@ -866,6 +871,10 @@ def ensure_database_exists(db_path):
         bootstrapped, phase_reports, errors = _bootstrap_phase_modules(con)
         perf_indexes = ensure_perf_indexes(con)
         con.commit()
+        _gap_phase5f_shadow_observation.ensure_schema()
+        _gap_phase5f_shadow_history.ensure_schema()
+        _content_fp_shadow_classifier.ensure_schema()
+        _phase6a_replay_control_shadow.ensure_schema()
         return {"db_created": db_created, "db_path": str(p.resolve()),
                 "perf_indexes_created": perf_indexes,
                 "base_tables_created": base_report["created_tables"],
@@ -874,6 +883,7 @@ def ensure_database_exists(db_path):
                 "phase_reports": phase_reports, "errors": errors}
     finally:
         con.close()
+    _gap_phase5f_shadow_v2.ensure_schema()
 
 def print_bootstrap_report(report):
     print("=" * 60)

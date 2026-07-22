@@ -11,6 +11,7 @@ import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from ki_system import v8_phase6a_replay_control_shadow_release as replay_control_shadow
 def _canonical_outcome_observation_count(con):
     try:
         if not _table_exists(con, "phase5g_experiment_outcomes"):
@@ -519,6 +520,7 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
             "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (key, src, sid, c.get("candidate_type"), c.get("gap_key"), c.get("role"), priority, replay_weight, outcome, closure, overlap, no_candidate, plasticity, _j(nm), decision, _j(details), now),
         )
+        replay_control_shadow.capture_last_inserted_event(db)
         # Non-destructive target updates.
         if src == "internal_learning_gaps" and table_exists(db, src):
             db.execute(

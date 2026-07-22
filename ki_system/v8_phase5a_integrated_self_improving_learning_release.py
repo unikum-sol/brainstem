@@ -10,6 +10,7 @@ import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+from ki_system import v8_modern_gap_phase5f_shadow_observation_release as gap_phase5f_shadow_observation
 
 PHASE = "phase5a_integrated_self_improving_learning_release"
 LEARNING_MODE = "context_hypotheses_with_neuromodulators"
@@ -344,7 +345,14 @@ def integrated_control_step(mem: Any = None) -> Dict[str, Any]:
 def managed_cycle(self, progress=None):
     ensure_phase5a_schema(getattr(self, "mem", None))
     result = _PREV_CYCLE(self, progress) if _PREV_CYCLE is not None else {"status": "phase5a_no_previous_cycle"}
+    try:
+        from ki_system import v8_modern_gap_candidate_bridge_shadow_release as gap_shadow
+        shadow = gap_shadow.observe_shadow(getattr(self, "mem", None))
+        gap_phase5f_shadow_observation.observe_shadow(getattr(self, "mem", None), limit=512)
+    except Exception as exc:
+        shadow = {"status": "modern_gap_candidate_shadow_error", "error": str(exc), "bridge_mode": "shadow"}
     summary = integrated_control_step(getattr(self, "mem", None))
+    summary["modern_gap_candidate_shadow"] = shadow
     if isinstance(result, dict):
         result["phase5a_integrated_release"] = summary
         return result

@@ -593,7 +593,12 @@ def managed_cycle(self, progress=None):
         result = {'phase5g_cycle_error': str(exc)}
     db = _get_db(self)
     outcome = evaluate_strategy_experiment_outcomes(db)
-    return {'phase': PHASE, 'base_result': result, 'outcome_learning': outcome, 'facts': outcome.get('facts',0), 'relations': outcome.get('relations',0), 'questions': outcome.get('questions',0)}
+    try:
+        from ki_system import v8_modern_outcome_bridge_shadow_release as shadow_bridge
+        shadow = shadow_bridge.observe_shadow(db)
+    except Exception as exc:
+        shadow = {'status':'modern_outcome_bridge_shadow_error','error':str(exc),'bridge_mode':'shadow'}
+    return {'phase': PHASE, 'base_result': result, 'outcome_learning': outcome, 'modern_outcome_bridge_shadow': shadow, 'facts': outcome.get('facts',0), 'relations': outcome.get('relations',0), 'questions': outcome.get('questions',0)}
 
 
 def managed_run(self, cycles=1, progress=None):
