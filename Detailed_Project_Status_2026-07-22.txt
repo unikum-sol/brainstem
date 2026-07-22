@@ -26,9 +26,11 @@ Z:\Temp\Ki_System\BrainStem\
 
 2. CURRENT VALIDATION BOUNDARY
 
-The original Stage A foundation work and the historical 1,344-cycle validation were completed successfully for an earlier code state. That run produced a convergence verdict and kept protected productive write counts unchanged.
+The original Stage A foundation work and the historical 1,344-cycle validation were completed successfully for an earlier code state. 
+That run produced a convergence verdict and kept protected productive write counts unchanged.
 
-However, substantial architectural changes were installed after that validation. The historical 1,344-cycle result must therefore not be presented as a current stability certificate. It remains historical evidence for the earlier tested state only.
+However, substantial architectural changes were installed after that validation. The historical 1,344-cycle result must 
+therefore not be presented as a current stability certificate. It remains historical evidence for the earlier tested state only.
 
 Before Stage B can be treated as ready, the current full system must complete a new end-to-end stability and drift validation.
 
@@ -50,7 +52,8 @@ Completed work includes:
 - bounded and downsampled GUI logs and graphs
 - modern learning-reset dry-run validation
 
-No word blacklists or fixed language filters are permitted. Language roles and structural behavior must emerge from data and context.
+No word blacklists or fixed language filters are permitted. Language roles and structural 
+behavior must emerge from data and context.
 
 4. CURRENT CORPUS AND HYPOTHESIS STATE
 
@@ -62,7 +65,8 @@ Current GUI state:
 - corpus read progress: 100%
 - context hypotheses: 949,760
 
-The GUI chunk counter is the canonical corpus-read indicator. Distinct `chunk_id` values in hypothesis tables are treated only as coverage proxies, because a processed chunk does not necessarily create a context hypothesis.
+The GUI chunk counter is the canonical corpus-read indicator. Distinct `chunk_id` values in hypothesis tables 
+are treated only as coverage proxies, because a processed chunk does not necessarily create a context hypothesis.
 
 The current Candidate Bridge and Observation checkpoints both reached the complete current hypothesis population:
 
@@ -70,7 +74,8 @@ The current Candidate Bridge and Observation checkpoints both reached the comple
 - no `context_hypotheses` rows beyond the active observation checkpoint
 - no Candidate Shadow rows beyond the active observation checkpoint
 
-Additional ordinary system cycles therefore produced zero inputs for the existing observation path until another subsystem creates a genuinely newer source state.
+Additional ordinary system cycles therefore produced zero inputs for the existing observation path until another 
+subsystem creates a genuinely newer source state.
 
 5. MODERN GAP CANDIDATE BRIDGE
 
@@ -101,9 +106,11 @@ The bridge reached all 949,760 current hypotheses.
 
 The V1 Phase-5f Shadow Observation layer processed the full present hypothesis frontier without projection errors.
 
-The original V1 observation key included `source_updated_at`. As a result, a reobserved hypothesis with a new timestamp generated a new observation key rather than a new version under one stable identity.
+The original V1 observation key included `source_updated_at`. As a result, a reobserved hypothesis with 
+a new timestamp generated a new observation key rather than a new version under one stable identity.
 
-Measured V1 behavior demonstrated that natural reobservation did reach the observation layer. The issue was not missing reobservation. The issue was the mixing of stable identity and source version in the observation key.
+Measured V1 behavior demonstrated that natural reobservation did reach the observation layer. 
+The issue was not missing reobservation. The issue was the mixing of stable identity and source version in the observation key.
 
 7. STABLE OBSERVATION IDENTITY V2
 
@@ -138,7 +145,8 @@ After the natural long run, V2 contained:
 
 8. V2 TIMESTAMP-SENSITIVITY FINDING
 
-A dedicated source-change driver audit proved that every one of the 136,990 V2 source-state changes was caused only by `source_updated_at`.
+A dedicated source-change driver audit proved that every one of the 136,990 V2 source-state changes 
+was caused only by `source_updated_at`.
 
 For all measured changes:
 
@@ -148,7 +156,8 @@ For all measured changes:
 - projection fingerprint was unchanged
 - only the timestamp changed
 
-The installed V2 writer was technically consistent with its original contract, but that source fingerprint was too sensitive for semantic versioning.
+The installed V2 writer was technically consistent with its original contract, but that 
+source fingerprint was too sensitive for semantic versioning.
 
 No existing V2 history was deleted or rewritten.
 
@@ -165,7 +174,8 @@ The new comparison contract:
 - does not replace the old V2 writer
 - performs no migration or backfill
 
-This classifier currently contains no production events because the observation checkpoint is fully caught up and no newer observation source exists. Fifty additional system cycles were verified as zero-input cycles for the path.
+This classifier currently contains no production events because the observation checkpoint is fully caught up 
+and no newer observation source exists. Fifty additional system cycles were verified as zero-input cycles for the path.
 
 This is not a classifier defect. The classifier has not yet received a natural eligible input.
 
@@ -199,9 +209,11 @@ It does not update:
 - stability
 - canonical `context_hypotheses.updated_at`
 
-Because Candidate Bridge uses canonical `updated_at + id` as its source cursor, replay metadata changes do not create a newer Candidate Bridge source state.
+Because Candidate Bridge uses canonical `updated_at + id` as its source cursor, replay metadata changes 
+do not create a newer Candidate Bridge source state.
 
-This behavior is now understood as a contract boundary, not automatically as a bug. Replay activity is not equivalent to a semantic hypothesis change.
+This behavior is now understood as a contract boundary, not automatically as a bug. 
+Replay activity is not equivalent to a semantic hypothesis change.
 
 11. REPLAY-CONTROL SHADOW CAPTURE
 
@@ -220,7 +232,9 @@ Scope and identity:
 - no semantic hypothesis version
 - no productive write
 
-The original installer placed the hook at the correct event-insert location but passed the candidate dictionary `c` instead of the SQLite connection `db`. A V1.1 AST fix derived the receiver directly from the real `db.execute(...)` event insert and installed:
+The original installer placed the hook at the correct event-insert location but passed 
+the candidate dictionary `c` instead of the SQLite connection `db`. A V1.1 AST fix derived the receiver directly 
+from the real `db.execute(...)` event insert and installed:
 
 `replay_control_shadow.capture_last_inserted_event(db)`
 
@@ -287,7 +301,8 @@ Current conclusion:
 
 14. REAL-OUTCOME SOURCE CONTRACT
 
-Phase 6a currently computes `outcome_observation_available` as a global check of whether `phase5g_experiment_outcomes` contains at least one row.
+Phase 6a currently computes `outcome_observation_available` as a global check 
+of whether `phase5g_experiment_outcomes` contains at least one row.
 
 The current function does not:
 
@@ -302,7 +317,8 @@ All recorded Phase-6a cycles in the measured state reported:
 - outcome observation available: 0
 - outcome observation count: 0
 
-A positive value in the future would still mean only that the table contains one or more rows, unless a stronger row-level lineage is installed and validated.
+A positive value in the future would still mean only that the table contains one or more rows, 
+unless a stronger row-level lineage is installed and validated.
 
 15. PHASE-5G EXPERIMENT OUTCOME WRITER
 
@@ -319,7 +335,8 @@ The writer evaluates Phase-5g strategy experiments and stores internal values su
 - learning, revision, exploration and inhibition controls
 - neuromodulator values
 
-The schema has identity and timestamps but no explicit external Real Outcome observation contract. It lacks validated hypothesis/replay lineage and a later independent outcome timestamp.
+The schema has identity and timestamps but no explicit external Real Outcome observation contract. 
+It lacks validated hypothesis/replay lineage and a later independent outcome timestamp.
 
 Current conclusion:
 
@@ -333,7 +350,8 @@ Current conclusion:
 
 The Experiment Producer is `apply_context_strategy_selection` in the Phase-5g strategy-selection module.
 
-Its primary source is `internal_learning_gaps`. It queries open or monitoring gap states and then creates strategy experiments and operational updates.
+Its primary source is `internal_learning_gaps`. It queries open or monitoring gap states 
+and then creates strategy experiments and operational updates.
 
 Current state:
 
@@ -357,7 +375,8 @@ The producer must therefore not be activated merely to make the empty tables non
 
 17. MODERN NON-PRODUCTIVE PHASE-5G CANDIDATE CONTRACT
 
-A read-only preflight proved that V2 Stable Observations contain the structural fields needed for a future-only, non-productive Phase-5g Candidate contract.
+A read-only preflight proved that V2 Stable Observations contain the structural fields needed for a future-only,
+non-productive Phase-5g Candidate contract.
 
 Proposed identity:
 
@@ -383,7 +402,8 @@ Hard boundaries:
 - no `observation_ready` change
 - no productive write
 
-No numeric threshold is authorized. Structural completeness and closed safety state are the only candidate eligibility conditions currently justified.
+No numeric threshold is authorized. Structural completeness and closed safety state 
+are the only candidate eligibility conditions currently justified.
 
 No installer has been authorized.
 
@@ -402,7 +422,8 @@ The preflight observed near-complete uniformity in the measured projection field
 - no-candidate rate: 0.0
 - target count: 6 for all but one measured row
 
-This is a stored-value observation. It does not by itself prove that the formulas are hard-coded. The pending audit must separately inspect:
+This is a stored-value observation. It does not by itself prove that the formulas are hard-coded. 
+The pending audit must separately inspect:
 
 - actual input variance
 - target-list diversity
@@ -432,7 +453,8 @@ No Projection Formula, Strategy Rule, Threshold or Candidate Installer change is
 
 During long autonomous runs, the GUI became unresponsive while the autonomous worker continued processing.
 
-Observed behavior included delayed jumps in visible GUI cycle, chunk and hypothesis counters. The worker was later stopped through `taskkill`.
+Observed behavior included delayed jumps in visible GUI cycle, chunk and hypothesis counters. 
+The worker was later stopped through `taskkill`.
 
 Post-stop database checks remained successful:
 
@@ -464,7 +486,8 @@ Current evidence distinguishes:
 - independent Real Outcome feedback: absent
 - outcome-gated applied learning adaptation: not proven
 
-Cortisol Stage 2 remains an open future task. It must not be built as an outcome-based regulator until the current system has a valid independent outcome contract and the current architecture has completed new stability validation.
+Cortisol Stage 2 remains an open future task. It must not be built as an outcome-based regulator until 
+the current system has a valid independent outcome contract and the current architecture has completed new stability validation.
 
 22. STAGE B READINESS
 
@@ -531,7 +554,8 @@ Z:\Temp\Ki_System\BrainStem\
 
 Run the prepared read-only Modern V2 Projection Input Variance, Formula Drivers & Strategy Diversity Audit.
 
-Do not install a modern Phase-5g Candidate producer before the audit establishes whether projection diversity is naturally available and whether the current uniform values are outputs of real source variation, a default path or a collapsing formula branch.
+Do not install a modern Phase-5g Candidate producer before the audit establishes whether projection diversity 
+is naturally available and whether the current uniform values are outputs of real source variation, a default path or a collapsing formula branch.
 
 After the audit, decide whether the next safe step is:
 
