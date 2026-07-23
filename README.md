@@ -13,11 +13,11 @@ BrainStem is a biologically inspired, neuro-symbolic cognitive architecture for 
 >One CPU Core /
 >No GPU needed
 
+---
+
 [![BrainStem Project AI conversation](https://img.youtube.com/vi/4nN7zELSAMo/mqdefault.jpg)](https://www.youtube.com/watch?v=4nN7zELSAMo)
 
 YouTube - BrainStem Project AI conversation 22.07.26
-
-<br>
 
 ---
 
