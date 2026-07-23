@@ -18,9 +18,16 @@ BrainStem is a biologically inspired, neuro-symbolic cognitive architecture for 
 YouTube - BrainStem Project AI conversation 22.07.26
 
 <br>
-  
-[👉 What is BrainStem really](#what-is-brainstem-really)
+---
+## 📍 Navigation
 
+* [Core Philosophy](#core-philosophy)
+* [What is BrainStem really](#what-is-brainstem-really)
+* [Architecture](#architecture)
+* [Running the System](#running-the-system)
+* [ZIM Import](#zim-import)
+* [Development Notes](#development-notes)    
+---
 <br>
 
 [NotebookLM codebase exploration](https://notebooklm.google.com/notebook/22f86efd-8cd6-447b-a43f-65f252259ab4?utm_source=nlmm_share) 22.07.26
@@ -269,9 +276,8 @@ Core principles:
 - **Measure before changing:** diagnostics, audits, drift tests, and Shadow experiments precede active-control changes.
 - **No hidden legacy paths:** obsolete modules and duplicate learning paths are removed rather than retained as inactive code.
 
-## Architecture
 
-### What is BrainStem really
+## What is BrainStem really
 
 **BrainStem** is an autonomous software architecture designed for continuous, self-improving data processing and knowledge management. At its core, the system operates through an Autonomous Loop that orchestrates a chain of learning phases to ingest, analyze, and refine information without manual intervention.
 
@@ -291,6 +297,8 @@ It is important to understand that the biological terminology used throughout th
 
 In summary, the project is a recursive learning engine that uses bio-inspired metaphors to implement a highly flexible, self-governing control logic for automated knowledge acquisition.
 
+
+## Architecture
 
 ### Two-Stage Data Pipeline
 
