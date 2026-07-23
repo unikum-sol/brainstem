@@ -485,10 +485,6 @@ The current development corpus is the German Wikipedia category **Computer**, im
 - **Engineering discipline:** backup, compile check, schema self-check, smoke test, and rollback planning for structural changes
 - **AI-assisted engineering:** development has included collaborative AI assistance. Concept elaboration with ChatGPT, Code generation Claude Opus an ChatGPT 5.6 Depp Thinking, Code review NotebookLM, Gemini and Copilot as critics (no sugarcoat mode)
 
-After major refactorings, project documentation includes a Legacy Report with:
-
-- removed legacy elements
-- retained but explicitly marked elements
 
 ## Claims and Limitations
 
