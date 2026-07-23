@@ -3,13 +3,18 @@ Current reference date: 23 July 2026
 
 1. PROJECT PURPOSE
 
-BrainStem is a biologically inspired, neuro-symbolic language and text-understanding system designed for continuous self-improvement. Its intended learning model uses context hypotheses, errors as learning material, replay and consolidation phases, and a coordinated neuromodulator system. The long-term objective is measurable improvement in real user dialogue without replacing learning with fixed language rules, word blacklists, or hard-coded linguistic templates.
+BrainStem is a biologically inspired, neuro-symbolic language and text-understanding system designed for continuous self-improvement. 
+Its intended learning model uses context hypotheses, errors as learning material, replay and consolidation phases, 
+and a coordinated neuromodulator system. The long-term objective is measurable improvement in real user dialogue 
+without replacing learning with fixed language rules, word blacklists, or hard-coded linguistic templates.
 
 2. CURRENT ARCHITECTURAL BASELINE
 
 The Python package remains `ki_system` and the project root remains `Z:\Temp\Ki_System\BrainStem\`.
 
-The canonical outer runtime owner is Phase 7cort. Historical and unused learning paths have been removed through Legacy Cleanup large slices A-C. This includes the obsolete NLP path, the former CorpusReader and Phase-3d word-role/filter cluster, and the historical Phase-4def-4p cluster. Bootstrap and schema handling were consolidated, and schema creation remains idempotent with explicit self-checks.
+The canonical outer runtime owner is Phase 7cort. Historical and unused learning paths have been removed through 
+Legacy Cleanup large slices A-C. This includes the obsolete NLP path, the former CorpusReader and Phase-3d word-role/filter cluster, 
+and the historical Phase-4def-4p cluster. Bootstrap and schema handling were consolidated, and schema creation remains idempotent with explicit self-checks.
 
 The production database remains SQLite and acts as the canonical source for identities, provenance, checkpoints, gates, references, and runtime accounting.
 
@@ -29,13 +34,16 @@ Validated properties included:
 - successful periodic SQLite quick checks
 - successful final SQLite integrity check
 
-This is the current runtime stability baseline. It replaces the older historical drift result as the relevant certificate for the present code state. It does not prove semantic learning quality, independent real outcomes, complete causal neuromodulator regulation, or Stage-B readiness.
+This is the current runtime stability baseline. It replaces the older historical drift result as the relevant certificate for the present code state. 
+It does not prove semantic learning quality, independent real outcomes, complete causal neuromodulator regulation, or Stage-B readiness.
 
 4. CORPUS AND HYPOTHESIS STATE
 
-The imported corpus is fully read. The current database contains 949,760 context hypotheses. The Modern Gap Candidate Bridge and Phase-5f Shadow Observation checkpoints are caught up to the current hypothesis population.
+The imported corpus is fully read. The current database contains 949,760 context hypotheses. The Modern Gap Candidate Bridge and 
+Phase-5f Shadow Observation checkpoints are caught up to the current hypothesis population.
 
-The GUI corpus counter is the canonical corpus-read progress indicator. Distinct `context_hypotheses.chunk_id` values are only hypothesis-coverage proxies and are not treated as an exact processed-chunk counter.
+The GUI corpus counter is the canonical corpus-read progress indicator. Distinct `context_hypotheses.chunk_id` values are only 
+hypothesis-coverage proxies and are not treated as an exact processed-chunk counter.
 
 5. MODERN GAP CANDIDATE AND OBSERVATION PATH
 
@@ -60,29 +68,37 @@ Stable Observation Identity V2 remains installed as a parallel, non-productive p
 - no reader switch
 - no checkpoint reset
 
-The Content-Stable Fingerprint Shadow Classifier excludes technical source timestamps from the semantic content fingerprint while preserving them as provenance. It distinguishes timestamp-only refreshes from real source-content or projection changes.
+The Content-Stable Fingerprint Shadow Classifier excludes technical source timestamps from the semantic 
+content fingerprint while preserving them as provenance. It distinguishes timestamp-only refreshes from real source-content or projection changes.
 
-The observation frontier is currently caught up. New classifier activity therefore depends on genuinely new qualifying source observations and must not be created through checkpoint resets or synthetic production inputs.
+The observation frontier is currently caught up. New classifier activity therefore depends on genuinely 
+new qualifying source observations and must not be created through checkpoint resets or synthetic production inputs.
 
 7. MODERN PROJECTION CONTRACT
 
-The former projection implementation dynamically loaded the historical Phase-5f module, modified its AST, intercepted the first write, and captured local variables through an exception. That mechanism has been removed.
+The former projection implementation dynamically loaded the historical Phase-5f module, modified its AST, 
+intercepted the first write, and captured local variables through an exception. That mechanism has been removed.
 
 The current path uses a dedicated read-only module:
 
 `ki_system.v8_modern_projection_contract_release`
 
-The modern observation wrapper now calls the projection evaluator directly. The existing formula behavior and strategy thresholds were deliberately preserved during consolidation. No schema change, backfill, migration, or productive gate change was introduced.
+The modern observation wrapper now calls the projection evaluator directly. The existing formula behavior 
+and strategy thresholds were deliberately preserved during consolidation. No schema change, backfill, migration, or productive gate change was introduced.
 
-The current projection formula still reflects the established default-path behavior when prior strategy, radius, expected gain, and effectiveness evidence are absent. Projection diversity and future candidate use remain observation questions, not authorization for productive Phase-5g writes.
+The current projection formula still reflects the established default-path behavior when prior strategy, 
+radius, expected gain, and effectiveness evidence are absent. Projection diversity and future candidate use remain observation questions, not authorization for productive Phase-5g writes.
 
 8. REPLAY, LEARNING EFFECT, AND OUTCOME STATUS
 
-Phase 6a replay continues after corpus completion. Replay-Control Shadow Capture records future replay-control events with stable source identity and retry-safe event identity.
+Phase 6a replay continues after corpus completion. Replay-Control Shadow Capture records future replay-control 
+events with stable source identity and retry-safe event identity.
 
-Current evidence supports replay activity and control-state observation. It does not yet establish replay-caused semantic learning. Direct semantic lineage from a replay event to a later hypothesis-content change has not been proven.
+Current evidence supports replay activity and control-state observation. It does not yet establish replay-caused semantic learning. 
+Direct semantic lineage from a replay event to a later hypothesis-content change has not been proven.
 
-Independent real outcomes are also not established. Internal scores, projected effectiveness, replay activity, and consolidation records are not accepted as independent real-world outcome evidence.
+Independent real outcomes are also not established. Internal scores, projected effectiveness, replay activity, 
+and consolidation records are not accepted as independent real-world outcome evidence.
 
 9. ALL-12 NEUROMODULATOR SYSTEM
 
@@ -104,9 +120,12 @@ Extended circuit:
 - cortisol
 - adenosine
 
-All 12 are represented in code and identifiable in live state. A 500-cycle aligned observational trace was produced for all 12. The trace showed natural variation for part of the extended circuit while several core values remained constant in that window. Constant inputs were treated as empirically unidentifiable, not as zero-effect or failure.
+All 12 are represented in code and identifiable in live state. A 500-cycle aligned observational trace was produced for all 12. 
+The trace showed natural variation for part of the extended circuit while several core values remained constant in that window. 
+Constant inputs were treated as empirically unidentifiable, not as zero-effect or failure.
 
-The local glutamate/GABA E/I formula was independently reconstructed and technically confirmed. However, isolated formula sensitivity is not equivalent to complete All-12 causal co-regulation.
+The local glutamate/GABA E/I formula was independently reconstructed and technically confirmed. However, 
+isolated formula sensitivity is not equivalent to complete All-12 causal co-regulation.
 
 10. PURE COMPUTATIONAL KERNEL CONSOLIDATION
 
@@ -125,7 +144,8 @@ The module contains no SQLite import, SQL execution, commit, runtime loop, or fi
 - BDNF state
 - All-12 snapshot validation
 
-The runtime wrappers have not been cut over. They remain authoritative and retain database access, evidence handling, critic-gate metadata, persistence, and event logging.
+The runtime wrappers have not been cut over. They remain authoritative and retain database access, evidence handling, 
+critic-gate metadata, persistence, and event logging.
 
 11. MULTI-CYCLE OLD/NEW PARITY BASELINE
 
@@ -155,7 +175,8 @@ Kernels with `MULTICYCLE_PARITY_PASS`:
 
 Natural numeric variation was observed for the anandamide-level, BDNF, E/I, and Phase-6b adjustment contracts while Old/New parity remained exact.
 
-The old wrapper path remained authoritative throughout. Kernel results were never applied. No second source scan, kernel commit, kernel rollback, runtime cutover, or applied regulation occurred.
+The old wrapper path remained authoritative throughout. Kernel results were never applied. No second source scan, 
+kernel commit, kernel rollback, runtime cutover, or applied regulation occurred.
 
 12. CURRENT SAFETY BOUNDARY
 
@@ -205,11 +226,13 @@ A formal suitability checkpoint is now part of the project build sequence. It ma
 - measurable retrieval quality and lifecycle requirements
 - a read-only comparison against the existing SQLite solution
 
-SQLite remains the canonical relational source. Any future vector store must begin as a derived, read-only shadow index and must not replace provenance, checkpoint, gate, or writer-accounting contracts.
+SQLite remains the canonical relational source. Any future vector store must begin as a derived, 
+read-only shadow index and must not replace provenance, checkpoint, gate, or writer-accounting contracts.
 
 15. GUI AND OPERATIONAL OBSERVABILITY
 
-A previous long GUI run became unresponsive while the autonomous worker continued. After restart, the GUI was responsive with the same large database. Database size is therefore not treated as the proven cause and is not an optimization trigger.
+A previous long GUI run became unresponsive while the autonomous worker continued. After restart, 
+the GUI was responsive with the same large database. Database size is therefore not treated as the proven cause and is not an optimization trigger.
 
 GUI logs and graphs must remain bounded or downsampled. Worker state and stop behavior must remain observable independently of GUI responsiveness.
 
@@ -249,17 +272,5 @@ The current project state does not support these claims:
 - Stage-B readiness
 - fact-promotion readiness
 
-18. REFERENCE ARTIFACTS
-
-Important current artifacts include:
-
-- `current_system_stability_drift_validation_v1_result.json`
-- `current_system_stability_drift_validation_v1_baseline.json`
-- `modern_projection_integration_stability_baseline_v1_result.json`
-- `all12_no_write_shadow_sensitivity_harness_v1_result.json`
-- `all12_functional_shadow_regulator_v1_result.json`
-- `all12_formula_replay_no_write_harness_v1_result.json`
-- `neuromodulator_kernel_future_shadow_dualrun_v1_1_result.json`
-- `neuromodulator_kernel_multicycle_shadow_dualrun_baseline_v1_result.json`
 
 Completed audit and validation utilities may be archived under `tools`. Existing tools should be checked before creating duplicate scripts.
