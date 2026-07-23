@@ -18,7 +18,9 @@ BrainStem is a biologically inspired, neuro-symbolic cognitive architecture for 
 YouTube - BrainStem Project AI conversation 22.07.26
 
 <br>
+
 ---
+
 ## 📍 Navigation
 
 * [Core Philosophy](#core-philosophy)
