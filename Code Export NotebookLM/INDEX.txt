@@ -1,17 +1,17 @@
 PROJEKT-EXPORT INDEX
 Root: Z:\Temp\Ki_System\BrainStem
-Dateien gesamt: 55
-Groesse gesamt: 859056 bytes
+Dateien gesamt: 57
+Groesse gesamt: 864140 bytes
 
 --- Verteilung ---
-part1.txt :    24 Dateien,       272515 bytes
+part1.txt :    26 Dateien,       277563 bytes
 part2.txt :    11 Dateien,       254993 bytes
 part3.txt :    20 Dateien,       330538 bytes
 
 --- Dateiliste ---
 part1.txt |       5464 B | add_indexes.py
 part1.txt |        501 B | desktop.ini
-part1.txt |      19785 B | Detailed_Project_Status_2026-07-22.txt
+part1.txt |      12250 B | Detailed_Project_Status_2026-07-23.txt
 part1.txt |        150 B | ki_system\__init__.py
 part1.txt |        975 B | ki_system\autonomous.py
 part1.txt |      55591 B | ki_system\db_bootstrap.py
@@ -28,9 +28,11 @@ part1.txt |      12772 B | ki_system\v8_context_observation_learning_release.py
 part1.txt |       9747 B | ki_system\v8_deprivation_runner.py
 part1.txt |      19514 B | ki_system\v8_modern_gap_candidate_bridge_shadow_release.py
 part1.txt |       6857 B | ki_system\v8_modern_gap_phase5f_shadow_history_release.py
-part1.txt |      18962 B | ki_system\v8_modern_gap_phase5f_shadow_observation_release.py
+part1.txt |      14983 B | ki_system\v8_modern_gap_phase5f_shadow_observation_release.py
 part1.txt |      12451 B | ki_system\v8_modern_gap_phase5f_shadow_observation_v2_release.py
 part1.txt |      19616 B | ki_system\v8_modern_outcome_bridge_shadow_release.py
+part1.txt |       8010 B | ki_system\v8_modern_projection_contract_release.py
+part1.txt |       8552 B | ki_system\v8_neuromodulator_computational_kernels_release.py
 part1.txt |       6158 B | ki_system\v8_perf0_runtime_acceleration_release.py
 part1.txt |       1472 B | ki_system\v8_perf3_connection_accelerator.py
 part2.txt |      18730 B | ki_system\v8_phase5a_integrated_self_improving_learning_release.py

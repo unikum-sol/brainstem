@@ -137,549 +137,274 @@ learning_maturity_frontier_progress_monitor_v1_baseline.json=@learning_maturity_
 
 ===== END FILE: desktop.ini =====
 
-===== FILE: Detailed_Project_Status_2026-07-22.txt =====
-BRAINSTEM
-DETAILED PROJECT STATUS
-Status date: 22 July 2026
+===== FILE: Detailed_Project_Status_2026-07-23.txt =====
+BRAINSTEM DETAILED PROJECT STATUS
+Current reference date: 23 July 2026
 
-1. PURPOSE AND END GOAL
+1. PROJECT PURPOSE
 
-BrainStem, formerly KI-System V8, is a self-learning language and text understanding architecture. Its intended end state is a system that learns meaning, contextual structure and dialogue behavior from experience rather than from hard-coded language rules.
+BrainStem is a biologically inspired, neuro-symbolic language and text-understanding system designed for continuous self-improvement. Its intended learning model uses context hypotheses, errors as learning material, replay and consolidation phases, and a coordinated neuromodulator system. The long-term objective is measurable improvement in real user dialogue without replacing learning with fixed language rules, word blacklists, or hard-coded linguistic templates.
 
-The planned learning architecture combines:
+2. CURRENT ARCHITECTURAL BASELINE
 
-- context hypotheses
-- observation and reobservation
-- error-as-learning-material
-- replay and consolidation
-- digital neuromodulators
-- confidence, uncertainty, revision and inhibition control
-- sleep-like replay and consolidation phases
-- continuous self-improvement
-- measurable usefulness in real user dialogue
+The Python package remains `ki_system` and the project root remains `Z:\Temp\Ki_System\BrainStem\`.
 
-The system remains a Python package named `ki_system` and the active project path remains:
+The canonical outer runtime owner is Phase 7cort. Historical and unused learning paths have been removed through Legacy Cleanup large slices A-C. This includes the obsolete NLP path, the former CorpusReader and Phase-3d word-role/filter cluster, and the historical Phase-4def-4p cluster. Bootstrap and schema handling were consolidated, and schema creation remains idempotent with explicit self-checks.
 
-Z:\Temp\Ki_System\BrainStem\
+The production database remains SQLite and acts as the canonical source for identities, provenance, checkpoints, gates, references, and runtime accounting.
 
-2. CURRENT VALIDATION BOUNDARY
+3. CURRENT STABILITY STATUS
 
-The original Stage A foundation work and the historical 1,344-cycle validation were completed successfully for an earlier code state. That run produced a convergence verdict and kept protected productive write counts unchanged.
+The exact current code and database state completed a full 1,344-cycle stability and drift validation.
 
-However, substantial architectural changes were installed after that validation. The historical 1,344-cycle result must therefore not be presented as a current stability certificate. It remains historical evidence for the earlier tested state only.
+Validated properties included:
 
-Before Stage B can be treated as ready, the current full system must complete a new end-to-end stability and drift validation.
+- 1,344 requested and completed canonical runtime cycles
+- matching V1 and V2 cycle accounting
+- no runtime exception
+- no checkpoint regression
+- no protected-table change
+- no critical state violation
+- unchanged monitored runtime module hashes
+- successful periodic SQLite quick checks
+- successful final SQLite integrity check
 
-3. COMPLETED FOUNDATION AND LEGACY CLEANUP
+This is the current runtime stability baseline. It replaces the older historical drift result as the relevant certificate for the present code state. It does not prove semantic learning quality, independent real outcomes, complete causal neuromodulator regulation, or Stage-B readiness.
 
-Completed work includes:
+4. CORPUS AND HYPOTHESIS STATE
 
-- Legacy Cleanup large slices A, B and C
-- removal of obsolete and unused learning paths
-- removal of `nlp.py`
-- removal of the legacy CorpusReader and Phase-3d word-role/filter path
-- replacement of the historical Phase-4def through Phase-4p cluster with the canonical observation/signature path
-- consolidation of the current runtime under the Phase-7cort top path
-- centralized database bootstrap and schema contracts
-- idempotent schema setup and self-check requirements
-- all 12 digital neuromodulators linked statically and at runtime to the GUI
-- performance indexes on approved active learning-history tables
-- bounded pruning only for explicitly approved history tables
-- bounded and downsampled GUI logs and graphs
-- modern learning-reset dry-run validation
+The imported corpus is fully read. The current database contains 949,760 context hypotheses. The Modern Gap Candidate Bridge and Phase-5f Shadow Observation checkpoints are caught up to the current hypothesis population.
 
-No word blacklists or fixed language filters are permitted. Language roles and structural behavior must emerge from data and context.
+The GUI corpus counter is the canonical corpus-read progress indicator. Distinct `context_hypotheses.chunk_id` values are only hypothesis-coverage proxies and are not treated as an exact processed-chunk counter.
 
-4. CURRENT CORPUS AND HYPOTHESIS STATE
+5. MODERN GAP CANDIDATE AND OBSERVATION PATH
 
-The imported corpus contains 102,275 chunks.
-
-Current GUI state:
-
-- chunks read: 102,275 of 102,275
-- corpus read progress: 100%
-- context hypotheses: 949,760
-
-The GUI chunk counter is the canonical corpus-read indicator. Distinct `chunk_id` values in hypothesis tables are treated only as coverage proxies, because a processed chunk does not necessarily create a context hypothesis.
-
-The current Candidate Bridge and Observation checkpoints both reached the complete current hypothesis population:
-
-- checkpoint hypothesis ID: 949,760
-- no `context_hypotheses` rows beyond the active observation checkpoint
-- no Candidate Shadow rows beyond the active observation checkpoint
-
-Additional ordinary system cycles therefore produced zero inputs for the existing observation path until another subsystem creates a genuinely newer source state.
-
-5. MODERN GAP CANDIDATE BRIDGE
-
-The Modern Gap Candidate Bridge remains installed and active in the canonical runtime.
-
-Contract:
+The Modern Gap Candidate Bridge remains installed with the following contract:
 
 - mode: `observed_only`
-- automatic execution from Phase 5a
-- checkpoint-based source sequencing
-- maximum 512 hypotheses per cycle
-- canonical outer runtime owner: Phase 7cort
+- execution from the canonical runtime
+- checkpoint-based source selection
+- maximum batch size: 512 hypotheses per cycle
+- no productive writes to gaps, attention, experiments, facts, relations, or questions
 
-The bridge operates only as a Shadow path. Productive writes remain closed for:
+The associated Shadow Observation path remains non-productive. `observation_ready` remains false.
 
-- `internal_learning_gaps`
-- attention targets
-- Phase-5f experiments
-- Phase-5g experiments and outcomes
-- Phase-5i experiments
-- facts
-- relations
-- questions
+6. STABLE OBSERVATION IDENTITY AND CONTENT CLASSIFICATION
 
-The bridge reached all 949,760 current hypotheses.
+Stable Observation Identity V2 remains installed as a parallel, non-productive path. Its key principles are:
 
-6. PHASE-5F SHADOW OBSERVATIONS V1
-
-The V1 Phase-5f Shadow Observation layer processed the full present hypothesis frontier without projection errors.
-
-The original V1 observation key included `source_updated_at`. As a result, a reobserved hypothesis with a new timestamp generated a new observation key rather than a new version under one stable identity.
-
-Measured V1 behavior demonstrated that natural reobservation did reach the observation layer. The issue was not missing reobservation. The issue was the mixing of stable identity and source version in the observation key.
-
-7. STABLE OBSERVATION IDENTITY V2
-
-A parallel Stable Observation Identity V2 Shadow path is installed.
-
-V2 identity contract:
-
-- stable identity: `shadow_key + hypothesis_id`
-- source version stored separately
-- projection version stored separately
-- existing V1 path remains unchanged
-- same transaction and same source input
-- no second Candidate scan
-- no second checkpoint
+- stable identity separated from source and projection versions
+- V1 preserved
 - no backfill
 - no migration
 - no reader switch
-- no V1 deletion
+- no checkpoint reset
 
-The first real production cycle after installation proved exact input parity between V1 and V2.
+The Content-Stable Fingerprint Shadow Classifier excludes technical source timestamps from the semantic content fingerprint while preserving them as provenance. It distinguishes timestamp-only refreshes from real source-content or projection changes.
 
-After the natural long run, V2 contained:
+The observation frontier is currently caught up. New classifier activity therefore depends on genuinely new qualifying source observations and must not be created through checkpoint resets or synthetic production inputs.
 
-- stable latest rows: 629,469
-- history rows: 766,459
-- stable keys with multiple versions: 28,166
-- recorded source-state changes: 136,990
-- parity failures: 0
-- duplicate fingerprint groups: 0
-- broken previous-version links: 0
-- gate violations: 0
+7. MODERN PROJECTION CONTRACT
 
-8. V2 TIMESTAMP-SENSITIVITY FINDING
+The former projection implementation dynamically loaded the historical Phase-5f module, modified its AST, intercepted the first write, and captured local variables through an exception. That mechanism has been removed.
 
-A dedicated source-change driver audit proved that every one of the 136,990 V2 source-state changes was caused only by `source_updated_at`.
+The current path uses a dedicated read-only module:
 
-For all measured changes:
+`ki_system.v8_modern_projection_contract_release`
 
-- stable identity was unchanged
-- source content fields were unchanged
-- neuromodulator state was unchanged
-- projection fingerprint was unchanged
-- only the timestamp changed
+The modern observation wrapper now calls the projection evaluator directly. The existing formula behavior and strategy thresholds were deliberately preserved during consolidation. No schema change, backfill, migration, or productive gate change was introduced.
 
-The installed V2 writer was technically consistent with its original contract, but that source fingerprint was too sensitive for semantic versioning.
+The current projection formula still reflects the established default-path behavior when prior strategy, radius, expected gain, and effectiveness evidence are absent. Projection diversity and future candidate use remain observation questions, not authorization for productive Phase-5g writes.
 
-No existing V2 history was deleted or rewritten.
+8. REPLAY, LEARNING EFFECT, AND OUTCOME STATUS
 
-9. CONTENT-STABLE FINGERPRINT SHADOW CLASSIFIER
+Phase 6a replay continues after corpus completion. Replay-Control Shadow Capture records future replay-control events with stable source identity and retry-safe event identity.
 
-A parallel Content-Stable Fingerprint Shadow Classifier is installed.
+Current evidence supports replay activity and control-state observation. It does not yet establish replay-caused semantic learning. Direct semantic lineage from a replay event to a later hypothesis-content change has not been proven.
 
-The new comparison contract:
+Independent real outcomes are also not established. Internal scores, projected effectiveness, replay activity, and consolidation records are not accepted as independent real-world outcome evidence.
 
-- preserves `source_updated_at` as provenance
-- excludes `source_updated_at` from the content fingerprint
-- classifies same content plus a new timestamp as `same_content_new_timestamp`
-- keeps actual content and projection changes separate
-- does not replace the old V2 writer
-- performs no migration or backfill
+9. ALL-12 NEUROMODULATOR SYSTEM
 
-This classifier currently contains no production events because the observation checkpoint is fully caught up and no newer observation source exists. Fifty additional system cycles were verified as zero-input cycles for the path.
+The neuromodulator scope consists of:
 
-This is not a classifier defect. The classifier has not yet received a natural eligible input.
+Core circuit:
+- dopamine
+- serotonin
+- glutamate
+- GABA
+- noradrenaline
+- acetylcholine
 
-10. PHASE-6A POST-CORPUS REPLAY ACTIVITY
+Extended circuit:
+- endocannabinoids
+- histamine
+- orexin
+- BDNF
+- cortisol
+- adenosine
 
-Phase 6a continues producing replay activity after the corpus has been fully read.
+All 12 are represented in code and identifiable in live state. A 500-cycle aligned observational trace was produced for all 12. The trace showed natural variation for part of the extended circuit while several core values remained constant in that window. Constant inputs were treated as empirically unidentifiable, not as zero-effect or failure.
 
-Measured replay population:
+The local glutamate/GABA E/I formula was independently reconstructed and technically confirmed. However, isolated formula sensitivity is not equivalent to complete All-12 causal co-regulation.
 
-- replay candidates: 177,767
-- replay events reached at least 374,730 during the measured work
-- replay candidate-to-event technical lineage is complete for the inspected population
+10. PURE COMPUTATIONAL KERNEL CONSOLIDATION
 
-Phase 6a updates the following fields in `context_hypotheses`:
+A pure computational kernel module is installed:
 
-- replay priority
-- replay weight
-- meta-plasticity
-- replay count
-- last replay timestamp
-- replay reason
+`ki_system.v8_neuromodulator_computational_kernels_release`
 
-It does not update:
+The module contains no SQLite import, SQL execution, commit, runtime loop, or file I/O. It currently consolidates pure formulas for:
 
-- semantic hypothesis text
-- subject, relation or object
-- role
-- confidence
-- uncertainty
-- evidence count
-- stability
-- canonical `context_hypotheses.updated_at`
+- glutamate/GABA E/I balance
+- Phase-6b plasticity recommendations
+- 2-AG release
+- 2-AG decay
+- anandamide level
+- anandamide LTD
+- BDNF state
+- All-12 snapshot validation
 
-Because Candidate Bridge uses canonical `updated_at + id` as its source cursor, replay metadata changes do not create a newer Candidate Bridge source state.
+The runtime wrappers have not been cut over. They remain authoritative and retain database access, evidence handling, critic-gate metadata, persistence, and event logging.
 
-This behavior is now understood as a contract boundary, not automatically as a bug. Replay activity is not equivalent to a semantic hypothesis change.
+11. MULTI-CYCLE OLD/NEW PARITY BASELINE
 
-11. REPLAY-CONTROL SHADOW CAPTURE
+A future-only shadow dual-run compared the old runtime formulas with the pure kernels using the exact same in-memory wrapper inputs.
 
-A future-only Replay-Control Shadow Capture is installed for Phase-6a events.
+Baseline results:
 
-Scope and identity:
+- requested cycles: 50
+- completed cycles: 50
+- six kernels reached in every cycle
+- total matches: 300
+- total mismatches: 0
+- adapter blockers: 0
+- maximum absolute delta: 0.0
+- maximum relative delta: 0.0
 
-- source scope: `context_hypotheses` only
-- stable identity: `source_table + source_id`
-- retry identity: immutable Phase-6a replay event ID
-- neuromodulator JSON is recursively canonicalized before hashing
-- no historical replay-event backfill
-- no Candidate Bridge call
-- no Observation Layer call
-- no checkpoint change
-- no semantic hypothesis version
-- no productive write
+Kernels with `MULTICYCLE_PARITY_PASS`:
 
-The original installer placed the hook at the correct event-insert location but passed the candidate dictionary `c` instead of the SQLite connection `db`. A V1.1 AST fix derived the receiver directly from the real `db.execute(...)` event insert and installed:
+- `compute_2ag_decay`
+- `compute_anandamide_level`
+- `compute_anandamide_ltd_value`
+- `compute_bdnf_state`
+- `compute_ei_balance`
+- `compute_phase6b_plasticity_adjustment`
 
-`replay_control_shadow.capture_last_inserted_event(db)`
+`compute_2ag_release` was not naturally exercised in the 50-cycle window. This is not a failure and is not evidence of zero effect.
 
-The corrected natural production test proved:
+Natural numeric variation was observed for the anandamide-level, BDNF, E/I, and Phase-6b adjustment contracts while Old/New parity remained exact.
 
-- 300 new native Phase-6a replay events
-- 300 Replay-Control Shadow events
-- 60 stable Replay-Control identities
-- 60 initial control-state events
-- 240 same-control-state replay events
-- zero control-change candidates
+The old wrapper path remained authoritative throughout. Kernel results were never applied. No second source scan, kernel commit, kernel rollback, runtime cutover, or applied regulation occurred.
 
-Each of the 60 hypotheses received five replay events:
+12. CURRENT SAFETY BOUNDARY
 
-- one initial state
-- four stable refreshes
-- no control-state change
-
-The path is therefore naturally reachable, event-complete and retry-safe.
-
-12. REPLAY-CONTROL VARIANCE
-
-Historical and future-only observations agree that the available replay-control state is stable.
-
-Across 196,633 historical repeated-event transitions, no change was found in the available replay-control fields:
-
-- replay priority
-- replay weight
-- replay decision
-- plasticity level
-- neuromodulator profile
-
-The future-only production test also produced no control-change candidate.
-
-Replay count and replay timestamps remain provenance. They are not semantic version drivers.
-
-13. REPLAY LEARNING EFFECT
-
-A dedicated learning-effect audit found:
-
-- complete Candidate-to-Replay-Event key lineage
-- Phase-6a updates only replay metadata and control fields in `context_hypotheses`
-- no semantic hypothesis field is written by the inspected Phase-6a statement
-- no direct replay-event causal key exists in the inspected learning, stability or consolidation tables
-
-Current tables with no rows include:
-
-- `hypothesis_learning_updates`
-- `hypothesis_feedback`
-- `hypothesis_error_events`
-- `hypothesis_revisions`
-- `hypothesis_role_revisions`
-- `hypothesis_self_evaluations`
-- `gap_resolution_outcomes`
-
-Stability and consolidation data exist, but numerical hypothesis-ID overlap does not prove that replay caused those records.
-
-Current conclusion:
-
-- replay activity is proven
-- replay-control and replay-provenance updates are proven
-- replay-caused semantic learning is not proven
-- replay effectiveness is not proven
-
-14. REAL-OUTCOME SOURCE CONTRACT
-
-Phase 6a currently computes `outcome_observation_available` as a global check of whether `phase5g_experiment_outcomes` contains at least one row.
-
-The current function does not:
-
-- join by replay-event ID
-- join by hypothesis identity
-- compare replay time with a later outcome time
-- prove that an outcome belongs to the same candidate or replay
-- prove independence from internal replay scores
-
-All recorded Phase-6a cycles in the measured state reported:
-
-- outcome observation available: 0
-- outcome observation count: 0
-
-A positive value in the future would still mean only that the table contains one or more rows, unless a stronger row-level lineage is installed and validated.
-
-15. PHASE-5G EXPERIMENT OUTCOME WRITER
-
-A Writer exists for `phase5g_experiment_outcomes` in Phase 5h.
-
-The writer evaluates Phase-5g strategy experiments and stores internal values such as:
-
-- closure delta
-- overlap score
-- no-candidate rate
-- strategy score
-- outcome score
-- recommendation
-- learning, revision, exploration and inhibition controls
-- neuromodulator values
-
-The schema has identity and timestamps but no explicit external Real Outcome observation contract. It lacks validated hypothesis/replay lineage and a later independent outcome timestamp.
-
-Current conclusion:
-
-- the writer exists
-- static project references exist
-- natural runtime execution is not proven
-- the table contains zero rows
-- independent Real Outcome semantics are not proven
-
-16. PHASE-5G STRATEGY EXPERIMENT PRODUCER
-
-The Experiment Producer is `apply_context_strategy_selection` in the Phase-5g strategy-selection module.
-
-Its primary source is `internal_learning_gaps`. It queries open or monitoring gap states and then creates strategy experiments and operational updates.
-
-Current state:
-
-- `internal_learning_gaps`: 0 rows
-- `phase5g_strategy_experiments`: 0 rows
-- `phase5g_experiment_outcomes`: 0 rows
-- `phase5g_strategy_selection_memory`: 0 rows
-- `phase5f_context_window_experiments`: 0 rows
-
-The producer is not statically referenced by the current Registry or the canonical Phase-7cort cycle in the inspected architecture.
-
-If activated, it would not be a read-only observer. It could write to:
-
-- Phase-5g experiments
-- reading queue
-- attention scores
-- internal gap state
-- Phase-5g memory and profiles
-
-The producer must therefore not be activated merely to make the empty tables nonzero.
-
-17. MODERN NON-PRODUCTIVE PHASE-5G CANDIDATE CONTRACT
-
-A read-only preflight proved that V2 Stable Observations contain the structural fields needed for a future-only, non-productive Phase-5g Candidate contract.
-
-Proposed identity:
-
-- stable observation key
-- projection fingerprint or canonical projection-payload hash
-
-Supported classifications:
-
-- initial Shadow experiment candidate
-- same projection with new source observation
-- projection change candidate
-- structurally ineligible input
-- identical retry
-
-Hard boundaries:
-
-- no `internal_learning_gaps` write
-- no reading-queue write
-- no attention write
-- no Phase-5g experiment write
-- no Phase-5g outcome write
-- no Real Outcome claim
-- no `observation_ready` change
-- no productive write
-
-No numeric threshold is authorized. Structural completeness and closed safety state are the only candidate eligibility conditions currently justified.
-
-No installer has been authorized.
-
-18. CURRENT V2 PROJECTION UNIFORMITY
-
-The present V2-Latest snapshot contains 629,469 Stable Observations.
-
-The preflight observed near-complete uniformity in the measured projection fields:
-
-- projected action: `increase_window`
-- projected window strategy: `wider_context_window`
-- expected gain: 0.5
-- projected effectiveness: 0.45
-- closure delta: 0.0
-- overlap score: 0.0
-- no-candidate rate: 0.0
-- target count: 6 for all but one measured row
-
-This is a stored-value observation. It does not by itself prove that the formulas are hard-coded. The pending audit must separately inspect:
-
-- actual input variance
-- target-list diversity
-- neuromodulator variance
-- default and formula branches
-- natural Projection Fingerprint changes
-
-19. PENDING AUDIT
-
-The next prepared audit is:
-
-Modern V2 Projection Input Variance, Formula Drivers & Strategy Diversity Audit
-
-It has not yet been run.
-
-Its purpose is to determine whether the uniform projection output is caused by:
-
-- constant inputs
-- a default path
-- formula branches that collapse varied inputs
-- missing source variation
-- or currently unreachable projection-change conditions
-
-No Projection Formula, Strategy Rule, Threshold or Candidate Installer change is authorized before this audit is evaluated.
-
-20. GUI RUNTIME OBSERVATION
-
-During long autonomous runs, the GUI became unresponsive while the autonomous worker continued processing.
-
-Observed behavior included delayed jumps in visible GUI cycle, chunk and hypothesis counters. The worker was later stopped through `taskkill`.
-
-Post-stop database checks remained successful:
-
-- SQLite `quick_check`: ok
-- SQLite `integrity_check`: ok
-- repeated count snapshots remained identical after process termination
-
-After restarting the GUI with the same large database, it ran smoothly again.
-
-Therefore:
-
-- database size must not be presented as the cause of the earlier GUI freeze
-- the GUI freeze requires separate evidence
-- database size is not an optimization trigger
-- sufficient storage is available
-- no pruning or history deletion is justified solely by storage size
-
-21. NEUROMODULATOR STATUS
-
-All 12 configured neuromodulators remain statically and at runtime linked to the GUI.
-
-However, presence and transport are not the same as effective learning regulation.
-
-Current evidence distinguishes:
-
-- static/runtime connectivity: proven
-- calculation-chain presence: proven for several Phase-6a controls
-- natural replay-control changes caused by neuromodulator variation: not observed in the replay-event population inspected
-- independent Real Outcome feedback: absent
-- outcome-gated applied learning adaptation: not proven
-
-Cortisol Stage 2 remains an open future task. It must not be built as an outcome-based regulator until the current system has a valid independent outcome contract and the current architecture has completed new stability validation.
-
-22. STAGE B READINESS
+The following remain closed:
+
+- productive `internal_learning_gaps` writes
+- attention writes
+- productive Phase-5f experiments
+- productive Phase-5g experiments and outcomes
+- Phase-5i experiments
+- `observation_ready`
+- facts
+- relations
+- questions
+- fact promotion
+- V2 reader switch
+- historical migration or backfill
+- critic-gated applied regulation
+- Stage B
+
+Protected counts remained unchanged during the latest 50-cycle dual-run baseline, and SQLite quick checks succeeded before and after the run.
+
+13. STAGE-B READINESS
 
 Stage B is not ready.
 
-Before controlled Stage B preparation, BrainStem still requires:
+Still missing are:
 
-1. completion and interpretation of the pending Projection Variance and Formula Driver audit
-2. a valid non-productive modern candidate contract only if natural projection diversity is demonstrated
-3. an independent Real Outcome contract with identity and temporal lineage
-4. proof that outcomes are not merely internal projections or global row counts
-5. proof of gated learning effect
-6. a new full stability and drift validation of the current codebase
-7. preservation of the consolidation gate and the N=3 survival rule
-8. preservation of the initial promotion budget of one per cycle
-9. continued closure of fact promotion until separately validated
+- independent, entity-linked, temporally valid real outcomes
+- a proven causal line from observation to learning effect
+- critic-gated applied regulation with bounded deltas
+- reversible shadow-to-application transition
+- warm-up damping and the initial application budget
+- candidate-specific proof of at least three survived Phase-7d consolidations before promotion
+- a separately validated promotion path
 
-23. CURRENT SAFETY BOUNDARY
+Facts promotion remains closed and is explicitly outside the current step.
 
-The following remain closed and must stay closed:
+14. VECTOR DATABASE DECISION CHECKPOINT
 
-- direct facts writes
-- direct relations writes
-- direct questions writes
-- direct attention writes
-- productive `internal_learning_gaps`
-- productive Phase-5f experiments
-- productive Phase-5g experiments
-- Phase-5g outcomes as claimed Real Outcomes
-- Phase-5i experiments
-- `observation_ready`
-- fact promotion
-- reader switch to V2
-- migration of existing V1/V2 history
-- backfill of future-only Shadow paths
+A vector database is not part of the current runtime and is not justified by database size alone.
 
-24. DEVELOPMENT RULES
+A formal suitability checkpoint is now part of the project build sequence. It may be triggered only when all of the following exist:
 
-Binding rules remain:
+- stable data identities
+- a concrete semantic similarity or retrieval use case
+- measurable retrieval quality and lifecycle requirements
+- a read-only comparison against the existing SQLite solution
 
-- measure first, then change
-- make a full backup before every modifying recommendation
-- keep bootstrap and schema contracts synchronized
-- define all columns in `SCHEMA_TABLES` before writes
-- use idempotent `ensure_schema`
-- run `_self_check_schema`
-- compile and smoke-test every delivery
-- do not use word blacklists or fixed language filters
-- do not use hard-coded language roles
-- do not write directly to facts, relations or questions
-- do not promote facts outside consolidation
-- do not confuse internal projections with Real Outcomes
-- keep GUI logs and graphs bounded or downsampled
-- preserve the canonical `_read_kv` implementation:
+SQLite remains the canonical relational source. Any future vector store must begin as a derived, read-only shadow index and must not replace provenance, checkpoint, gate, or writer-accounting contracts.
 
-return dict(con.execute("SELECT key,value FROM " + table).fetchall())
+15. GUI AND OPERATIONAL OBSERVABILITY
 
-- after major refactoring, provide a Legacy Report containing removed elements and deliberately retained, marked elements
-- every delivery step must include a complete CMD routine beginning at:
+A previous long GUI run became unresponsive while the autonomous worker continued. After restart, the GUI was responsive with the same large database. Database size is therefore not treated as the proven cause and is not an optimization trigger.
 
-Z:\Temp\Ki_System\BrainStem\
+GUI logs and graphs must remain bounded or downsampled. Worker state and stop behavior must remain observable independently of GUI responsiveness.
 
-25. IMMEDIATE RECOMMENDED ACTION
+16. IMMEDIATE NEXT STEP
 
-Run the prepared read-only Modern V2 Projection Input Variance, Formula Drivers & Strategy Diversity Audit.
+The next appropriate bundled step is a Pure-Kernel Wrapper Cutover Readiness and Rollback Preflight for the six repeatedly parity-confirmed kernels.
 
-Do not install a modern Phase-5g Candidate producer before the audit establishes whether projection diversity is naturally available and whether the current uniform values are outputs of real source variation, a default path or a collapsing formula branch.
+That preflight must define:
 
-After the audit, decide whether the next safe step is:
+- exact wrapper import and call boundaries
+- metadata that must remain in each wrapper
+- transaction and persistence ownership
+- guarded fallback to the old formula path
+- rollback behavior
+- treatment of the unexercised 2-AG release kernel
+- integration, compile, smoke, and renewed drift-validation requirements
+- a complete legacy report
 
-- no change because the projection path is operating as designed,
-- a diagnostic Shadow classifier for natural projection changes,
-- or a separate formula/input-contract preflight.
+No direct runtime cutover should be installed before that preflight is complete.
 
-No productive gate should be opened as part of that decision.
+17. CLAIM BOUNDARIES
 
-===== END FILE: Detailed_Project_Status_2026-07-22.txt =====
+The current project state supports these claims:
+
+- the current runtime passed a full 1,344-cycle stability and drift validation
+- the consolidated modern projection path is integrated and stable
+- all 12 neuromodulators are represented in code and live state
+- six pure kernels reproduced the old runtime formulas exactly across 50 natural cycles and 300 comparisons
+- productive and applied-regulation gates remain closed
+
+The current project state does not support these claims:
+
+- complete All-12 causal co-regulation
+- replay-caused semantic learning
+- independent real-outcome effectiveness
+- runtime-cutover readiness without a dedicated rollback preflight
+- Stage-B readiness
+- fact-promotion readiness
+
+18. REFERENCE ARTIFACTS
+
+Important current artifacts include:
+
+- `current_system_stability_drift_validation_v1_result.json`
+- `current_system_stability_drift_validation_v1_baseline.json`
+- `modern_projection_integration_stability_baseline_v1_result.json`
+- `all12_no_write_shadow_sensitivity_harness_v1_result.json`
+- `all12_functional_shadow_regulator_v1_result.json`
+- `all12_formula_replay_no_write_harness_v1_result.json`
+- `neuromodulator_kernel_future_shadow_dualrun_v1_1_result.json`
+- `neuromodulator_kernel_multicycle_shadow_dualrun_baseline_v1_result.json`
+
+Completed audit and validation utilities may be archived under `tools`. Existing tools should be checked before creating duplicate scripts.
+
+===== END FILE: Detailed_Project_Status_2026-07-23.txt =====
 
 ===== FILE: ki_system\__init__.py =====
 """KI-System V8 Clean Final."""
@@ -4096,40 +3821,38 @@ def record_history(con,item,now=None):
 ===== END FILE: ki_system\v8_modern_gap_phase5f_shadow_history_release.py =====
 
 ===== FILE: ki_system\v8_modern_gap_phase5f_shadow_observation_release.py =====
-# -*- coding: utf-8 -*-
 """Persistent non-productive Gap-Shadow -> Phase-5f observation layer V1."""
 from __future__ import annotations
-import ast, hashlib, json, os, sqlite3, sys, time
+from ki_system import v8_modern_projection_contract_release as modern_projection_contract
+import hashlib, json, os, sqlite3, sys, time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from ki_system import v8_modern_gap_phase5f_shadow_history_release as gap_phase5f_shadow_history
 from ki_system import v8_modern_gap_phase5f_shadow_observation_v2_release as gap_phase5f_shadow_v2
 from ki_system import v8_stable_obs_content_fp_shadow_classifier_release as content_fp_shadow_classifier
-
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DB = ROOT / "ki_memory.sqlite3"
-PHASE5F = Path(__file__).resolve().with_name("v8_phase5f_context_expansion_effectiveness_and_adaptive_windowing_release.py")
-VERSION = "modern_gap_phase5f_shadow_observation_v1"
+DEFAULT_DB = ROOT / 'ki_memory.sqlite3'
+PHASE5F = Path(__file__).resolve().with_name('v8_phase5f_context_expansion_effectiveness_and_adaptive_windowing_release.py')
+VERSION = 'modern_gap_phase5f_shadow_observation_v1'
 MAX_BATCH = 512
-OBS_TABLE = "modern_gap_phase5f_shadow_observations"
-CYCLE_TABLE = "modern_gap_phase5f_shadow_observation_cycles"
-STATE_TABLE = "modern_gap_phase5f_shadow_observation_state"
-SCHEMA_TABLES = {
-    OBS_TABLE: ["observation_key","shadow_key","hypothesis_id","source_updated_at","center_chunk_id","target_chunk_ids","target_count","projected_window_strategy","projected_window_radius","projected_action","expected_gain","closure_delta","overlap_score","read_no_candidate_rate","projected_effectiveness","neuromodulators","real_outcome_observation_available","observation_ready","source_default_path","productive_gap_id","productive_write","details","created_at","updated_at"],
-    CYCLE_TABLE: ["id","source_rows_seen","observations_created","observations_updated","projection_errors","checkpoint_updated_at_before","checkpoint_hypothesis_id_before","checkpoint_updated_at_after","checkpoint_hypothesis_id_after","productive_writes_before","productive_writes_after","safety_ok","details","created_at"],
-    STATE_TABLE: ["key","value"],
-}
-PROTECTED = ("facts","relations","questions","internal_learning_gaps","chunk_attention_scores","phase5f_context_window_experiments","phase5f_adaptive_window_events","phase5f_gap_window_state","phase5f_window_strategy_memory","phase5g_strategy_experiments","phase5g_experiment_outcomes","phase5i_outcome_driven_experiments")
+OBS_TABLE = 'modern_gap_phase5f_shadow_observations'
+CYCLE_TABLE = 'modern_gap_phase5f_shadow_observation_cycles'
+STATE_TABLE = 'modern_gap_phase5f_shadow_observation_state'
+SCHEMA_TABLES = {OBS_TABLE: ['observation_key', 'shadow_key', 'hypothesis_id', 'source_updated_at', 'center_chunk_id', 'target_chunk_ids', 'target_count', 'projected_window_strategy', 'projected_window_radius', 'projected_action', 'expected_gain', 'closure_delta', 'overlap_score', 'read_no_candidate_rate', 'projected_effectiveness', 'neuromodulators', 'real_outcome_observation_available', 'observation_ready', 'source_default_path', 'productive_gap_id', 'productive_write', 'details', 'created_at', 'updated_at'], CYCLE_TABLE: ['id', 'source_rows_seen', 'observations_created', 'observations_updated', 'projection_errors', 'checkpoint_updated_at_before', 'checkpoint_hypothesis_id_before', 'checkpoint_updated_at_after', 'checkpoint_hypothesis_id_after', 'productive_writes_before', 'productive_writes_after', 'safety_ok', 'details', 'created_at'], STATE_TABLE: ['key', 'value']}
+PROTECTED = ('facts', 'relations', 'questions', 'internal_learning_gaps', 'chunk_attention_scores', 'phase5f_context_window_experiments', 'phase5f_adaptive_window_events', 'phase5f_gap_window_state', 'phase5f_window_strategy_memory', 'phase5g_strategy_experiments', 'phase5g_experiment_outcomes', 'phase5i_outcome_driven_experiments')
 
-class ShadowProjectionError(RuntimeError): pass
-class _ProjectionCaptured(BaseException):
-    def __init__(self, values): self.values = values
+class ShadowProjectionError(RuntimeError):
+    pass
 
-def _q(name): return '"' + str(name).replace('"','""') + '"'
+def _q(name):
+    return '"' + str(name).replace('"', '""') + '"'
+
 def _db_path(obj=None):
-    if isinstance(obj, (str, os.PathLike)): return Path(obj)
-    for candidate in (getattr(obj,"db_path",None), getattr(getattr(obj,"mem",None),"db_path",None), getattr(getattr(obj,"memory",None),"db_path",None)):
-        if candidate: return Path(candidate)
+    if isinstance(obj, (str, os.PathLike)):
+        return Path(obj)
+    for candidate in (getattr(obj, 'db_path', None), getattr(getattr(obj, 'mem', None), 'db_path', None), getattr(getattr(obj, 'memory', None), 'db_path', None)):
+        if candidate:
+            return Path(candidate)
     return DEFAULT_DB
 
 def _con(obj=None):
@@ -4137,176 +3860,151 @@ def _con(obj=None):
     con.row_factory = sqlite3.Row
     return con
 
-def _table_exists(con, table): return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(table,)).fetchone() is not None
-def _count(con, table): return int(con.execute("SELECT COUNT(*) FROM " + _q(table)).fetchone()[0]) if _table_exists(con,table) else 0
-def _protected(con): return {t:_count(con,t) for t in PROTECTED}
+def _table_exists(con, table):
+    return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
+
+def _count(con, table):
+    return int(con.execute('SELECT COUNT(*) FROM ' + _q(table)).fetchone()[0]) if _table_exists(con, table) else 0
+
+def _protected(con):
+    return {t: _count(con, t) for t in PROTECTED}
+
 def _read_kv(con, table):
-    return dict(con.execute("SELECT key,value FROM " + table).fetchall())
+    return dict(con.execute('SELECT key,value FROM ' + table).fetchall())
+
 def _write_kv(con, key, value):
-    con.execute("INSERT INTO " + STATE_TABLE + "(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(str(key),str(value)))
+    con.execute('INSERT INTO ' + STATE_TABLE + '(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', (str(key), str(value)))
 
 def ensure_schema(obj=None):
     con = _con(obj)
     try:
-        con.execute("CREATE TABLE IF NOT EXISTS " + OBS_TABLE + "(observation_key TEXT PRIMARY KEY,shadow_key TEXT NOT NULL,hypothesis_id INTEGER NOT NULL,source_updated_at INTEGER NOT NULL DEFAULT 0,center_chunk_id INTEGER,target_chunk_ids TEXT NOT NULL DEFAULT '[]',target_count INTEGER NOT NULL DEFAULT 0,projected_window_strategy TEXT,projected_window_radius INTEGER,projected_action TEXT,expected_gain REAL,closure_delta REAL,overlap_score REAL,read_no_candidate_rate REAL,projected_effectiveness REAL,neuromodulators TEXT NOT NULL DEFAULT '{}',real_outcome_observation_available INTEGER NOT NULL DEFAULT 0,observation_ready INTEGER NOT NULL DEFAULT 0,source_default_path INTEGER NOT NULL DEFAULT 1,productive_gap_id INTEGER,productive_write INTEGER NOT NULL DEFAULT 0,details TEXT NOT NULL DEFAULT '{}',created_at INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL DEFAULT 0)")
-        con.execute("CREATE INDEX IF NOT EXISTS idx_gap_phase5f_shadow_obs_source ON " + OBS_TABLE + "(source_updated_at,hypothesis_id)")
-        con.execute("CREATE INDEX IF NOT EXISTS idx_gap_phase5f_shadow_obs_shadow_key ON " + OBS_TABLE + "(shadow_key)")
-        con.execute("CREATE TABLE IF NOT EXISTS " + CYCLE_TABLE + "(id INTEGER PRIMARY KEY AUTOINCREMENT,source_rows_seen INTEGER NOT NULL DEFAULT 0,observations_created INTEGER NOT NULL DEFAULT 0,observations_updated INTEGER NOT NULL DEFAULT 0,projection_errors INTEGER NOT NULL DEFAULT 0,checkpoint_updated_at_before INTEGER NOT NULL DEFAULT 0,checkpoint_hypothesis_id_before INTEGER NOT NULL DEFAULT 0,checkpoint_updated_at_after INTEGER NOT NULL DEFAULT 0,checkpoint_hypothesis_id_after INTEGER NOT NULL DEFAULT 0,productive_writes_before TEXT NOT NULL DEFAULT '{}',productive_writes_after TEXT NOT NULL DEFAULT '{}',safety_ok INTEGER NOT NULL DEFAULT 0,details TEXT NOT NULL DEFAULT '{}',created_at INTEGER NOT NULL DEFAULT 0)")
-        con.execute("CREATE TABLE IF NOT EXISTS " + STATE_TABLE + "(key TEXT PRIMARY KEY,value TEXT)")
-        defaults = {"phase":VERSION,"mode":"shadow_observation","checkpoint_updated_at":"0","checkpoint_hypothesis_id":"0","last_source_rows_seen":"0","last_observations_created":"0","last_observations_updated":"0","last_projection_errors":"0","productive_gap_writes":"disabled","attention_writes":"disabled","phase5f_writes":"disabled","phase5g_writes":"disabled","phase5i_writes":"disabled","direct_fact_writes":"disabled","direct_relation_writes":"disabled","question_writes":"disabled","productive_gap_id":"unavailable_by_design","observation_ready":"false","last_safety_ok":"true"}
-        for k,v in defaults.items(): con.execute("INSERT OR IGNORE INTO " + STATE_TABLE + "(key,value) VALUES(?,?)",(k,v))
+        con.execute('CREATE TABLE IF NOT EXISTS ' + OBS_TABLE + "(observation_key TEXT PRIMARY KEY,shadow_key TEXT NOT NULL,hypothesis_id INTEGER NOT NULL,source_updated_at INTEGER NOT NULL DEFAULT 0,center_chunk_id INTEGER,target_chunk_ids TEXT NOT NULL DEFAULT '[]',target_count INTEGER NOT NULL DEFAULT 0,projected_window_strategy TEXT,projected_window_radius INTEGER,projected_action TEXT,expected_gain REAL,closure_delta REAL,overlap_score REAL,read_no_candidate_rate REAL,projected_effectiveness REAL,neuromodulators TEXT NOT NULL DEFAULT '{}',real_outcome_observation_available INTEGER NOT NULL DEFAULT 0,observation_ready INTEGER NOT NULL DEFAULT 0,source_default_path INTEGER NOT NULL DEFAULT 1,productive_gap_id INTEGER,productive_write INTEGER NOT NULL DEFAULT 0,details TEXT NOT NULL DEFAULT '{}',created_at INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL DEFAULT 0)")
+        con.execute('CREATE INDEX IF NOT EXISTS idx_gap_phase5f_shadow_obs_source ON ' + OBS_TABLE + '(source_updated_at,hypothesis_id)')
+        con.execute('CREATE INDEX IF NOT EXISTS idx_gap_phase5f_shadow_obs_shadow_key ON ' + OBS_TABLE + '(shadow_key)')
+        con.execute('CREATE TABLE IF NOT EXISTS ' + CYCLE_TABLE + "(id INTEGER PRIMARY KEY AUTOINCREMENT,source_rows_seen INTEGER NOT NULL DEFAULT 0,observations_created INTEGER NOT NULL DEFAULT 0,observations_updated INTEGER NOT NULL DEFAULT 0,projection_errors INTEGER NOT NULL DEFAULT 0,checkpoint_updated_at_before INTEGER NOT NULL DEFAULT 0,checkpoint_hypothesis_id_before INTEGER NOT NULL DEFAULT 0,checkpoint_updated_at_after INTEGER NOT NULL DEFAULT 0,checkpoint_hypothesis_id_after INTEGER NOT NULL DEFAULT 0,productive_writes_before TEXT NOT NULL DEFAULT '{}',productive_writes_after TEXT NOT NULL DEFAULT '{}',safety_ok INTEGER NOT NULL DEFAULT 0,details TEXT NOT NULL DEFAULT '{}',created_at INTEGER NOT NULL DEFAULT 0)")
+        con.execute('CREATE TABLE IF NOT EXISTS ' + STATE_TABLE + '(key TEXT PRIMARY KEY,value TEXT)')
+        defaults = {'phase': VERSION, 'mode': 'shadow_observation', 'checkpoint_updated_at': '0', 'checkpoint_hypothesis_id': '0', 'last_source_rows_seen': '0', 'last_observations_created': '0', 'last_observations_updated': '0', 'last_projection_errors': '0', 'productive_gap_writes': 'disabled', 'attention_writes': 'disabled', 'phase5f_writes': 'disabled', 'phase5g_writes': 'disabled', 'phase5i_writes': 'disabled', 'direct_fact_writes': 'disabled', 'direct_relation_writes': 'disabled', 'question_writes': 'disabled', 'productive_gap_id': 'unavailable_by_design', 'observation_ready': 'false', 'last_safety_ok': 'true'}
+        for k, v in defaults.items():
+            con.execute('INSERT OR IGNORE INTO ' + STATE_TABLE + '(key,value) VALUES(?,?)', (k, v))
         con.commit()
         return _self_check_schema(con)
-    finally: con.close()
+    finally:
+        con.close()
 
 def _self_check_schema(con=None):
     own = con is None
-    if own: con = _con()
+    if own:
+        con = _con()
     try:
         result = {}
         for table, expected in SCHEMA_TABLES.items():
-            live = [str(r[1]) for r in con.execute("PRAGMA table_info(" + _q(table) + ")")]
+            live = [str(r[1]) for r in con.execute('PRAGMA table_info(' + _q(table) + ')')]
             missing = [c for c in expected if c not in live]
-            result[table] = {"ok":not missing,"missing":missing}
-        result["overall"] = all(v["ok"] for v in result.values())
-        if not result["overall"]: raise ShadowProjectionError("schema self-check failed: " + repr(result))
+            result[table] = {'ok': not missing, 'missing': missing}
+        result['overall'] = all((v['ok'] for v in result.values()))
+        if not result['overall']:
+            raise ShadowProjectionError('schema self-check failed: ' + repr(result))
         return result
     finally:
-        if own: con.close()
-
-def _parent_map(tree):
-    p={}
-    for n in ast.walk(tree):
-        for c in ast.iter_child_nodes(n): p[c]=n
-    return p
-
-def _owner(node, parents):
-    cur=parents.get(node)
-    while cur is not None:
-        if isinstance(cur,(ast.FunctionDef,ast.AsyncFunctionDef)): return cur.name
-        cur=parents.get(cur)
-    return None
-
-def _load_projection_namespace():
-    source=PHASE5F.read_text(encoding="utf-8-sig")
-    tree=ast.parse(source,filename=str(PHASE5F)); parents=_parent_map(tree)
-    first=None
-    for node in ast.walk(tree):
-        if isinstance(node,ast.Call) and isinstance(node.func,ast.Attribute) and node.func.attr=="execute" and node.args and isinstance(node.args[0],ast.Constant) and isinstance(node.args[0].value,str):
-            if node.args[0].value.lstrip().upper().startswith(("INSERT ","UPDATE ","DELETE ")) and _owner(node,parents)=="apply_adaptive_windowing":
-                first = node if first is None or node.lineno < first.lineno else first
-    if first is None: raise ShadowProjectionError("first Phase-5f write not found")
-    target_stmt=first
-    while target_stmt is not None and not isinstance(target_stmt,ast.stmt): target_stmt=parents.get(target_stmt)
-    if target_stmt is None: raise ShadowProjectionError("write statement not found")
-    replacement=ast.Raise(exc=ast.Call(func=ast.Name(id="_ProjectionCaptured",ctx=ast.Load()),args=[ast.Call(func=ast.Name(id="dict",ctx=ast.Load()),args=[ast.Call(func=ast.Name(id="locals",ctx=ast.Load()),args=[],keywords=[])],keywords=[])],keywords=[]),cause=None)
-    replacement=ast.copy_location(replacement,target_stmt)
-    for parent in ast.walk(tree):
-        for field,value in ast.iter_fields(parent):
-            if isinstance(value,list):
-                for i,item in enumerate(value):
-                    if item is target_stmt: value[i]=replacement
-            elif value is target_stmt: setattr(parent,field,replacement)
-    allowed=[]
-    for node in tree.body:
-        if isinstance(node,(ast.Import,ast.ImportFrom,ast.FunctionDef,ast.AsyncFunctionDef)): allowed.append(node)
-        elif isinstance(node,ast.Assign) and isinstance(node.value,(ast.Constant,ast.Dict,ast.List,ast.Tuple,ast.Set)): allowed.append(node)
-        elif isinstance(node,ast.AnnAssign) and isinstance(node.value,(ast.Constant,ast.Dict,ast.List,ast.Tuple,ast.Set)): allowed.append(node)
-    mod=ast.Module(body=allowed,type_ignores=[]); ast.fix_missing_locations(mod)
-    ns={"__name__":"_brainstem_gap_phase5f_shadow_projection_source","_ProjectionCaptured":_ProjectionCaptured}
-    exec(compile(mod,str(PHASE5F),"exec"),ns,ns)
-    for name in ("apply_adaptive_windowing","neighbors","chunk_status","neuromod"):
-        if not callable(ns.get(name)): raise ShadowProjectionError("missing Phase-5f helper: " + name)
-    return ns,hashlib.sha256(source.encode("utf-8")).hexdigest()
+        if own:
+            con.close()
 
 def _projection_key(row, source_hash):
-    material="|".join([VERSION,str(row.get("shadow_key") or ""),str(row.get("hypothesis_id") or ""),str(row.get("updated_at") or 0),source_hash])
-    return "shadow-phase5f-observation:" + hashlib.sha256(material.encode("utf-8")).hexdigest()
-
-def _one_projection(ns, con, row, source_hash):
-    key=_projection_key(row,source_hash)
-    gap={"id":None,"gap_key":key,"gap_type":"shadow_projection_only","role":row.get("role") or "unknown_role","hypothesis_id":row.get("hypothesis_id"),"chunk_id":row.get("chunk_id"),"phase5f_window_radius":None,"phase5f_window_strategy":None,"phase5e_expected_gain":None,"strategy_effectiveness_score":None}
-    ns["con_from"]=lambda obj=None: con
-    ns["ensure_schema"]=lambda db=None:{"status":"shadow_noop"}
-    ns["selected_gaps"]=lambda cur,limit=80:[dict(gap)]
-    try: ns["apply_adaptive_windowing"](con,limit=1)
-    except _ProjectionCaptured as exc: values=exc.values
-    else: raise ShadowProjectionError("projection did not reach capture")
-    targets=list(values.get("targets") or [])
-    nm=values.get("nm") if isinstance(values.get("nm"),dict) else {}
-    return {"observation_key":key,"shadow_key":row.get("shadow_key"),"hypothesis_id":int(row.get("hypothesis_id") or 0),"source_updated_at":int(row.get("updated_at") or 0),"center_chunk_id":values.get("center"),"target_chunk_ids":targets,"target_count":len(targets),"projected_window_strategy":values.get("new_s"),"projected_window_radius":values.get("new_r"),"projected_action":values.get("action"),"expected_gain":values.get("exp"),"closure_delta":values.get("delta"),"overlap_score":values.get("overlap"),"read_no_candidate_rate":values.get("no"),"projected_effectiveness":values.get("eff"),"neuromodulators":nm,"real_outcome_observation_available":0,"observation_ready":0,"source_default_path":1,"productive_gap_id":None,"productive_write":0,"details":{"version":VERSION,"candidate_state":row.get("candidate_state"),"bridge_mode":row.get("bridge_mode"),"source_hash":source_hash,"captured_before_first_phase5f_write":True}}
+    material = '|'.join([VERSION, str(row.get('shadow_key') or ''), str(row.get('hypothesis_id') or ''), str(row.get('updated_at') or 0), source_hash])
+    return 'shadow-phase5f-observation:' + hashlib.sha256(material.encode('utf-8')).hexdigest()
 
 def observe_shadow(obj=None, limit=MAX_BATCH):
-    limit=max(1,min(int(limit),MAX_BATCH)); ensure_schema(obj)
-    con=_con(obj)
+    limit = max(1, min(int(limit), MAX_BATCH))
+    ensure_schema(obj)
+    con = _con(obj)
     try:
-        before=_protected(con); state=_read_kv(con,STATE_TABLE)
-        cp_time=int(state.get("checkpoint_updated_at") or 0); cp_id=int(state.get("checkpoint_hypothesis_id") or 0)
-        rows=[dict(r) for r in con.execute("SELECT * FROM modern_gap_candidate_shadow WHERE candidate_state='observed_only' AND bridge_mode='shadow' AND (updated_at>? OR (updated_at=? AND hypothesis_id>?)) ORDER BY updated_at,hypothesis_id LIMIT ?",(cp_time,cp_time,cp_id,limit))]
-        ns,source_hash=_load_projection_namespace(); created=updated=errors=0; error_rows=[]
-        con.execute("BEGIN IMMEDIATE")
+        before = _protected(con)
+        state = _read_kv(con, STATE_TABLE)
+        cp_time = int(state.get('checkpoint_updated_at') or 0)
+        cp_id = int(state.get('checkpoint_hypothesis_id') or 0)
+        rows = [dict(r) for r in con.execute("SELECT * FROM modern_gap_candidate_shadow WHERE candidate_state='observed_only' AND bridge_mode='shadow' AND (updated_at>? OR (updated_at=? AND hypothesis_id>?)) ORDER BY updated_at,hypothesis_id LIMIT ?", (cp_time, cp_time, cp_id, limit))]
+        source_hash = modern_projection_contract.contract_source_hash()
+        created = updated = errors = 0
+        error_rows = []
+        con.execute('BEGIN IMMEDIATE')
         first_error_index = None
-        v2_stats={'inputs':0,'latest_insert':0,'latest_update':0,'version_insert':0,'identical_retry':0}
+        v2_stats = {'inputs': 0, 'latest_insert': 0, 'latest_update': 0, 'version_insert': 0, 'identical_retry': 0}
         for row_index, row in enumerate(rows):
             try:
-                item=_one_projection(ns,con,row,source_hash)
-                exists=con.execute("SELECT 1 FROM " + OBS_TABLE + " WHERE observation_key=?",(item["observation_key"],)).fetchone() is not None
-                now=int(time.time())
-                con.execute("INSERT INTO " + OBS_TABLE + "(observation_key,shadow_key,hypothesis_id,source_updated_at,center_chunk_id,target_chunk_ids,target_count,projected_window_strategy,projected_window_radius,projected_action,expected_gain,closure_delta,overlap_score,read_no_candidate_rate,projected_effectiveness,neuromodulators,real_outcome_observation_available,observation_ready,source_default_path,productive_gap_id,productive_write,details,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(observation_key) DO UPDATE SET target_chunk_ids=excluded.target_chunk_ids,target_count=excluded.target_count,projected_window_strategy=excluded.projected_window_strategy,projected_window_radius=excluded.projected_window_radius,projected_action=excluded.projected_action,expected_gain=excluded.expected_gain,closure_delta=excluded.closure_delta,overlap_score=excluded.overlap_score,read_no_candidate_rate=excluded.read_no_candidate_rate,projected_effectiveness=excluded.projected_effectiveness,neuromodulators=excluded.neuromodulators,details=excluded.details,updated_at=excluded.updated_at",(item["observation_key"],item["shadow_key"],item["hypothesis_id"],item["source_updated_at"],item["center_chunk_id"],json.dumps(item["target_chunk_ids"]),item["target_count"],item["projected_window_strategy"],item["projected_window_radius"],item["projected_action"],item["expected_gain"],item["closure_delta"],item["overlap_score"],item["read_no_candidate_rate"],item["projected_effectiveness"],json.dumps(item["neuromodulators"],sort_keys=True),0,0,1,None,0,json.dumps(item["details"],sort_keys=True),now,now))
+                item = modern_projection_contract.evaluate_projection(con, row, source_hash)
+                exists = con.execute('SELECT 1 FROM ' + OBS_TABLE + ' WHERE observation_key=?', (item['observation_key'],)).fetchone() is not None
+                now = int(time.time())
+                con.execute('INSERT INTO ' + OBS_TABLE + '(observation_key,shadow_key,hypothesis_id,source_updated_at,center_chunk_id,target_chunk_ids,target_count,projected_window_strategy,projected_window_radius,projected_action,expected_gain,closure_delta,overlap_score,read_no_candidate_rate,projected_effectiveness,neuromodulators,real_outcome_observation_available,observation_ready,source_default_path,productive_gap_id,productive_write,details,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(observation_key) DO UPDATE SET target_chunk_ids=excluded.target_chunk_ids,target_count=excluded.target_count,projected_window_strategy=excluded.projected_window_strategy,projected_window_radius=excluded.projected_window_radius,projected_action=excluded.projected_action,expected_gain=excluded.expected_gain,closure_delta=excluded.closure_delta,overlap_score=excluded.overlap_score,read_no_candidate_rate=excluded.read_no_candidate_rate,projected_effectiveness=excluded.projected_effectiveness,neuromodulators=excluded.neuromodulators,details=excluded.details,updated_at=excluded.updated_at', (item['observation_key'], item['shadow_key'], item['hypothesis_id'], item['source_updated_at'], item['center_chunk_id'], json.dumps(item['target_chunk_ids']), item['target_count'], item['projected_window_strategy'], item['projected_window_radius'], item['projected_action'], item['expected_gain'], item['closure_delta'], item['overlap_score'], item['read_no_candidate_rate'], item['projected_effectiveness'], json.dumps(item['neuromodulators'], sort_keys=True), 0, 0, 1, None, 0, json.dumps(item['details'], sort_keys=True), now, now))
                 gap_phase5f_shadow_history.record_history(con, item, now)
                 v2_result = gap_phase5f_shadow_v2.record_dual_write(con, item, now)
                 content_fp_shadow_classifier.record_shadow_classification(con, item, now)
                 v2_stats['inputs'] += 1
-                for v2_key in ('latest_insert','latest_update','version_insert','identical_retry'): v2_stats[v2_key] += int(v2_result.get(v2_key,0))
-                if exists: updated+=1
-                else: created+=1
+                for v2_key in ('latest_insert', 'latest_update', 'version_insert', 'identical_retry'):
+                    v2_stats[v2_key] += int(v2_result.get(v2_key, 0))
+                if exists:
+                    updated += 1
+                else:
+                    created += 1
             except Exception as exc:
-                errors+=1
+                errors += 1
                 if first_error_index is None:
                     first_error_index = row_index
-                error_rows.append({"hypothesis_id":row.get("hypothesis_id"),"error":type(exc).__name__+": "+str(exc)})
-        after_cp_time=cp_time; after_cp_id=cp_id
+                error_rows.append({'hypothesis_id': row.get('hypothesis_id'), 'error': type(exc).__name__ + ': ' + str(exc)})
+        after_cp_time = cp_time
+        after_cp_id = cp_id
         checkpoint_row = None
         if rows and first_error_index is None:
             checkpoint_row = rows[-1]
         elif rows and first_error_index > 0:
             checkpoint_row = rows[first_error_index - 1]
         if checkpoint_row is not None:
-            after_cp_time=int(checkpoint_row.get("updated_at") or 0); after_cp_id=int(checkpoint_row.get("hypothesis_id") or 0)
-        after=_protected(con)
-        protected_ok=before==after
-        if not protected_ok: raise ShadowProjectionError("protected counts changed")
-        safety=protected_ok and errors==0
-        now=int(time.time())
-        gap_phase5f_shadow_v2.record_cycle(con,len(rows),created,updated,v2_stats,safety,now)
-        con.execute("INSERT INTO " + CYCLE_TABLE + "(source_rows_seen,observations_created,observations_updated,projection_errors,checkpoint_updated_at_before,checkpoint_hypothesis_id_before,checkpoint_updated_at_after,checkpoint_hypothesis_id_after,productive_writes_before,productive_writes_after,safety_ok,details,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",(len(rows),created,updated,errors,cp_time,cp_id,after_cp_time,after_cp_id,json.dumps(before,sort_keys=True),json.dumps(after,sort_keys=True),(1 if safety else 0),json.dumps({"errors":error_rows[:20],"source_hash":source_hash},sort_keys=True),now))
-        for k,v in {"checkpoint_updated_at":after_cp_time,"checkpoint_hypothesis_id":after_cp_id,"last_source_rows_seen":len(rows),"last_observations_created":created,"last_observations_updated":updated,"last_projection_errors":errors,"last_safety_ok":("true" if safety else "false"),"observation_ready":"false"}.items(): _write_kv(con,k,v)
+            after_cp_time = int(checkpoint_row.get('updated_at') or 0)
+            after_cp_id = int(checkpoint_row.get('hypothesis_id') or 0)
+        after = _protected(con)
+        protected_ok = before == after
+        if not protected_ok:
+            raise ShadowProjectionError('protected counts changed')
+        safety = protected_ok and errors == 0
+        now = int(time.time())
+        gap_phase5f_shadow_v2.record_cycle(con, len(rows), created, updated, v2_stats, safety, now)
+        con.execute('INSERT INTO ' + CYCLE_TABLE + '(source_rows_seen,observations_created,observations_updated,projection_errors,checkpoint_updated_at_before,checkpoint_hypothesis_id_before,checkpoint_updated_at_after,checkpoint_hypothesis_id_after,productive_writes_before,productive_writes_after,safety_ok,details,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)', (len(rows), created, updated, errors, cp_time, cp_id, after_cp_time, after_cp_id, json.dumps(before, sort_keys=True), json.dumps(after, sort_keys=True), 1 if safety else 0, json.dumps({'errors': error_rows[:20], 'source_hash': source_hash}, sort_keys=True), now))
+        for k, v in {'checkpoint_updated_at': after_cp_time, 'checkpoint_hypothesis_id': after_cp_id, 'last_source_rows_seen': len(rows), 'last_observations_created': created, 'last_observations_updated': updated, 'last_projection_errors': errors, 'last_safety_ok': 'true' if safety else 'false', 'observation_ready': 'false'}.items():
+            _write_kv(con, k, v)
         con.commit()
-        return {"phase":VERSION,"status":"shadow_observation_complete","mode":"shadow_observation","source_rows_seen":len(rows),"observations_created":created,"observations_updated":updated,"projection_errors":errors,"checkpoint_before":{"updated_at":cp_time,"hypothesis_id":cp_id},"checkpoint_after":{"updated_at":after_cp_time,"hypothesis_id":after_cp_id},"productive_counts_unchanged":True,"observation_ready":False,"productive_gap_id":None,"productive_writes":0}
+        return {'phase': VERSION, 'status': 'shadow_observation_complete', 'mode': 'shadow_observation', 'source_rows_seen': len(rows), 'observations_created': created, 'observations_updated': updated, 'projection_errors': errors, 'checkpoint_before': {'updated_at': cp_time, 'hypothesis_id': cp_id}, 'checkpoint_after': {'updated_at': after_cp_time, 'hypothesis_id': after_cp_id}, 'productive_counts_unchanged': True, 'observation_ready': False, 'productive_gap_id': None, 'productive_writes': 0}
     except Exception:
-        con.rollback(); raise
-    finally: con.close()
+        con.rollback()
+        raise
+    finally:
+        con.close()
 
 def selftest():
-    con=sqlite3.connect(":memory:"); con.row_factory=sqlite3.Row
+    con = sqlite3.connect(':memory:')
+    con.row_factory = sqlite3.Row
     try:
-        for table,cols in SCHEMA_TABLES.items():
-            if table==STATE_TABLE: con.execute("CREATE TABLE "+table+"(key TEXT PRIMARY KEY,value TEXT)")
-            elif table==OBS_TABLE: con.execute("CREATE TABLE "+table+"(observation_key TEXT PRIMARY KEY,"+",".join(c+" TEXT" for c in cols[1:])+")")
-            else: con.execute("CREATE TABLE "+table+"(id INTEGER PRIMARY KEY,"+",".join(c+" TEXT" for c in cols[1:])+")")
-        assert _self_check_schema(con)["overall"]
-        print("SELFTEST OK")
-        print("SCHEMA CONTRACT OK")
-        print("COMPOSITE CHECKPOINT CONTRACT OK")
-        print("OBSERVATION_READY DEFAULT FALSE")
-        print("PRODUCTIVE GAP-ID DEFAULT NONE")
-        print("PRODUCTIVE WRITES: NONE")
-    finally: con.close()
-
-if __name__=="__main__":
-    if "--selftest" in sys.argv: selftest()
-    elif "--ensure-schema" in sys.argv: print(json.dumps(ensure_schema(),indent=2))
-    elif "--observe" in sys.argv: print(json.dumps(observe_shadow(),indent=2))
+        for table, cols in SCHEMA_TABLES.items():
+            if table == STATE_TABLE:
+                con.execute('CREATE TABLE ' + table + '(key TEXT PRIMARY KEY,value TEXT)')
+            elif table == OBS_TABLE:
+                con.execute('CREATE TABLE ' + table + '(observation_key TEXT PRIMARY KEY,' + ','.join((c + ' TEXT' for c in cols[1:])) + ')')
+            else:
+                con.execute('CREATE TABLE ' + table + '(id INTEGER PRIMARY KEY,' + ','.join((c + ' TEXT' for c in cols[1:])) + ')')
+        assert _self_check_schema(con)['overall']
+        print('SELFTEST OK')
+        print('SCHEMA CONTRACT OK')
+        print('COMPOSITE CHECKPOINT CONTRACT OK')
+        print('OBSERVATION_READY DEFAULT FALSE')
+        print('PRODUCTIVE GAP-ID DEFAULT NONE')
+        print('PRODUCTIVE WRITES: NONE')
+    finally:
+        con.close()
+if __name__ == '__main__':
+    if '--selftest' in sys.argv:
+        selftest()
+    elif '--ensure-schema' in sys.argv:
+        print(json.dumps(ensure_schema(), indent=2))
+    elif '--observe' in sys.argv:
+        print(json.dumps(observe_shadow(), indent=2))
 
 ===== END FILE: ki_system\v8_modern_gap_phase5f_shadow_observation_release.py =====
 
@@ -4705,6 +4403,385 @@ def observe_shadow(obj: Any = None, limit: int = 1200) -> Dict[str, Any]:
     }
 
 ===== END FILE: ki_system\v8_modern_outcome_bridge_shadow_release.py =====
+
+===== FILE: ki_system\v8_modern_projection_contract_release.py =====
+from __future__ import annotations
+
+import hashlib
+import importlib
+import importlib.util
+import math
+from pathlib import Path
+from typing import Any
+
+VERSION = "modern_projection_contract_consolidation_v1"
+LEGACY_MODULE = "ki_system.v8_phase5f_context_expansion_effectiveness_and_adaptive_windowing_release"
+
+
+def clamp(value: Any) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(number):
+        return 0.0
+    return max(0.0, min(1.0, number))
+
+
+def contract_source_hash() -> str:
+    spec = importlib.util.find_spec(LEGACY_MODULE)
+    if spec is None or not spec.origin:
+        raise RuntimeError("legacy Phase-5f source module not found")
+    return hashlib.sha256(Path(spec.origin).read_bytes()).hexdigest()
+
+
+def _legacy_helpers():
+    module = importlib.import_module(LEGACY_MODULE)
+    required = (
+        "center_chunk",
+        "closure_stats",
+        "neighbors",
+        "chunk_status",
+        "neuromod",
+        "table",
+        "clamp",
+    )
+    missing = [name for name in required if not callable(getattr(module, name, None))]
+    if missing:
+        raise RuntimeError("missing legacy read helpers: " + ",".join(missing))
+    return module
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    return number if math.isfinite(number) else float(default)
+
+
+def _strategy(no_rate: float, overlap: float, delta: float, old_radius: int) -> tuple[str, int, str, str]:
+    if no_rate > 0.38:
+        return "shift_away_from_no_candidate_context", max(2, old_radius - 1), "reduce_no_candidate_window", "no_candidate_pressure"
+    if overlap > 0.55:
+        return "low_overlap_context_window", min(9, old_radius + 2), "reduce_overlap", "overlap_pressure"
+    if delta < 0.08:
+        return "wider_context_window", min(9, old_radius + 2), "increase_window", "low_closure_delta"
+    if delta < 0.16:
+        return "contrastive_context_window", min(7, old_radius + 1), "try_contrastive_window", "medium_closure_delta"
+    return "reinforce_effective_window", old_radius, "reinforce", "effective_window"
+
+
+def _count_overlap(cur: Any, helpers: Any, targets: list[int]) -> float:
+    if not targets or not helpers.table(cur, "phase5f_context_window_experiments"):
+        return 0.0
+    placeholders = ",".join("?" for _ in targets)
+    previous = cur.execute(
+        "SELECT COUNT(*) FROM phase5f_context_window_experiments WHERE target_chunk_id IN (" + placeholders + ")",
+        tuple(targets),
+    ).fetchone()[0]
+    return helpers.clamp(previous / max(1, len(targets) * 5))
+
+
+def _evaluate_with_helpers(con: Any, row: dict[str, Any], source_hash: str, helpers: Any) -> dict[str, Any]:
+    key_material = "|".join(
+        [
+            VERSION,
+            str(row.get("shadow_key") or ""),
+            str(row.get("hypothesis_id") or ""),
+            str(row.get("updated_at") or 0),
+            str(source_hash),
+        ]
+    )
+    key = "shadow-phase5f-observation:" + hashlib.sha256(key_material.encode("utf-8")).hexdigest()
+    gap = {
+        "id": None,
+        "gap_key": key,
+        "gap_type": "shadow_projection_only",
+        "role": row.get("role") or "unknown_role",
+        "hypothesis_id": row.get("hypothesis_id"),
+        "chunk_id": row.get("chunk_id"),
+        "phase5f_window_radius": None,
+        "phase5f_window_strategy": None,
+        "phase5e_expected_gain": None,
+        "strategy_effectiveness_score": None,
+    }
+    cur = con.cursor()
+    nm = helpers.neuromod(cur)
+    if not isinstance(nm, dict):
+        nm = {}
+    center = helpers.center_chunk(cur, gap)
+    delta, expected_gain = helpers.closure_stats(cur, key)
+    delta = _safe_float(delta, 0.0)
+    expected_gain = _safe_float(gap.get("phase5e_expected_gain") or expected_gain or 0.5, 0.5)
+    old_radius = _safe_int(gap.get("phase5f_window_radius") or 3, 3)
+    old_strategy = gap.get("phase5f_window_strategy") or "near_context_window"
+
+    preliminary = list(helpers.neighbors(cur, center, old_radius, old_strategy) or [])
+    status = helpers.chunk_status(cur, preliminary) or {}
+    no_rate = sum(1 for value in status.values() if value == "read_no_candidate") / max(1, len(preliminary))
+    overlap = _count_overlap(cur, helpers, preliminary)
+
+    new_strategy, new_radius, action, branch = _strategy(no_rate, overlap, delta, old_radius)
+    inhibition = _safe_float(nm.get("inhibition_level"), 0.0)
+    exploration = _safe_float(nm.get("exploration_pressure"), 0.0)
+    if inhibition > 0.42:
+        new_radius = min(new_radius, old_radius + 1)
+    if exploration > 0.34:
+        new_radius = min(10, new_radius + 1)
+
+    targets = list(helpers.neighbors(cur, center, new_radius, new_strategy) or [])
+    status = helpers.chunk_status(cur, targets) or {}
+    no_rate = sum(1 for value in status.values() if value == "read_no_candidate") / max(1, len(targets))
+    overlap = _count_overlap(cur, helpers, targets) if targets else overlap
+    effectiveness = helpers.clamp(
+        0.45 * delta
+        + 0.25 * (1 - no_rate)
+        + 0.2 * (1 - overlap)
+        + 0.1 * _safe_float(gap.get("strategy_effectiveness_score") or 0, 0.0)
+    )
+
+    return {
+        "observation_key": key,
+        "shadow_key": row.get("shadow_key"),
+        "hypothesis_id": _safe_int(row.get("hypothesis_id") or 0),
+        "source_updated_at": _safe_int(row.get("updated_at") or 0),
+        "center_chunk_id": center,
+        "target_chunk_ids": targets,
+        "target_count": len(targets),
+        "projected_window_strategy": new_strategy,
+        "projected_window_radius": new_radius,
+        "projected_action": action,
+        "expected_gain": expected_gain,
+        "closure_delta": delta,
+        "overlap_score": overlap,
+        "read_no_candidate_rate": no_rate,
+        "projected_effectiveness": effectiveness,
+        "neuromodulators": nm,
+        "real_outcome_observation_available": 0,
+        "observation_ready": 0,
+        "source_default_path": 1,
+        "productive_gap_id": None,
+        "productive_write": 0,
+        "details": {
+            "version": VERSION,
+            "candidate_state": row.get("candidate_state"),
+            "bridge_mode": row.get("bridge_mode"),
+            "source_hash": source_hash,
+            "projection_branch": branch,
+            "contract": "read_only_parity_preserving_extraction",
+            "productive_writes": 0,
+        },
+    }
+
+
+def evaluate_projection(con: Any, row: dict[str, Any], source_hash: str | None = None) -> dict[str, Any]:
+    if source_hash is None:
+        source_hash = contract_source_hash()
+    return _evaluate_with_helpers(con, row, source_hash, _legacy_helpers())
+
+
+def selftest() -> dict[str, Any]:
+    cases = {
+        "no_candidate": _strategy(0.5, 0.0, 0.0, 3),
+        "overlap": _strategy(0.0, 0.7, 0.0, 3),
+        "low_delta": _strategy(0.0, 0.0, 0.0, 3),
+        "medium_delta": _strategy(0.0, 0.0, 0.1, 3),
+        "effective": _strategy(0.0, 0.0, 0.2, 3),
+    }
+    expected = {
+        "no_candidate": "shift_away_from_no_candidate_context",
+        "overlap": "low_overlap_context_window",
+        "low_delta": "wider_context_window",
+        "medium_delta": "contrastive_context_window",
+        "effective": "reinforce_effective_window",
+    }
+    for name, outcome in cases.items():
+        if outcome[0] != expected[name]:
+            raise RuntimeError("strategy selftest failed: " + name)
+    if abs(clamp(0.45) - 0.45) > 1e-12 or clamp(float("inf")) != 0.0:
+        raise RuntimeError("clamp selftest failed")
+    return {"status": "ok", "cases": {name: value[0] for name, value in cases.items()}}
+
+===== END FILE: ki_system\v8_modern_projection_contract_release.py =====
+
+===== FILE: ki_system\v8_neuromodulator_computational_kernels_release.py =====
+# -*- coding: utf-8 -*-
+"""Pure, deterministic neuromodulator computational kernels.
+
+This module performs no SQLite access, no file I/O, no logging, no runtime
+registration, and no state mutation. Runtime cutover is intentionally not part
+of V1. V1 establishes an importable shadow/parity contract first.
+"""
+from __future__ import annotations
+from typing import Any, Dict, Mapping
+
+KERNEL_VERSION = "neuromodulator_computational_kernels_v1"
+ALL12 = (
+    "dopamine", "serotonin", "glutamate", "gaba", "noradrenaline",
+    "acetylcholine", "endocannabinoids", "histamine", "orexin", "bdnf",
+    "cortisol", "adenosine",
+)
+
+def clamp(value: Any, lo: float = 0.0, hi: float = 1.0) -> float:
+    try:
+        x = float(value)
+    except Exception:
+        x = 0.0
+    return lo if x < lo else hi if x > hi else x
+
+
+def compute_ei_balance(glutamate_drive: float, gaba_drive: float,
+                       gamma: float = 0.15, alpha: float = 0.12) -> Dict[str, float]:
+    glu_pre = clamp(glutamate_drive)
+    gaba_pre = clamp(gaba_drive)
+    glu_post = clamp(glu_pre - float(gamma) * gaba_pre)
+    gaba_post = clamp(gaba_pre + float(alpha) * glu_pre)
+    return {
+        "glu_pre": glu_pre, "gaba_pre": gaba_pre,
+        "gamma": float(gamma), "alpha": float(alpha),
+        "glu_post": glu_post, "gaba_post": gaba_post,
+    }
+
+
+def compute_phase6b_plasticity_adjustment(
+    pre: Mapping[str, float], neuromod: Mapping[str, float],
+    effectiveness_score: float, plateau_flag: bool,
+    cfg: Mapping[str, float], evidence_allows_state_change: bool = False,
+) -> Dict[str, Any]:
+    """Pure mirror of the currently evidenced Phase-6b adjustment formulas.
+
+    It returns a recommendation only. V1 never applies it.
+    """
+    da = clamp(neuromod.get("dopamine", 0.5))
+    se = clamp(neuromod.get("serotonin", 0.5))
+    na = clamp(neuromod.get("noradrenaline", 0.5))
+    ach = clamp(neuromod.get("acetylcholine", 0.5))
+    glu = clamp(neuromod.get("glutamate", 0.5))
+    gaba = clamp(neuromod.get("gaba", 0.3))
+    score = clamp(effectiveness_score)
+    out = {
+        "plasticity_level": clamp(pre.get("plasticity_level", 0.5)),
+        "exploration_bias": clamp(pre.get("exploration_bias", 0.5)),
+        "consolidation_bias": clamp(pre.get("consolidation_bias", 0.5)),
+        "inhibition_bias": clamp(pre.get("inhibition_bias", 0.5)),
+        "revision_bias": clamp(pre.get("revision_bias", 0.5)),
+    }
+    adjustment = "hold"
+    reasons = []
+    scale = 1.0
+    if plateau_flag:
+        adjustment = "plateau_break"
+        scale = clamp(float(cfg.get("plateau_break_scale", 0.85)) - 0.10 * gaba, 0.55, 0.98)
+        out["plasticity_level"] = clamp(out["plasticity_level"] * scale)
+        out["exploration_bias"] = clamp(out["exploration_bias"] + float(cfg.get("exploration_delta", 0.15)) * (1.0 - gaba) + 0.05 * na)
+        out["inhibition_bias"] = clamp(out["inhibition_bias"] + float(cfg.get("inhibition_delta", 0.10)) * gaba + 0.05 * (1.0 - da))
+        out["revision_bias"] = clamp(out["revision_bias"] + float(cfg.get("revision_delta", 0.10)) * se + 0.05 * ach)
+        out["consolidation_bias"] = clamp(out["consolidation_bias"] - 0.05 * (1.0 - score))
+        reasons.append("plateau_break_canonical")
+    elif score > 0.0:
+        adjustment = "stabilize_gains"
+        out["consolidation_bias"] = clamp(out["consolidation_bias"] + float(cfg.get("consolidation_delta", 0.05)) * da + 0.05 * glu)
+        out["revision_bias"] = clamp(out["revision_bias"] - 0.03 * se)
+        out["plasticity_level"] = clamp(out["plasticity_level"] + 0.02 * da)
+        reasons.append("stabilize_positive_effectiveness")
+    return {
+        "adjustment_type": adjustment,
+        "scale_factor": scale,
+        "recommended": out,
+        "reasons": reasons,
+        "state_change_allowed": bool(evidence_allows_state_change),
+        "applied": False,
+    }
+
+
+def compute_2ag_release(current_2ag: float, max_delta: float,
+                        dopamine: float, gaba: float,
+                        release_gain: float = 5.0) -> Dict[str, float]:
+    release = clamp(float(max_delta) * float(release_gain) * (0.5 + clamp(dopamine)) * (1.0 - 0.4 * clamp(gaba)), 0.0, 0.6)
+    return {"released": release, "new_2ag": clamp(float(current_2ag) + release)}
+
+
+def compute_2ag_decay(current_2ag: float, decay_rate: float = 0.6) -> float:
+    return clamp(float(current_2ag) * float(decay_rate))
+
+
+def compute_anandamide_level(current: float, extreme_score: float,
+                              alpha: float = 0.10, maximum: float = 0.85) -> Dict[str, float]:
+    target = clamp(float(extreme_score) * 2.0 * float(maximum), 0.0, float(maximum))
+    level = clamp((1.0 - float(alpha)) * float(current) + float(alpha) * target)
+    return {"target": target, "anandamide": level}
+
+
+def compute_anandamide_ltd_value(value: float, midpoint: float,
+                                  anandamide_level: float, serotonin: float,
+                                  baseline: float = 0.1,
+                                  pull_strength: float = 0.10,
+                                  extreme_threshold: float = 0.35) -> Dict[str, Any]:
+    if float(anandamide_level) <= float(baseline):
+        return {"eligible": False, "reason": "anandamide_below_baseline", "value": clamp(value), "effective_pull": 0.0}
+    if abs(float(value) - float(midpoint)) < float(extreme_threshold):
+        return {"eligible": False, "reason": "bias_not_extreme", "value": clamp(value), "effective_pull": 0.0}
+    effective_pull = clamp(float(pull_strength) * (float(anandamide_level) - float(baseline)) * 4.0, 0.0, 0.3)
+    new_value = clamp(float(value) + (float(midpoint) - float(value)) * effective_pull * (1.0 - 0.3 * clamp(serotonin)))
+    return {"eligible": True, "reason": "tonic_extreme_bias", "value": new_value, "effective_pull": effective_pull}
+
+
+def compute_bdnf_state(consolidation_consistency: float, marginal_progress: float,
+                       activity_level: float, previous_level: float,
+                       progress_gain: float = 2.0,
+                       consolidation_weight: float = 0.45,
+                       progress_weight: float = 0.35,
+                       activity_weight: float = 0.20,
+                       ewma_alpha: float = 0.30,
+                       growth_gate: float = 0.60,
+                       low_gate: float = 0.35) -> Dict[str, Any]:
+    progress_norm = clamp(0.5 + float(marginal_progress) * float(progress_gain))
+    wc, wp, wa = float(consolidation_weight), float(progress_weight), float(activity_weight)
+    total = wc + wp + wa
+    if total <= 0.0:
+        wc, wp, wa, total = 0.45, 0.35, 0.20, 1.0
+    target = clamp((wc / total) * clamp(consolidation_consistency) + (wp / total) * progress_norm + (wa / total) * clamp(activity_level))
+    level = clamp((1.0 - float(ewma_alpha)) * clamp(previous_level) + float(ewma_alpha) * target)
+    if level >= float(growth_gate) and progress_norm >= 0.58:
+        regime = "growth"
+    elif clamp(activity_level) <= 0.30 and progress_norm <= 0.52:
+        regime = "low_plasticity"
+    else:
+        regime = "maintenance"
+    return {"progress_norm": progress_norm, "bdnf_target": target, "bdnf_level": level, "regime": regime}
+
+
+def validate_all12_snapshot(snapshot: Mapping[str, Any]) -> Dict[str, Any]:
+    missing = [name for name in ALL12 if name not in snapshot]
+    values = {name: clamp(snapshot.get(name, 0.0)) for name in ALL12 if name in snapshot}
+    return {"complete": not missing, "missing": missing, "values": values}
+
+
+def selftest() -> Dict[str, Any]:
+    ei = compute_ei_balance(0.575, 0.32, 0.15, 0.12)
+    assert abs(ei["glu_post"] - 0.527) < 1e-12
+    assert abs(ei["gaba_post"] - 0.389) < 1e-12
+    ag = compute_2ag_release(0.1, 0.2, 0.25, 0.389)
+    assert ag["new_2ag"] >= 0.1
+    b = compute_bdnf_state(0.7, 0.02, 0.44, 0.65)
+    assert 0.0 <= b["bdnf_level"] <= 1.0
+    p = compute_phase6b_plasticity_adjustment(
+        {"plasticity_level": 0.78, "exploration_bias": 0.5, "consolidation_bias": 0.1, "inhibition_bias": 0.2, "revision_bias": 0.8},
+        {"dopamine": 0.25, "serotonin": 0.2885, "noradrenaline": 0.7, "acetylcholine": 0.7625, "glutamate": 0.527, "gaba": 0.389},
+        0.0, True, {}, False,
+    )
+    assert p["applied"] is False and p["state_change_allowed"] is False
+    return {"status": "ok", "kernel_version": KERNEL_VERSION, "ei": ei, "phase6b_applied": p["applied"]}
+
+===== END FILE: ki_system\v8_neuromodulator_computational_kernels_release.py =====
 
 ===== FILE: ki_system\v8_perf0_runtime_acceleration_release.py =====
 # -*- coding: utf-8 -*-
