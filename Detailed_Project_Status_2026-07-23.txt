@@ -10,8 +10,6 @@ without replacing learning with fixed language rules, word blacklists, or hard-c
 
 2. CURRENT ARCHITECTURAL BASELINE
 
-The Python package remains `ki_system` and the project root remains `Z:\Temp\Ki_System\BrainStem\`.
-
 The canonical outer runtime owner is Phase 7cort. Historical and unused learning paths have been removed through 
 Legacy Cleanup large slices A-C. This includes the obsolete NLP path, the former CorpusReader and Phase-3d word-role/filter cluster, 
 and the historical Phase-4def-4p cluster. Bootstrap and schema handling were consolidated, and schema creation remains idempotent with explicit self-checks.
