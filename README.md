@@ -304,6 +304,14 @@ In summary, the project is a recursive learning engine that uses bio-inspired me
 
 ## Architecture
 
+---
+
+<a href="assets/Autonomous_Learning_Architecture_Diagram.png" target="_blank">
+  <img src="assets/Autonomous_Learning_Architecture_Diagram.png" alt="Project-Structure" width="250" />
+</a>
+
+---
+
 ### Two-Stage Data Pipeline
 
 | Stage | Name | Description |
