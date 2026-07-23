@@ -51,219 +51,81 @@ YouTube - BrainStem Project AI conversation 22.07.26
 
 ### Current Validation Status
 
-BrainStem has completed the original Stage A foundation work and the Legacy Cleanup large slices A–C. Historical and unused learning paths were removed, including the obsolete `nlp.py` path, the legacy CorpusReader / Phase-3d word-role and filter path, and the historical Phase-4def–4p cluster. The current runtime uses the canonical Phase-7cort top path.
+The current code and database state completed a new 1,344-cycle stability and drift validation. All requested cycles completed with correct V1/V2 accounting, unchanged protected tables, no checkpoint regressions, stable runtime hashes, successful periodic `quick_check` results, and a successful final `integrity_check`.
 
-Important validation boundary:
+This validation establishes a runtime stability baseline for the exact tested state. It does not prove semantic learning effectiveness, independent real outcomes, future drift freedom, or Stage-B readiness.
 
-- The historical 1,344-cycle drift and convergence validation applied only to the system state tested at that time.
-- Major architectural changes were installed after that run.
-- The current system must therefore complete a new full stability and drift validation before Stage B can be treated as ready.
-- The earlier 1,344-cycle result remains historical evidence, not a current stability certificate.
+#### Current Architecture
 
-Additional completed foundation work includes:
+- Legacy Cleanup large slices A-C are complete; obsolete NLP, CorpusReader / Phase-3d, and historical Phase-4def-4p paths were removed.
+- The canonical outer runtime owner remains Phase 7cort.
+- The Modern Gap Candidate Bridge and Phase-5f Shadow Observation path remain checkpoint-based, bounded, `observed_only`, and non-productive.
+- Candidate and Observation checkpoints reached the current population of 949,760 context hypotheses.
+- Stable Observation Identity V2 separates stable identity, source version, projection version, and provenance.
+- The Content-Stable Fingerprint classifier excludes timestamp-only changes from semantic content identity.
+- The Modern Projection Contract is consolidated into a direct read-only evaluator. The former dynamic AST loader and first-write capture path were removed.
+- Phase-6a Replay-Control Shadow Capture remains future-only, retry-safe, non-semantic, and disconnected from productive Candidate and Observation triggers.
 
-- centralized bootstrap and schema-contract consolidation
-- idempotent schema setup and schema self-check contracts
-- all 12 digital neuromodulators statically and at runtime connected to the GUI
-- performance indexes for active learning-history tables
-- bounded pruning only for explicitly approved history tables
-- bounded and downsampled GUI diagnostics and graphs
-- cooperative GUI worker shutdown logic, although long GUI runs can still become unresponsive while the autonomous worker continues
-- modernized learning reset validated against the current database in read-only dry-run mode
+### Corpus and Learning State
 
-### Current Corpus and Learning State
+- 102,275 of 102,275 imported chunks were read.
+- 949,760 context hypotheses exist.
+- Replay, Phase 6b, consolidation, and the extended neuromodulator phases continue to run after corpus completion.
+- Replay activity and control-state observation are proven, but replay-caused semantic learning and independent outcome-based effectiveness are not yet proven.
 
-The current database contains:
+### Neuromodulator and Computational Kernel Status
 
-- 102,275 of 102,275 chunks read by the GUI, representing 100% of the imported corpus
-- 949,760 context hypotheses
-- Candidate Bridge checkpoint at hypothesis 949,760
-- Phase-5f Shadow Observation checkpoint at hypothesis 949,760
-- no context-hypothesis or Candidate Shadow rows currently beyond the active observation checkpoint
+All twelve neuromodulator systems are represented in code and live state: dopamine, serotonin, glutamate, GABA, noradrenaline, acetylcholine, endocannabinoids, histamine, orexin, BDNF, cortisol, and adenosine.
 
-The GUI chunk counter is the canonical corpus-read progress indicator. Counts of distinct `context_hypotheses.chunk_id` values are treated only as hypothesis-coverage proxies and not as an exact processed-chunk counter.
+Pure no-SQL computational kernels are installed for the currently consolidated E/I, Phase-6b plasticity recommendation, endocannabinoid, and BDNF calculations. The old runtime path remains authoritative.
 
-### Modern Gap Candidate and Observation Shadow Path
+A 50-cycle future-only Shadow Dual-Run baseline completed successfully:
 
-The Modern Gap Candidate Bridge and non-productive Phase-5f Shadow Observation path remain installed in the untouched canonical runtime.
+- 50 of 50 cycles completed
+- six kernels reached in every cycle
+- 300 Old/New comparisons
+- 300 matches
+- 0 mismatches
+- 0 adapter blockers
+- maximum absolute and relative delta: 0.0 for every exercised kernel
+- `compute_2ag_release` was not naturally exercised
 
-Current restrictions:
-
-- mode: `observed_only`
-- automatic execution from Phase 5a
-- checkpoint-based source selection
-- maximum batch: 512 hypotheses per cycle
-- canonical outer runtime owner: Phase 7cort
-- no direct productive writes to `internal_learning_gaps`, attention targets, Phase-5f / Phase-5g / Phase-5i experiments, facts, relations or questions
-- `observation_ready` remains false
-- no direct fact promotion
-
-Both Candidate and Observation frontiers reached the full current hypothesis population. Initial Shadow Observation generation completed without projection errors. The original V1 observation identity mixed stable identity with `source_updated_at`, causing repeated observations of the same hypothesis to appear as new keys instead of versions of one stable identity.
-
-### Stable Observation Identity V2 Shadow
-
-Stable Observation Identity V2 is installed as a parallel, non-productive dual-write path.
-
-V2 contract:
-
-- stable identity: `shadow_key + hypothesis_id`
-- source version and projection version stored separately
-- existing V1 writer preserved
-- no backfill
-- no migration
-- no reader switch
-- no V1 deletion
-- no checkpoint reset
-- all outcome and productive gates remain closed
-
-The first production parity cycle proved exact V1/V2 input parity. During the subsequent natural long run, V2 recorded:
-
-- 629,469 stable latest-state rows
-- 766,459 history rows
-- 28,166 stable keys with multiple versions
-- 136,990 `source_state_change` versions
-- zero input-parity failures
-- zero duplicate fingerprint groups
-- zero broken previous-version links
-- zero gate violations
-
-A dedicated driver audit proved that all 136,990 recorded source-state changes were caused only by `source_updated_at`. The stored source content and the projection fingerprint remained unchanged. This established that the timestamp-sensitive V2 source fingerprint was technically consistent but too sensitive for semantic versioning.
-
-### Content-Stable Fingerprint Shadow Classifier
-
-A parallel Content-Stable Fingerprint Shadow Classifier is installed without changing the existing V2 writer.
-
-Contract:
-
-- `source_updated_at` remains as provenance and checkpoint information
-- `source_updated_at` is excluded from the content-stable source fingerprint
-- same content plus a new timestamp is classified as `same_content_new_timestamp`
-- real content changes and projection changes remain separate classifications
-- no backfill
-- no migration
-- no writer switch
-- no productive writes
-
-The Classifier currently has no production events because the normal Observation checkpoint is fully caught up and no new `context_hypotheses` or Candidate Shadow source row exists beyond it. Fifty additional system cycles were verified as zero-input cycles for this path.
-
-### Phase-6a Replay-Control Shadow Capture
-
-Post-corpus replay activity continues after all corpus chunks have been read. Phase 6a creates replay candidates and replay events, but its existing `context_hypotheses` update writes only replay-control and replay-provenance fields. It does not update semantic hypothesis fields and does not update the canonical `context_hypotheses.updated_at` field.
-
-A future-only, `context_hypotheses`-scoped Replay-Control Shadow Capture is installed.
-
-Contract:
-
-- stable identity: `source_table + source_id`
-- scope: `context_hypotheses` only
-- retry identity: immutable `phase6a_sleep_replay_events.id`
-- canonical recursive JSON normalization for neuromodulator profiles
-- no backfill of historical replay events
-- no Candidate Bridge call
-- no Observation Layer call
-- no checkpoint change
-- no semantic hypothesis version
-- no productive write
-
-After correction of the installer hook to use the actual SQLite connection receiver `db`, the natural production test recorded exactly:
-
-- 300 new Phase-6a replay events
-- 300 Replay-Control Shadow events
-- 60 stable Replay-Control identities
-- 60 `initial_replay_control_state` events
-- 240 `same_control_state_new_replay_event` events
-- zero `replay_control_state_change_candidate` events
-
-Each of the 60 observed hypotheses received five replay events, with one initial state and four stable refreshes. This proves natural runtime reachability, exact event parity, retry-safe identity and stable replay-control classification. It does not prove semantic learning.
-
-### Replay Learning Effect and Real-Outcome Status
-
-Current evidence shows:
-
-- all measured replay events have matching replay candidates
-- Phase 6a updates replay priority, replay weight, meta-plasticity, replay count, last replay time and replay reason
-- Phase 6a does not write semantic hypothesis content, confidence, uncertainty, evidence count, stability or canonical `updated_at`
-- `hypothesis_learning_updates`, feedback, error, revision and self-evaluation tables are currently empty
-- stability and consolidation data exist, but no direct replay-event causal key links replay events to those records
-- replay-caused semantic learning is not proven
-- replay effectiveness is not proven
-
-Phase 6a currently computes `outcome_observation_available` from the global row count of `phase5g_experiment_outcomes`. It does not join by replay event, hypothesis identity or post-replay observation time. The table is currently empty, so all recorded Phase-6a cycles report no available outcome observation.
-
-### Phase-5g Strategy Experiment and Outcome Status
-
-The current legacy Phase-5g experiment producer exists in `v8_phase5g_context_strategy_selection_and_experiment_memory_release.py`, but it relies on `internal_learning_gaps` as its primary source. `internal_learning_gaps` remains intentionally empty and productively closed.
-
-The producer is not statically connected to the current Registry or canonical Phase-7cort cycle. If activated, it would write operationally to Phase-5g experiments, reading queue, attention and gap-related structures. It is therefore not a safe read-only bridge for the modern Shadow architecture.
-
-The Phase-5h outcome writer exists and can evaluate Phase-5g strategy experiments, but:
-
-- `phase5g_strategy_experiments` is empty
-- `phase5g_experiment_outcomes` is empty
-- the writer evaluates internal strategy metrics
-- the schema has no explicit external real-outcome observation contract
-- no hypothesis-specific or replay-specific real-outcome lineage is present
-
-The current Phase-5g and Phase-5h path is an internal strategy-projection and evaluation path, not a proven independent real-outcome path.
-
-### Modern Non-Productive Phase-5g Candidate Contract
-
-A read-only preflight proved that V2 Stable Observations contain all fields required for a future-only, non-productive Phase-5g Candidate contract.
-
-The proposed contract would:
-
-- use `stable_observation_key + projection fingerprint` as candidate identity
-- classify initial candidates, identical retries, same-projection refreshes and projection changes
-- avoid numeric eligibility thresholds
-- keep `internal_learning_gaps`, reading queue and attention writes closed
-- keep Phase-5g experiment and outcome writes closed
-- make no Real Outcome claim
-
-No installer has been authorized. The live V2 projection population currently shows almost no strategy diversity:
-
-- `projected_action = increase_window` across the measured population
-- `projected_window_strategy = wider_context_window` across the measured population
-- expected gain, projected effectiveness, closure, overlap and no-candidate metrics are uniform in the current snapshot
-- target count is six for all but one measured Stable Observation
-
-The next pending read-only audit is the Modern V2 Projection Input Variance, Formula Drivers & Strategy Diversity Audit. It has been prepared but not yet executed.
-
-### GUI Runtime Observation
-
-During long autonomous runs, the GUI became unresponsive while the autonomous worker continued progressing. The worker was later stopped with `taskkill`, and SQLite `quick_check` and `integrity_check` both remained successful.
-
-The GUI became responsive again after restarting with the same large database. Therefore:
-
-- the earlier GUI freeze must not be attributed to database size without separate evidence
-- database size is not an optimization trigger
-- sufficient storage space is available
-- no pruning, retention or history deletion is justified solely by database size
+This is a strong multi-cycle parity baseline, but it does not authorize a runtime cutover or applied regulation.
 
 ### Current Safety Boundary
 
 The following remain closed:
 
-- `internal_learning_gaps` productive writes
-- attention writes
-- productive Phase-5f experiments
-- productive Phase-5g experiments and outcomes
-- Phase-5i experiments
+- productive `internal_learning_gaps` writes
+- Attention writes
+- productive Phase-5f, Phase-5g, and Phase-5i experiments
+- Phase-5g outcomes
 - `observation_ready`
-- facts
-- relations
-- questions
-- fact promotion
-- reader switch to V2
-- historical migration or backfill
+- Facts, Relations, and Questions writes
+- Fact promotion
+- V2 reader switch, migration, or backfill
+- kernel-based runtime cutover
+- critic-gated applied regulation
+- Cortisol Stage 2 application
 
-### Immediate Next Steps
+SQLite remains the canonical relational source. A vector database may only be evaluated at the dedicated architecture checkpoint after stable identities, a concrete semantic retrieval use case, measurable requirements, and a read-only comparison against the SQLite baseline exist.
 
-1. Run the prepared read-only Modern V2 Projection Input Variance, Formula Drivers & Strategy Diversity Audit.
-2. Determine whether projection uniformity comes from constant inputs, default paths or a formula branch that collapses real source variance.
-3. Do not install a modern Phase-5g Candidate writer until natural projection diversity or a justified projection-change contract is demonstrated.
-4. Keep the Replay-Control Shadow Capture installed and continue treating its events as activity and control-state observations, not semantic learning.
-5. Keep all productive gates closed until an independent, hypothesis-specific and temporally valid Real Outcome contract exists.
-6. Perform a new full stability and drift validation of the current system before Stage B preparation.
+### Stage-B Status
+
+Stage B is not ready. Current stability, identity, safety, All-12 state coverage, local E/I sensitivity, and six-kernel multi-cycle parity are established. Remaining evidence gaps include:
+
+- independent, entity-bound, temporally valid real outcomes
+- replay-linked semantic learning effects
+- full end-to-end causal co-regulation of the twelve-modulator system
+- critic-gated and reversible applied regulation
+- Stage-B control enforcement for N=3 consolidation survival, warm-up damping, and an initial budget of one promotion per cycle
+
+Facts promotion remains reserved for a separately validated later step.
+
+### Next Major Step
+
+Prepare a Pure-Kernel Wrapper Cutover Readiness and Rollback Preflight for the six multi-cycle parity-proven kernels. The preflight must preserve wrapper-owned evidence, critic, transaction, logging, and persistence contracts; keep `compute_2ag_release` on the old path; and keep applied regulation and all productive gates closed.
+
 
 ## Core Philosophy
 
