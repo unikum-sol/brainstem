@@ -7,11 +7,18 @@
 
 ## 1. Executive Summary
 
-BrainStem is a self-learning language and text understanding system built around contextual hypotheses, error-driven learning, replay and consolidation, and a twelve-system neuromodulator architecture. Its long-term objective is to improve autonomously through observation, contextual hypothesis formation, error processing, revision, sleep-like consolidation, and controlled promotion of sufficiently supported hypotheses, while ultimately providing measurable value in real user dialogue.
+BrainStem is a self-learning language and text understanding system built around contextual hypotheses, error-driven learning, 
+replay and consolidation, and a twelve-system neuromodulator architecture. Its long-term objective is to improve autonomously through observation, 
+contextual hypothesis formation, error processing, revision, sleep-like consolidation, and controlled promotion of sufficiently supported hypotheses, 
+while ultimately providing measurable value in real user dialogue.
 
-The current repository has completed the Stage-B implementation and readiness work that was planned for the frozen pre-validation state. A bundled Stage-B readiness test was executed against the current local project and database. It returned `STAGE_B_READY_FREEZE_PASS` with zero failures and zero warnings. This establishes that the current codebase, schema, bootstrap path, safety gates, Stage-B control contracts, and included integration tests are mutually consistent for the tested state.
+The current repository has completed the Stage-B implementation and readiness work that was planned for the frozen pre-validation state. 
+A bundled Stage-B readiness test was executed against the current local project and database. It returned `STAGE_B_READY_FREEZE_PASS` with 
+zero failures and zero warnings. This establishes that the current codebase, schema, bootstrap path, safety gates, Stage-B control contracts, 
+and included integration tests are mutually consistent for the tested state.
 
-A new full 1,344-cycle stability and drift validation for this exact frozen Stage-B state is currently running. Its result is not yet available and must not be reported as passed until all requested cycles complete and the final report confirms the required invariants.
+A new full 1,344-cycle stability and drift validation for this exact frozen Stage-B state is currently running. Its result is not yet available 
+and must not be reported as passed until all requested cycles complete and the final report confirms the required invariants.
 
 ## 2. Current Validation Position
 
@@ -43,9 +50,11 @@ The readiness bundle also executed all currently included integration tests succ
 
 ### 2.2 Full Stability and Drift Validation
 
-A dedicated validation tool is now running for exactly 1,344 cycles against the frozen Stage-B state. It requires the successful Stage-B readiness report, a valid local database, a successful database preflight, and an external full-backup directory before starting.
+A dedicated validation tool is now running for exactly 1,344 cycles against the frozen Stage-B state. It requires the successful Stage-B readiness report, 
+a valid local database, a successful database preflight, and an external full-backup directory before starting.
 
-The validation records per-cycle values for adenosine, dopamine, serotonin, glutamate, GABA, noradrenaline, acetylcholine, histamine, orexin, BDNF, cortisol, sleep/wake state, context-hypothesis count, Stage-B graduation count, and Phase-7a event count.
+The validation records per-cycle values for adenosine, dopamine, serotonin, glutamate, GABA, noradrenaline, acetylcholine, histamine, orexin, BDNF, 
+cortisol, sleep/wake state, context-hypothesis count, Stage-B graduation count, and Phase-7a event count.
 
 The final validation will check:
 
@@ -77,7 +86,8 @@ The validation has a bounded cycle count and must terminate after the requested 
 
 ### 3.2 Legacy Cleanup
 
-Legacy Cleanup large slices A through C are complete. Historical and replaced learning paths were removed rather than left as inactive alternatives. This includes the obsolete NLP path, CorpusReader and Phase-3d cluster, and historical Phase-4def through Phase-4p paths.
+Legacy Cleanup large slices A through C are complete. Historical and replaced learning paths were removed rather than left as inactive alternatives. 
+This includes the obsolete NLP path, CorpusReader and Phase-3d cluster, and historical Phase-4def through Phase-4p paths.
 
 The repository-wide cleanup contract remains active:
 
@@ -103,7 +113,8 @@ The Stage-B E/F integration test confirmed both meaningful states of the gap-flo
 
 ### 3.4 Computational Kernels and Guarded Adapters
 
-Pure computational kernels and guarded adapters are present for the consolidated neuromodulator calculations. The guarded architecture preserves wrapper-owned behavior and keeps the canonical production path protected while shadow evidence is collected.
+Pure computational kernels and guarded adapters are present for the consolidated neuromodulator calculations. The guarded architecture 
+preserves wrapper-owned behavior and keeps the canonical production path protected while shadow evidence is collected.
 
 The current safety position remains conservative:
 
@@ -114,7 +125,8 @@ The current safety position remains conservative:
 
 ## 4. Database, Bootstrap, and Schema State
 
-The current local database passed the Stage-B readiness database checks. The readiness report observed 192 local tables. The isolated empty-database bootstrap produced 121 schema objects and remained unchanged after a second bootstrap.
+The current local database passed the Stage-B readiness database checks. The readiness report observed 192 local tables. 
+The isolated empty-database bootstrap produced 121 schema objects and remained unchanged after a second bootstrap.
 
 The bootstrap contract remains:
 
@@ -135,7 +147,8 @@ The current frozen-state drift validation has already captured the local schema 
 
 ### 5.1 Cortisol Stage 2
 
-Cortisol Stage 2 exists as a guarded, bounded regulator. The included cooperation and Stage-B integration tests confirm that the guarded Stage-2 path can produce controlled changes while maintaining the wider safety boundary.
+Cortisol Stage 2 exists as a guarded, bounded regulator. The included cooperation and Stage-B integration tests confirm that the guarded Stage-2 
+path can produce controlled changes while maintaining the wider safety boundary.
 
 This does not by itself prove long-term causal benefit. The running 1,344-cycle validation is required to establish runtime stability for the exact frozen state.
 
@@ -154,7 +167,8 @@ The C/D integration test demonstrated warm-up blocking and bounded graduation be
 
 ### 5.3 Gap-Flow Runtime Contract
 
-The Stage-B gap-flow runtime contract is implemented and included in the canonical bootstrap and registry state. It distinguishes genuine observed candidates from measured zero-source intervals while keeping all productive downstream writes closed.
+The Stage-B gap-flow runtime contract is implemented and included in the canonical bootstrap and registry state. 
+It distinguishes genuine observed candidates from measured zero-source intervals while keeping all productive downstream writes closed.
 
 ## 6. Neuromodulator and Sleep/Wake State
 
@@ -175,7 +189,8 @@ All twelve intended neuromodulator systems are represented in code and runtime s
 
 The all-neuromodulator cooperation test passed and confirmed the tested cooperation contracts without opening Fact promotion.
 
-The targeted Phase-7a gated sleep-discharge integration test completed 40 deliberately constructed test cycles, including 20 simulated sleep cycles. This is a path-coverage test and must not be interpreted as the natural sleep proportion of BrainStem during autonomous operation.
+The targeted Phase-7a gated sleep-discharge integration test completed 40 deliberately constructed test cycles, including 20 simulated sleep cycles. 
+This is a path-coverage test and must not be interpreted as the natural sleep proportion of BrainStem during autonomous operation.
 
 Because adenosine previously showed rapid oscillation around the sleep/wake boundary, the current full validation includes explicit sleep/wake diagnostics:
 
@@ -214,11 +229,14 @@ The previously documented corpus state remains the latest explicitly recorded co
 - 102,275 of 102,275 imported chunks read
 - 949,760 context hypotheses recorded
 
-These figures should be treated as the last documented values, not as newly recounting the live database during the currently running drift validation. Replay, consolidation, and neuromodulator phases can continue after corpus completion, but replay-caused semantic improvement and independent outcome-based effectiveness remain separate evidence questions.
+These figures should be treated as the last documented values, not as newly recounting the live database during the currently running drift validation. 
+Replay, consolidation, and neuromodulator phases can continue after corpus completion, but replay-caused semantic improvement 
+and independent outcome-based effectiveness remain separate evidence questions.
 
 ## 9. Vector Database Decision Checkpoint
 
-SQLite remains the canonical source of relational truth. A vector database must not be introduced merely because the database is large or because semantic retrieval may eventually be useful.
+SQLite remains the canonical source of relational truth. A vector database must not be introduced merely because the database is large or 
+because semantic retrieval may eventually be useful.
 
 A dedicated vector-database checkpoint remains part of the project plan. It may be entered only when:
 
