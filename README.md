@@ -147,27 +147,15 @@ Core principles:
 
 ## What is BrainStem really
 
-**BrainStem** is an autonomous software architecture designed for continuous, self-improving data processing and knowledge management. At its core, the system operates through an Autonomous Loop that orchestrates a chain of learning phases to ingest, analyze, and refine information without manual intervention.
-
-It is important to understand that the biological terminology used throughout the project’s technical documentation, such as "neuromodulators," "sleep," or "homeostasis" serves as a set of metaphors to describe the underlying digital functions. These biological terms are mapped to mathematical variables and algorithmic states that steer the system's behavior.
-
-#### **The system’s primary mechanics include:**
-
-**Dynamic Steering Variables:** What the documentation calls "digital messenger substances" are actually dynamic meta-parameters. These variables, such as "dopamine" or "serotonin" equivalents, represent numerical values that adjust the system's learning rate, error weighting, and exploration strategies in real-time.
-
-**Active vs. Offline Processing:** The system cycles between an active ingestion phase and an optimization phase. During active processing, the system extracts "context hypotheses" from new data inputs. During the optimization phase (metaphorically called "sleep"), the system re-evaluates these recorded hypotheses through batch replay and consolidation to improve overall accuracy and stability.
-
-**Knowledge Distillation:** By comparing new data against existing stable records, the system filters out inconsistencies and promotes reliable information into its long-term memory structures.
-
-**Equilibrium Control:** To prevent the control variables from reaching unproductive extreme values (saturation), the system uses stability monitoring routines. These routines act as a feedback mechanism that pulls meta-parameters back into a functional range when the system detects a performance plateau or excessive variance.
-
-**Adaptive Boundaries:** The limits within which the system operates are not hardcoded but self-regulating. The software learns from its own performance metrics (L2M metrics) to expand or contract its processing thresholds based on the complexity of the data it encounters.
-
-In summary, the project is a recursive learning engine that uses bio-inspired metaphors to implement a highly flexible, self-governing control logic for automated knowledge acquisition.
-
-Every answer the system produces is retrieved from proof, not generated. Each fact in the knowledge base carries a complete provenance chain, from the final anchor back through its consolidation cycles, its originating hypotheses, and down to the exact source chunks and documents that justified its creation. There is no black box. If the system states something, it can show why it states it.
-Knowledge enters the system as raw observation, but it is never exposed to a user until it has passed through a multi-phase verification pipeline: hypothesis generation, strategic outcome testing, sleep-replay reinforcement, and guarded graduation. Only then does it become an anchor, a deductively usable fact. Until that point, it remains in the shadow layer, unable to influence any user-facing output.
-This creates a hard epistemic boundary. The system cannot hallucinate an answer it has not earned. When no verified anchor exists for a query, it does not invent a plausible response, and it reports the gap. The safety is architectural, not statistical. Trust is not placed in a model's weights, but in a transparent, auditable process that can be inspected, challenged, and verified, just like an engineering safety circuit.
+**BrainStem** BrainStem is an autonomous software architecture designed for continuous, self-improving data processing and knowledge management. At its core, the system operates through an Autonomous Loop that orchestrates a chain of learning phases to ingest, analyze, and refine information without manual intervention.
+The biological terminology used throughout the project's technical documentation, including terms such as "neuromodulators," "sleep," or "homeostasis," is not decorative. These labels are functional designators for mathematical state variables and algorithmic control mechanisms. They describe real control functions, learning rates, error weightings, and consolidation thresholds, not simulated chemistry. The values are floats, not molecules. The behavior is biologically inspired, but the implementation is strictly mathematical.
+The system's primary mechanics include:
+Dynamic Steering Variables: The variables referred to as "digital messenger substances" are dynamic meta-parameters. These numerical equivalents, such as "dopamine" or "serotonin," adjust the system's learning rate, error weighting, and exploration strategies in real time.
+Active versus Offline Processing: The system cycles between an active ingestion phase and an optimization phase. During active processing, the system extracts context hypotheses from new data inputs. During the optimization phase, referred to as "sleep," the system re-evaluates recorded hypotheses through batch replay and consolidation to improve overall accuracy and stability.
+Knowledge Distillation: By comparing new data against existing stable records, the system filters out inconsistencies and promotes reliable information into its long-term memory structures.
+Equilibrium Control: To prevent control variables from reaching unproductive extreme values, or saturation, the system uses stability monitoring routines. These routines act as a feedback mechanism that pulls meta-parameters back into a functional range when the system detects a performance plateau or excessive variance.
+Adaptive Boundaries: The limits within which the system operates are not hardcoded but self-regulating. The software learns from its own performance metrics, referred to as L2M metrics, to expand or contract its processing thresholds based on the complexity of the data it encounters.
+In summary, the project is a recursive learning engine that uses biologically derived control logic to implement a highly flexible, self-governing system for automated knowledge acquisition.
 
 ## Architecture
 
