@@ -1,9 +1,8 @@
 # BrainStem Detailed Project Status
 
 **Status date:** 27 July 2026  
-**Project:** BrainStem, formerly KI-System V8  
 **Python package:** `ki_system`  
-**Canonical local project path:** `Z:\Temp\Ki_System\BrainStem\`
+
 
 ## 1. Executive Summary
 
