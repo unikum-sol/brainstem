@@ -1,6 +1,6 @@
 # BrainStem
 
-Update 23.07.26
+Update 27.07.26
 
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
@@ -51,80 +51,82 @@ YouTube - BrainStem Project AI conversation 22.07.26
 
 ### Current Validation Status
 
-The current code and database state completed a new 1,344-cycle stability and drift validation. All requested cycles completed with correct V1/V2 accounting, unchanged protected tables, no checkpoint regressions, stable runtime hashes, successful periodic `quick_check` results, and a successful final `integrity_check`.
+The current repository and local database completed the bundled Stage-B Readiness Freeze validation with the verdict `STAGE_B_READY_FREEZE_PASS`, zero failures, and zero warnings. The validated scope included 66 Python files, AST and compile checks, central import smoke tests, registry consistency, empty-database bootstrap and bootstrap idempotence, SQLite integrity checks, protected-table invariance, source-file invariance, and the five included Stage-B and neuromodulator integration tests.
 
-This validation establishes a runtime stability baseline for the exact tested state. It does not prove semantic learning effectiveness, independent real outcomes, future drift freedom, or Stage-B readiness.
+A new full 1,344-cycle stability and drift validation is currently running against this exact frozen Stage-B state. The run is bounded and records all twelve neuromodulator signals, sleep/wake state, hypothesis and graduation counts, and Phase-7a event counts. Its final checks include cycle completion, runtime errors, database integrity, schema and source fingerprints, protected production tables, bounded finite signal values, per-signal drift, sleep ratio, Sleep entries, Wake exits, and sleep/wake dwell lengths.
 
-#### Current Architecture
+The running validation must not be described as passed until all requested cycles complete and the final report returns `VALIDATION_OK_STAGE_B_FROZEN_FULL_STABILITY_BASELINE_ESTABLISHED`.
 
-- Legacy Cleanup large slices A-C are complete; obsolete NLP, CorpusReader / Phase-3d, and historical Phase-4def-4p paths were removed.
+### Current Architecture
+
+- Legacy Cleanup large slices A through C are complete. Obsolete NLP, CorpusReader / Phase-3d, and historical Phase-4def through Phase-4p paths were removed.
 - The canonical outer runtime owner remains Phase 7cort.
-- The Modern Gap Candidate Bridge and Phase-5f Shadow Observation path remain checkpoint-based, bounded, `observed_only`, and non-productive.
-- Candidate and Observation checkpoints reached the current population of 949,760 context hypotheses.
-- Stable Observation Identity V2 separates stable identity, source version, projection version, and provenance.
-- The Content-Stable Fingerprint classifier excludes timestamp-only changes from semantic content identity.
-- The Modern Projection Contract is consolidated into a direct read-only evaluator. The former dynamic AST loader and first-write capture path were removed.
-- Phase-6a Replay-Control Shadow Capture remains future-only, retry-safe, non-semantic, and disconnected from productive Candidate and Observation triggers.
+- SQLite remains the canonical relational source.
+- The central phase registry currently contains 27 validated module entries without duplicates.
+- The Modern Gap Candidate Bridge remains checkpoint-based, bounded to at most 512 hypotheses per cycle, `observed_only`, shadow-only, and non-productive.
+- Stage-B gap flow distinguishes `real_candidates_observed_shadow_only` from `measured_zero_no_new_sources` without opening downstream productive writes.
+- Guarded computational kernels and adapters preserve wrapper-owned evidence, critic, transaction, logging, and persistence responsibilities. No unvalidated kernel runtime cutover is authorized.
 
 ### Corpus and Learning State
 
-- 102,275 of 102,275 imported chunks were read.
-- 949,760 context hypotheses exist.
-- Replay, Phase 6b, consolidation, and the extended neuromodulator phases continue to run after corpus completion.
-- Replay activity and control-state observation are proven, but replay-caused semantic learning and independent outcome-based effectiveness are not yet proven.
+The latest explicitly documented corpus baseline remains:
 
-### Neuromodulator and Computational Kernel Status
+- 102,275 of 102,275 imported chunks read
+- 949,760 context hypotheses recorded
 
-All twelve neuromodulator systems are represented in code and live state: dopamine, serotonin, glutamate, GABA, noradrenaline, acetylcholine, endocannabinoids, histamine, orexin, BDNF, cortisol, and adenosine.
+These are the latest documented values and are not a new live recount from the running validation. Replay, consolidation, and the extended neuromodulator phases can continue after corpus completion. Replay activity does not yet prove replay-caused semantic improvement or independent outcome-based effectiveness.
 
-Pure no-SQL computational kernels are installed for the currently consolidated E/I, Phase-6b plasticity recommendation, endocannabinoid, and BDNF calculations. The old runtime path remains authoritative.
+### Stage-B Functional State
 
-A 50-cycle future-only Shadow Dual-Run baseline completed successfully:
+The Stage-B implementation and readiness contracts are present and test-validated:
 
-- 50 of 50 cycles completed
-- six kernels reached in every cycle
-- 300 Old/New comparisons
-- 300 matches
-- 0 mismatches
-- 0 adapter blockers
-- maximum absolute and relative delta: 0.0 for every exercised kernel
-- `compute_2ag_release` was not naturally exercised
+- guarded Cortisol Stage 2 regulation
+- observer and safety gates
+- at least three survived 7d consolidations before graduation eligibility
+- `_critic_gate`
+- warm-up damping
+- an initial maximum budget of one graduation per cycle
+- Facts promotion disabled
+- productive protected tables unchanged during the readiness suite
 
-This is a strong multi-cycle parity baseline, but it does not authorize a runtime cutover or applied regulation.
+The C/D integration test demonstrated warm-up blocking and bounded graduation behavior. The E/F integration test demonstrated both real shadow-only candidate observation and a correctly classified measured zero-source interval.
+
+Stage B is therefore readiness-complete for the frozen pre-validation state. Full frozen-state runtime stability remains pending until the active 1,344-cycle validation finishes successfully.
+
+### Neuromodulator and Sleep/Wake Status
+
+All twelve intended neuromodulator systems are represented in code and runtime state: dopamine, serotonin, glutamate, GABA, noradrenaline, acetylcholine, adenosine, endocannabinoids, cortisol, histamine, orexin, and BDNF.
+
+The all-neuromodulator cooperation test passed without opening Fact promotion. The targeted Phase-7a gated sleep-discharge test used 40 deliberately constructed cycles, including 20 simulated sleep cycles. That 50 percent test ratio is path coverage, not evidence of BrainStem's natural sleep frequency.
+
+The running full validation measures natural sleep ratio, Sleep-entry and Wake-exit counts, minimum and mean sleep and wake dwell lengths, state runs of one or two cycles, and adenosine range and drift. No final claim about long-term adenosine stability or natural sleep frequency is made before that validation completes.
 
 ### Current Safety Boundary
 
 The following remain closed:
 
 - productive `internal_learning_gaps` writes
-- Attention writes
+- productive Attention writes
 - productive Phase-5f, Phase-5g, and Phase-5i experiments
 - Phase-5g outcomes
-- `observation_ready`
-- Facts, Relations, and Questions writes
+- direct Facts, Relations, and Questions writes
 - Fact promotion
-- V2 reader switch, migration, or backfill
-- kernel-based runtime cutover
-- critic-gated applied regulation
-- Cortisol Stage 2 application
+- unvalidated kernel runtime cutover
+- replacement of SQLite as the canonical relational source
 
-SQLite remains the canonical relational source. A vector database may only be evaluated at the dedicated architecture checkpoint after stable identities, a concrete semantic retrieval use case, measurable requirements, and a read-only comparison against the SQLite baseline exist.
+The Stage-B readiness validation observed zero rows in all checked protected production areas before and after execution.
 
-### Stage-B Status
+A vector database may only be evaluated at the dedicated architecture checkpoint after stable identities, a concrete semantic retrieval use case, measurable requirements, and a read-only or shadow comparison against the SQLite baseline exist. It must not replace the canonical relational source or open productive gates.
 
-Stage B is not ready. Current stability, identity, safety, All-12 state coverage, local E/I sensitivity, and six-kernel multi-cycle parity are established. Remaining evidence gaps include:
+### Current Evidence Boundary
 
-- independent, entity-bound, temporally valid real outcomes
-- replay-linked semantic learning effects
-- full end-to-end causal co-regulation of the twelve-modulator system
-- critic-gated and reversible applied regulation
-- Stage-B control enforcement for N=3 consolidation survival, warm-up damping, and an initial budget of one promotion per cycle
+The successful Stage-B readiness result proves code, schema, bootstrap, registry, safety-gate, and included integration-test consistency for the frozen state. It does not prove semantic learning effectiveness, independent real outcomes, permanent freedom from drift, real-user dialogue usefulness, or readiness for productive Fact promotion.
 
-Facts promotion remains reserved for a separately validated later step.
+Even a successful 1,344-cycle validation will establish a runtime stability baseline only for the exact tested state.
 
 ### Next Major Step
 
-Prepare a Pure-Kernel Wrapper Cutover Readiness and Rollback Preflight for the six multi-cycle parity-proven kernels. The preflight must preserve wrapper-owned evidence, critic, transaction, logging, and persistence contracts; keep `compute_2ag_release` on the old path; and keep applied regulation and all productive gates closed.
+Keep the repository frozen until the active 1,344-cycle stability and drift validation completes. Then evaluate the final verdict, protected-table invariance, schema and source hashes, per-modulator drift, adenosine behavior, natural sleep ratio, Sleep/Wake transition counts, and dwell-duration metrics before authorizing any further Stage-B change.
 
 
 ## Core Philosophy
