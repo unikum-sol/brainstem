@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 "V8 Phase 7g - BDNF / activity-dependent growth and consolidation (neurotransmitter #12)."
 from __future__ import annotations
+from ki_system import v8_guarded_core_adapters_canonical_sleep_wake_shadow_release as __gca_shadow  # BUNDLED_GUARDED_SHADOW_CORE_ADAPTERS_SLEEP_WAKE_V1
 import os, sqlite3, time, statistics
 from pathlib import Path
+from ki_system import v8_neuromodulator_computational_kernels_release as neuromod_kernels
+from ki_system import v8_neuromodulator_guarded_dual_compute_release as neuromod_guard
+# BRAINSTEM_GUARDED_KERNEL_AUTHORITY_V1
+from ki_system.v8_neuromodulator_kernel_authority_control_release import select_authoritative as __kac_select
+
 
 PHASE = "phase7g_bdnf_growth_consolidation_release"
 PHASE_VERSION = "phase7g_v1"
@@ -169,6 +175,14 @@ def run_phase7g_cycle(db_or_obj=None, cycle_index=None):
         regime = "low_plasticity"
     else:
         regime = "maintenance"
+    _kernel_result = neuromod_kernels.compute_bdnf_state(
+        cons, prog, act, prev, pgain, wc, wp, wa, alpha, growth_gate, low
+    )
+    neuromod_guard.compare_mapping(
+        "compute_bdnf_state",
+        {"bdnf_level": bdnf_level, "bdnf_target": bdnf_target, "regime": regime},
+        _kernel_result,
+    )
     if _table_exists(con, "phase6a_neuromodulated_sleep_state"):
         _kv_set(con, "phase6a_neuromodulated_sleep_state", "bdnf", round(bdnf_level, 4))
     now = _now()
@@ -179,12 +193,7 @@ def run_phase7g_cycle(db_or_obj=None, cycle_index=None):
     _set_p(con, "last_regime", regime); _set_p(con, "last_consolidation_consistency", cons)
     _set_p(con, "last_marginal_progress", prog)
     con.commit()
-    return {"phase": PHASE, "phase_version": PHASE_VERSION, "neurotransmitter": NEUROTRANSMITTER,
-            "cycle_index": cycle_index, "bdnf_level": round(bdnf_level, 4),
-            "bdnf_target": round(bdnf_target, 4), "consolidation_consistency": round(cons, 4),
-            "marginal_progress": round(prog, 4), "activity_level": round(act, 4), "regime": regime,
-            "safety": {"direct_fact_writes": "disabled", "direct_relation_writes": "disabled",
-                       "fact_promotion": "disabled", "no_word_blacklists": True}}
+    return __kac_select('compute_bdnf_state', {'phase': PHASE, 'phase_version': PHASE_VERSION, 'neurotransmitter': NEUROTRANSMITTER, 'cycle_index': cycle_index, 'bdnf_level': round(bdnf_level, 4), 'bdnf_target': round(bdnf_target, 4), 'consolidation_consistency': round(cons, 4), 'marginal_progress': round(prog, 4), 'activity_level': round(act, 4), 'regime': regime, 'safety': {'direct_fact_writes': 'disabled', 'direct_relation_writes': 'disabled', 'fact_promotion': 'disabled', 'no_word_blacklists': True}}, __gca_shadow.observe_adapter('compute_bdnf_state', _kernel_result))
 
 def _run_downstream_cycle(self, progress):
     for mn in ("v8_phase7f_orexin_wake_endurance_release",

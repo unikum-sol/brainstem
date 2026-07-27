@@ -82,9 +82,11 @@ LOAD_ORDER = [{'module': 'v8_context_observation_learning_release',
  {'module': 'v8_phase7e_histamine_wake_arousal_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'PHASE7E'},
  {'module': 'v8_phase7f_orexin_wake_endurance_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'PHASE7F'},
  {'module': 'v8_phase7g_bdnf_growth_consolidation_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'PHASE7G'},
- {'module': 'v8_phase7cort_stability_watch_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'PHASE7CORT'}]
+ {'module': 'v8_phase7cort_stability_watch_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'PHASE7CORT'},
+ {'module': 'v8_stageb_guarded_hypothesis_graduation_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_GRADUATION'},
+ {'module': 'v8_stageb_gapflow_runtime_contract_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_EF'}]
 
-EXPECTED_TOP_MODULE = "v8_phase7cort_stability_watch_release"
+EXPECTED_TOP_MODULE = "v8_stageb_gapflow_runtime_contract_release"
 
 
 def _resolve_arg(target, autonomous_globals, AutonomousLoop):

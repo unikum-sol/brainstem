@@ -140,10 +140,14 @@ def run_phase7e_cycle(db_or_obj=None, cycle_index=None):
     wake_drive = histamine_level; sleep_pressure = ade
     reciprocal_gate = _clamp(histamine_level - ade + 0.5)
     wake_hi = _get_p(con, "wake_gate_high", 0.65); sleep_lo = _get_p(con, "sleep_gate_low", 0.35)
-    if histamine_level >= wake_hi and histamine_level > ade:
-        regime = "wake_active"
-    elif histamine_level <= sleep_lo and ade > histamine_level:
+    phase7a_state = _read_kv(con, "phase7a_adenosine_state") if _table_exists(con, "phase7a_adenosine_state") else {}
+    canonical_mode = str(phase7a_state.get("homeostat_mode", "wake")).strip().lower()
+    if canonical_mode == "sleep":
         regime = "sleep_permissive"
+    elif canonical_mode == "wake" and histamine_level >= wake_hi and histamine_level > ade:
+        regime = "wake_active"
+    elif canonical_mode == "wake":
+        regime = "wake_transition"
     else:
         regime = "transition"
     if _table_exists(con, "phase6a_neuromodulated_sleep_state"):
@@ -151,7 +155,7 @@ def run_phase7e_cycle(db_or_obj=None, cycle_index=None):
     now = _now()
     con.execute("INSERT INTO phase7e_histamine_cycles(created_at,cycle_index,histamine_level,histamine_target,adenosine_level,wake_activity,wake_drive,sleep_pressure,reciprocal_gate,regime,note) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (now, int(cycle_index), float(histamine_level), float(histamine_target), float(ade), float(wake),
-                 float(wake_drive), float(sleep_pressure), float(reciprocal_gate), regime, "reciprocal_adenosine_wake_switch"))
+                 float(wake_drive), float(sleep_pressure), float(reciprocal_gate), regime, "canonical_phase7a_mode_with_reciprocal_histamine_observation"))
     _set_p(con, "histamine_level", histamine_level); _set_p(con, "cycle_count", cycle_index)
     _set_p(con, "last_regime", regime); _set_p(con, "last_reciprocal_gate", reciprocal_gate)
     _set_p(con, "last_adenosine", ade)

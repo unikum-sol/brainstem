@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 """V8 Phase 7b - Endocannabinoid Retrograde Gain Control + Adenosine Coordination Fix."""
 from __future__ import annotations
+from ki_system import v8_guarded_core_adapters_canonical_sleep_wake_shadow_release as __gca_shadow  # BUNDLED_GUARDED_SHADOW_CORE_ADAPTERS_SLEEP_WAKE_V1
 import json, os, sqlite3, time
 from pathlib import Path
+from ki_system import v8_neuromodulator_computational_kernels_release as neuromod_kernels
+from ki_system import v8_neuromodulator_guarded_dual_compute_release as neuromod_guard
+# BRAINSTEM_GUARDED_KERNEL_AUTHORITY_V1
+from ki_system.v8_neuromodulator_kernel_authority_control_release import select_authoritative as __kac_select
+
 
 PHASE = "phase7b_endocannabinoid_retrograde_gain_control_release"
 PHASE_VERSION = "phase7b_v1"
@@ -243,9 +249,11 @@ def _decay_2ag(con):
     current = _get_ecb(con, "endocannabinoid_2ag", 0.0)
     decay = _get_ecb(con, "two_ag_decay_rate", 0.6)
     new_val = _clamp(current * decay, 0.0, 1.0)
+    _kernel_value = neuromod_kernels.compute_2ag_decay(current, decay)
+    neuromod_guard.compare_scalar("compute_2ag_decay", "value", new_val, _kernel_value)
     _set_ecb(con, "endocannabinoid_2ag", round(new_val,6))
     _kv_set(con, "phase6a_neuromodulated_sleep_state", "endocannabinoid_2ag", round(new_val,6))
-    return new_val
+    return __kac_select('compute_2ag_decay', new_val, __gca_shadow.observe_adapter('compute_2ag_decay', _kernel_value))
 
 def _compute_extreme_bias_score(con):
     st = _read_kv(con, "phase6a_meta_plasticity_state")
@@ -264,9 +272,11 @@ def _update_anandamide(con, extreme_score):
     max_a = _get_ecb(con, "anandamide_max", 0.85)
     target = _clamp(extreme_score * 2.0 * max_a, 0.0, max_a)
     new_val = _clamp((1.0-alpha)*current + alpha*target, 0.0, 1.0)
+    _kernel_result = neuromod_kernels.compute_anandamide_level(current, extreme_score, alpha, max_a)
+    neuromod_guard.compare_mapping("compute_anandamide_level", {"anandamide": new_val, "target": target}, _kernel_result)
     _set_ecb(con, "endocannabinoid_anandamide", round(new_val,6))
     _kv_set(con, "phase6a_neuromodulated_sleep_state", "endocannabinoid_anandamide", round(new_val,6))
-    return new_val
+    return __kac_select('compute_anandamide_level', new_val, __gca_shadow.observe_adapter('compute_anandamide_level', _kernel_result))
 
 def _apply_anandamide_ltd(con, anandamide_level, cycle_index, neuromod):
     baseline = _get_ecb(con, "anandamide_baseline", 0.1)
@@ -285,6 +295,10 @@ def _apply_anandamide_ltd(con, anandamide_level, cycle_index, neuromod):
         v = _to_float(st[k], mid)
         if abs(v - mid) < ext_th: continue
         new_val = _clamp(v + (mid - v) * effective_pull * (1.0 - 0.3*sero))
+        _kernel_result = neuromod_kernels.compute_anandamide_ltd_value(
+            v, mid, anandamide_level, sero, baseline, pull_strength, ext_th
+        )
+        neuromod_guard.compare_scalar("compute_anandamide_ltd_value", "value", new_val, _kernel_result["value"])
         _kv_set(con, "phase6a_meta_plasticity_state", k, round(new_val,6))
         _kv_set(con, "phase6a_neuromodulated_sleep_state", k, round(new_val,6))
         if _table_exists(con, "phase6c_target_bias_state"):
@@ -302,7 +316,7 @@ def _apply_anandamide_ltd(con, anandamide_level, cycle_index, neuromod):
             anandamide_level, _get_ecb(con,"endocannabinoid_2ag",0.0),
             json.dumps(affected), effective_pull, "pulled_" + str(pulled) + "_targets")
     con.commit()
-    return {"pulled": pulled, "affected_keys": affected, "effective_pull": effective_pull}
+    return __kac_select('compute_anandamide_ltd_value', {'pulled': pulled, 'affected_keys': affected, 'effective_pull': effective_pull}, __gca_shadow.observe_adapter('compute_anandamide_ltd_value', _kernel_result))
 
 def _apply_retrograde_dampening(con, two_ag_level, cycle_index, neuromod):
     if two_ag_level < 0.15: return {"dampened": 0, "reason": "two_ag_below_threshold"}

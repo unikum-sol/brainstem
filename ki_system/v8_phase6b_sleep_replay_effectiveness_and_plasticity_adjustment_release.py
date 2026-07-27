@@ -27,6 +27,7 @@ Schema safety:
 """
 
 from __future__ import annotations
+from ki_system import v8_guarded_core_adapters_canonical_sleep_wake_shadow_release as __gca_shadow  # BUNDLED_GUARDED_SHADOW_CORE_ADAPTERS_SLEEP_WAKE_V1
 
 import json
 import math
@@ -36,6 +37,11 @@ import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from ki_system import v8_neuromodulator_computational_kernels_release as neuromod_kernels
+from ki_system import v8_neuromodulator_guarded_dual_compute_release as neuromod_guard
+# BRAINSTEM_GUARDED_KERNEL_AUTHORITY_V1
+from ki_system.v8_neuromodulator_kernel_authority_control_release import select_authoritative as __kac_select
+
 
 PHASE = "phase6b_sleep_replay_effectiveness_and_plasticity_adjustment_release"
 PHASE_VERSION = "phase6b_v1"
@@ -593,6 +599,13 @@ def _apply_plasticity_adjustment(con, eff, neuromod, meta_state):
     elif allowed_state and score>_cfg_value(cfg,"stabilize_threshold",0.02):
         adj="stabilize_gains"; post_cons=_clamp(pre_cons+_cfg_value(cfg,"consolidation_delta",0.05)*neuromod["dopamine"]+0.05*neuromod["glutamate"]); post_rev=_clamp(pre_rev-0.03*neuromod["serotonin"]); post_plast=_clamp(pre_plast+0.02*neuromod["dopamine"]); reasons.append("stabilize_positive_effectiveness")
     proposed={"plasticity_level":post_plast,"exploration_bias":post_expl,"consolidation_bias":post_cons,"inhibition_bias":post_inh,"revision_bias":post_rev}
+    _kernel_result = neuromod_kernels.compute_phase6b_plasticity_adjustment(
+        {"plasticity_level": pre_plast, "exploration_bias": pre_expl, "consolidation_bias": pre_cons, "inhibition_bias": pre_inh, "revision_bias": pre_rev},
+        neuromod, score, plateau, cfg, bool(allowed_state),
+    )
+    neuromod_guard.compare_mapping(
+        "compute_phase6b_plasticity_adjustment", proposed, _kernel_result["recommended"]
+    )
     if allowed_state: gate,penalty,critic=_critic_gate(con,proposed,_to_float(eff.get("anchor_consistency"),0.0))
     else: gate,penalty,critic=False,0.0,"state_change_blocked_by_evidence_state"
     if not gate: post_plast,post_expl,post_cons,post_inh,post_rev=pre_plast,pre_expl,pre_cons,pre_inh,pre_rev
@@ -603,7 +616,7 @@ def _apply_plasticity_adjustment(con, eff, neuromod, meta_state):
     if gate and allowed_state:
         for k,v in (("last_plasticity_level",post_plast),("last_exploration_bias",post_expl),("last_consolidation_bias",post_cons),("last_inhibition_bias",post_inh),("last_revision_bias",post_rev)):
             _kv_set(con,"phase6a_meta_plasticity_state",k,round(v,6)); _kv_set(con,"phase6a_neuromodulated_sleep_state",k,round(v,6))
-    con.commit(); return {"adjustment_type":adj,"pre":{"plasticity_level":pre_plast,"exploration_bias":pre_expl,"consolidation_bias":pre_cons,"inhibition_bias":pre_inh,"revision_bias":pre_rev},"post":{"plasticity_level":post_plast,"exploration_bias":post_expl,"consolidation_bias":post_cons,"inhibition_bias":post_inh,"revision_bias":post_rev},"critic_gate_result":critic,"critic_penalty":penalty,"evidence_state":state,"state_change_allowed":1 if gate and allowed_state else 0}
+    con.commit(); return __kac_select('compute_phase6b_plasticity_adjustment', {'adjustment_type': adj, 'pre': {'plasticity_level': pre_plast, 'exploration_bias': pre_expl, 'consolidation_bias': pre_cons, 'inhibition_bias': pre_inh, 'revision_bias': pre_rev}, 'post': {'plasticity_level': post_plast, 'exploration_bias': post_expl, 'consolidation_bias': post_cons, 'inhibition_bias': post_inh, 'revision_bias': post_rev}, 'critic_gate_result': critic, 'critic_penalty': penalty, 'evidence_state': state, 'state_change_allowed': 1 if gate and allowed_state else 0}, __gca_shadow.observe_adapter('compute_phase6b_plasticity_adjustment', _kernel_result))
 
 
 

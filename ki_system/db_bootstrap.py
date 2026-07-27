@@ -703,6 +703,8 @@ PHASE_REGISTRY: List[Tuple[str, str]] = [
     ("v8_phase6d_saturation_homeostasis_and_meta_metaplasticity_release", "phase6d"),
     ("v8_phase7a_adenosine_homeostat_release", "phase7a"),
     ("v8_phase7b_endocannabinoid_retrograde_gain_control_release", "phase7b"),
+    ("v8_stageb_guarded_hypothesis_graduation_release", "stageb_graduation"),
+    ("v8_stageb_gapflow_runtime_contract_release", "stageb_ef"),
 ]
 
 def register_phase_module(module_name, phase_name):

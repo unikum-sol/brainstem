@@ -18,8 +18,14 @@ Physical [0,1] limits stay hard. Only regulator dynamics get soft edges.
 """
 
 from __future__ import annotations
+from ki_system import v8_guarded_core_adapters_canonical_sleep_wake_shadow_release as __gca_shadow  # BUNDLED_GUARDED_SHADOW_CORE_ADAPTERS_SLEEP_WAKE_V1
 import json, math, os, sqlite3, time
 from pathlib import Path
+from ki_system import v8_neuromodulator_computational_kernels_release as neuromod_kernels
+from ki_system import v8_neuromodulator_guarded_dual_compute_release as neuromod_guard
+# BRAINSTEM_GUARDED_KERNEL_AUTHORITY_V1
+from ki_system.v8_neuromodulator_kernel_authority_control_release import select_authoritative as __kac_select
+
 
 PHASE = "phase7c_adaptive_boundaries_and_ei_balance_release"
 PHASE_VERSION = "phase7c_v1_shadow_recurrence"
@@ -357,6 +363,12 @@ def _apply_ei_balance(con, cycle_index, neuromod):
     active_gaba_pre = drive_gaba
     active_gaba_post = _soft_clamp(active_gaba_pre + alpha * active_glu_pre, 0.0, 1.0, softness)
     active_glu_post = _soft_clamp(active_glu_pre - gamma * active_gaba_pre, 0.0, 1.0, softness)
+    _kernel_result = neuromod_kernels.compute_ei_balance(active_glu_pre, active_gaba_pre, gamma, alpha)
+    neuromod_guard.compare_mapping(
+        "compute_ei_balance",
+        {"glu_post": active_glu_post, "gaba_post": active_gaba_post},
+        _kernel_result,
+    )
 
     # BRAINSTEM_PHASE7C_REJECTED_SHADOW_CANDIDATE_V1
     # The first recurrent candidate was falsified in a passive 20-cycle run.
@@ -390,14 +402,7 @@ def _apply_ei_balance(con, cycle_index, neuromod):
          "active_one_cycle_from_phase6a_drive"))
     _set_bp(con, "total_ei_couplings", int(_get_bp(con, "total_ei_couplings", 0)) + 1)
     con.commit()
-    return {"glu_pre": active_glu_pre, "glu_post": active_glu_post,
-            "gaba_pre": active_gaba_pre, "gaba_post": active_gaba_post,
-            "glutamate_drive": drive_glu, "gaba_drive": drive_gaba,
-            "shadow_glu_pre": shadow_glu_pre, "shadow_glu_post": shadow_glu_post,
-            "shadow_gaba_pre": shadow_gaba_pre, "shadow_gaba_post": shadow_gaba_post,
-            "shadow_applied": False, "shadow_candidate_active": False,
-            "shadow_candidate_status": "rejected_glutamate_floor_collapse",
-            "gamma": gamma, "alpha": alpha}
+    return __kac_select('compute_ei_balance', {'glu_pre': active_glu_pre, 'glu_post': active_glu_post, 'gaba_pre': active_gaba_pre, 'gaba_post': active_gaba_post, 'glutamate_drive': drive_glu, 'gaba_drive': drive_gaba, 'shadow_glu_pre': shadow_glu_pre, 'shadow_glu_post': shadow_glu_post, 'shadow_gaba_pre': shadow_gaba_pre, 'shadow_gaba_post': shadow_gaba_post, 'shadow_applied': False, 'shadow_candidate_active': False, 'shadow_candidate_status': 'rejected_glutamate_floor_collapse', 'gamma': gamma, 'alpha': alpha}, __gca_shadow.observe_adapter('compute_ei_balance', _kernel_result))
 
 
 def run_phase7c_cycle(db_or_obj=None, cycle_index=None):

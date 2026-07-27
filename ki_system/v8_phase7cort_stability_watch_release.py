@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"V8 Phase 7cort - Cortisol / HPA-axis Stability Watcher (Stage 1: pure observer)."
+"V8 Phase 7cort - Cortisol / HPA-axis Stability Watcher (Stage 2 guarded soft regulator)."
 from __future__ import annotations
 import json, os, sqlite3, time, statistics
 from pathlib import Path
 
 PHASE = "phase7cort_stability_watch_release"
-PHASE_VERSION = "phase7cort_v1_observer"
+PHASE_VERSION = "phase7cort_v2_guarded_soft_regulator"
 NEUROTRANSMITTER = "cortisol"
 
 SCHEMA_TABLES = {
@@ -25,7 +25,8 @@ WATCH_PARAMS = {
     "load_high": 0.6, "load_low": 0.15, "nudge_max": 0.05, "cycle_count": 0,
     "recent_tail": 3, "trig_drift": 0.4, "trig_survivor": 0.4, "trig_effectiveness": 0.3,
     "trig_oscillation": 0.4, "trig_saturation": 0.3, "effectiveness_scale": 10.0,
-    "stage": 1, "nudge_cap": 0.05, "cooldown": 3, "cooldown_left": 0,
+    "stage": 2, "nudge_cap": 0.01, "cycle_budget": 0.03, "cooldown": 3, "cooldown_left": 0,
+    "warmup_cycles": 25, "stage2_applications": 0, "stage2_rollbacks": 0,
 }
 
 def _now(): return int(time.time())
@@ -200,35 +201,83 @@ def _stress_components(sig, con):
             "saturation": sig["ei_saturation"]}
 def _apply_stage2_nudges(con, recommended, allostatic_load):
     stage = _to_int(_get_p(con, "stage", 1))
+    cycle = _to_int(_get_p(con, "cycle_count", 0))
+    warmup = max(0, _to_int(_get_p(con, "warmup_cycles", 25)))
     load_high = _get_p(con, "load_high", 0.6)
-    cooldown = _to_int(_get_p(con, "cooldown", 3))
-    cooldown_left = _to_int(_get_p(con, "cooldown_left", 0))
-    nudge_cap = _get_p(con, "nudge_cap", 0.05)
+    cooldown = max(0, _to_int(_get_p(con, "cooldown", 3)))
+    cooldown_left = max(0, _to_int(_get_p(con, "cooldown_left", 0)))
+    nudge_cap = max(0.0, _get_p(con, "nudge_cap", 0.01))
+    cycle_budget = max(0.0, _get_p(con, "cycle_budget", 0.03))
     if cooldown_left > 0:
         _set_p(con, "cooldown_left", cooldown_left - 1)
-    if stage != 2 or allostatic_load < load_high or cooldown_left > 0 or not recommended:
-        return False, []
+        con.commit()
+        return False, [{"reason": "cooldown", "remaining": cooldown_left - 1}]
+    if stage != 2:
+        return False, [{"reason": "stage_not_2"}]
+    if cycle <= warmup:
+        return False, [{"reason": "warmup", "cycle": cycle, "required": warmup + 1}]
+    if allostatic_load < load_high or not recommended:
+        return False, [{"reason": "load_or_recommendation_gate"}]
     if not _table_exists(con, "phase6a_neuromodulated_sleep_state"):
-        return False, []
+        return False, [{"reason": "neuromodulator_state_missing"}]
+    allowed = {"dopamine", "serotonin", "noradrenaline", "acetylcholine", "glutamate", "gaba", "adenosine"}
     st = _read_kv(con, "phase6a_neuromodulated_sleep_state")
-    ei = _read_kv(con, "phase7c_state")
+    ei = _read_kv(con, "phase7c_state") if _table_exists(con, "phase7c_state") else {}
+    ade = _read_kv(con, "phase7a_adenosine_state") if _table_exists(con, "phase7a_adenosine_state") else {}
+    remaining = cycle_budget
     changes = []
-    for k, delta in recommended.items():
-        d = max(-nudge_cap, min(nudge_cap, _to_float(delta)))
-        if k in ("glutamate", "gaba") and _table_exists(con, "phase7c_state"):
-            state_key = k + "_state"
-            old = _clamp(_to_float(ei.get(state_key, st.get(k)), 0.5))
-            new = _clamp(old + d)
-            _kv_set(con, "phase7c_state", state_key, round(new, 4))
-            _kv_set(con, "phase6a_neuromodulated_sleep_state", k, round(new, 4))
-        else:
-            old = _clamp(_to_float(st.get(k), 0.5))
-            new = _clamp(old + d)
-            _kv_set(con, "phase6a_neuromodulated_sleep_state", k, round(new, 4))
-        changes.append((k, round(old, 4), round(new, 4)))
-    _set_p(con, "cooldown_left", cooldown)
-    con.commit()
-    return True, changes
+    savepoint = "cortisol_stage2_guarded_apply"
+    con.execute("SAVEPOINT " + savepoint)
+    try:
+        for key in sorted(recommended):
+            if key not in allowed or remaining <= 1e-12:
+                continue
+            raw = _to_float(recommended.get(key), 0.0)
+            delta = max(-nudge_cap, min(nudge_cap, raw))
+            delta = max(-remaining, min(remaining, delta))
+            if key == "adenosine":
+                if not _table_exists(con, "phase7a_adenosine_state"):
+                    continue
+                table, state_key = "phase7a_adenosine_state", "adenosine_level"
+                old = _clamp(_to_float(ade.get(state_key), 0.0))
+            elif key in ("glutamate", "gaba") and _table_exists(con, "phase7c_state"):
+                table, state_key = "phase7c_state", key + "_state"
+                old = _clamp(_to_float(ei.get(state_key, st.get(key)), 0.5))
+            else:
+                table, state_key = "phase6a_neuromodulated_sleep_state", key
+                old = _clamp(_to_float(st.get(key), 0.5))
+            low, high = ((0.0, 1.0) if key == "adenosine" else (0.05, 0.95))
+            new_value = _clamp(old + delta, low, high)
+            actual = new_value - old
+            if abs(actual) <= 1e-12:
+                continue
+            _kv_set(con, table, state_key, round(new_value, 6))
+            if key in ("glutamate", "gaba"):
+                _kv_set(con, "phase6a_neuromodulated_sleep_state", key, round(new_value, 6))
+            changes.append({"key": key, "table": table, "state_key": state_key,
+                            "old": round(old, 6), "new": round(new_value, 6),
+                            "delta": round(actual, 6)})
+            remaining -= abs(actual)
+        for change in changes:
+            live = _read_kv(con, change["table"])
+            value = _to_float(live.get(change["state_key"]), float("nan"))
+            if value != value or abs(value - change["new"]) > 1e-6:
+                raise RuntimeError("stage2_postcondition_failed:" + change["key"])
+        _set_p(con, "cooldown_left", cooldown)
+        _set_p(con, "stage2_applications", _to_int(_get_p(con, "stage2_applications", 0)) + (1 if changes else 0))
+        _set_p(con, "last_stage2_budget_used", round(cycle_budget - remaining, 6))
+        _set_p(con, "last_stage2_changes", json.dumps(changes, sort_keys=True))
+        con.execute("RELEASE SAVEPOINT " + savepoint)
+        con.commit()
+        return bool(changes), changes
+    except Exception as exc:
+        con.execute("ROLLBACK TO SAVEPOINT " + savepoint)
+        con.execute("RELEASE SAVEPOINT " + savepoint)
+        _set_p(con, "stage2_rollbacks", _to_int(_get_p(con, "stage2_rollbacks", 0)) + 1)
+        _set_p(con, "last_stage2_error", type(exc).__name__ + ":" + str(exc))
+        con.commit()
+        return False, [{"reason": "automatic_rollback", "error": type(exc).__name__ + ":" + str(exc)}]
+
 def run_stability_watch(con, cycle_index=None):
     con = resolve_db(con); ensure_schema(con)
     missing = _self_check_schema(con)
@@ -275,7 +324,7 @@ def run_stability_watch(con, cycle_index=None):
                 (now, int(cycle_index), float(allostatic_load), float(cortisol_level), regime, dominant,
                  float(sig["threshold_drift"]), float(sig["survivor_ratio"]), float(sig["survivor_ratio_recent"]),
                  float(sig["effectiveness"]), float(sig["bias_oscillation"]), float(sig["ei_saturation"]), elevated,
-                 json.dumps(rec), "stage1_observer_no_apply"))
+                 json.dumps(rec), "stage2_guarded_recommendation_then_bounded_apply"))
     _set_p(con, "cortisol_level", cortisol_level); _set_p(con, "cycle_count", cycle_index)
     _set_p(con, "last_regime", regime); _set_p(con, "last_allostatic_load", allostatic_load)
     con.commit()

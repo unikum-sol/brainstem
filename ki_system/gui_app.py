@@ -631,9 +631,12 @@ class App(tk.Tk):
                     if self.auto_stop:
                         break
                     self.auto_loop.cycle()
-                    self.println(self._cycle_diag_text(n, step + 1))
-                    self._set_cycle_bar(step + 1, 5)
-                    self.refresh()
+                    backend_step = (n - 1) * 5 + step + 1
+                    if backend_step % 25 == 0:
+                        self.println(self._cycle_diag_text(n, step + 1))
+                    if backend_step % 5 == 0 or step == 4:
+                        self._set_cycle_bar(step + 1, 5)
+                        self.refresh()
                 self.auto_loop = None
                 for _ in range(10):
                     if self.auto_stop:

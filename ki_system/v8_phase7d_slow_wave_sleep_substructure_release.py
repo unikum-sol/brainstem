@@ -381,11 +381,13 @@ def run_phase7d_cycle(db_or_obj=None, cycle_index=None):
     if cycle_index is None:
         cycle_index = _to_int(_read_kv(con, "phase7d_state").get("cycle_count"), 0) + 1
     neuromod = _read_neuromod(con); ade = _get_adenosine_level(con)
-    sleep_th = _get_sw(con, "adenosine_sleep_threshold", 0.5)
-    if ade >= sleep_th:
+    phase7a_state = _read_kv(con, "phase7a_adenosine_state") if _table_exists(con, "phase7a_adenosine_state") else {}
+    canonical_mode = str(phase7a_state.get("homeostat_mode", "wake")).strip().lower()
+    if canonical_mode == "sleep":
         sw = _run_slow_wave_sleep(con, cycle_index, neuromod, ade); status = "slow_wave_sleep_executed"
     else:
-        sw = {"skipped": True, "reason": "adenosine_below_sleep_threshold", "adenosine": ade, "threshold": sleep_th}; status = "awake_no_slow_wave"
+        sw = {"skipped": True, "reason": "canonical_phase7a_mode_is_wake", "adenosine": ade,
+              "canonical_homeostat_mode": canonical_mode}; status = "awake_no_slow_wave"
     for k, v in [("cycle_count", cycle_index), ("last_cycle_at", _now()), ("phase", PHASE), ("phase_version", PHASE_VERSION),
                  ("learning_mode", LEARNING_MODE), ("no_word_blacklists", True), ("direct_fact_writes", "disabled"),
                  ("direct_relation_writes", "disabled"), ("fact_promotion", "disabled"), ("slow_wave_sleep", True)]:
