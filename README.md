@@ -428,7 +428,7 @@ This project builds upon concepts, algorithms, and theoretical frameworks establ
   year={2023}
 }
 ```
-</details›
+</details>
 
 
 ---
