@@ -31,7 +31,9 @@ YouTube - BrainStem Project AI conversation 22.07.26
 * [Architecture](#architecture)
 * [Running the System](#running-the-system)
 * [ZIM Import](#zim-import)
+* [Academic References](#Academic-References)
 * [Development Notes](#development-notes)
+
     
 ---
 
@@ -348,6 +350,84 @@ The GUI remains an experimental testing interface; individual areas may still be
 A Windows `zimdump.exe` build and its required DLL files must be placed in the project root next to `main.py`. Users must provide their own ZIM corpus.
 
 The current development corpus is the German Wikipedia category **Computer**, imported into roughly 102,000 chunks.
+
+## Academic References
+
+This project builds upon concepts, algorithms, and theoretical frameworks established in the following academic literature:
+
+1. **Hamilton, William L.** (2020)  
+   *Graph Representation Learning*. Morgan & Claypool Publishers (McGill University).
+
+2. **Watkins, Yijing; Kim, Edward; Kenyon, Garrett T.** (2020)  
+   *Using Sinusoidally-Modulated Noise as a Surrogate for Slow-Wave Sleep to Accomplish Stable Unsupervised Dictionary Learning in a Spike-Based Sparse Coding Model*. Frontiers in Computational Neuroscience.
+
+3. **Tadros, Timothy; Tran, Gia-Bao M.; Krishnan, Giri P.; Bazhenov, Maxim** (2022)  
+   *Biologically Inspired Sleep Algorithm for Reducing Catastrophic Forgetting in Neural Networks*. eLife / bioRxiv.
+
+4. **Fischbacher, Thomas; Comsa, Iulia M.; Potempa, Krzysztof; Firsching, Moritz; Versari, Luca; Alakuijala, Jyrki** (2020)  
+   *Intelligent Matrix Exponentiation*. arXiv preprint arXiv:2008.03926.
+
+5. **Butz, Markus; van Ooyen, Arjen** (2013)  
+   *Homeostatic structural plasticity – a key to neuronal network formation and repair*. PLoS Computational Biology.
+
+6. **Parker, Paul A.; Holan, Scott H.; Ravishanker, Nalini** (2020)  
+   *Nonlinear Time Series Classification Using Bispectrum-based Deep Convolutional Neural Networks*. arXiv preprint arXiv:2003.02353.
+
+7. **Rončević, Igor; et al.** (2023)  
+   *Supplementary Materials for A molecule with half-Möbius topology*. Nature Chemistry.
+
+<details>
+<summary><b>Click to expand BibTeX citations</b></summary>
+
+```bibtex
+@book{hamilton2020graph,
+  title={Graph Representation Learning},
+  author={Hamilton, William L.},
+  year={2020},
+  publisher={Morgan \& Claypool Publishers}
+}
+
+@article{watkins2020using,
+  title={Using Sinusoidally-Modulated Noise as a Surrogate for Slow-Wave Sleep to Accomplish Stable Unsupervised Dictionary Learning in a Spike-Based Sparse Coding Model},
+  author={Watkins, Yijing and Kim, Edward and Kenyon, Garrett T.},
+  journal={Frontiers in Computational Neuroscience},
+  year={2020}
+}
+
+@article{tadros2022biologically,
+  title={Biologically Inspired Sleep Algorithm for Reducing Catastrophic Forgetting in Neural Networks},
+  author={Tadros, Timothy and Tran, Gia-Bao M. and Krishnan, Giri P. and Bazhenov, Maxim},
+  year={2022}
+}
+
+@article{fischbacher2020intelligent,
+  title={Intelligent Matrix Exponentiation},
+  author={Fischbacher, Thomas and Comsa, Iulia M. and Potempa, Krzysztof and Firsching, Moritz and Versari, Luca and Alakuijala, Jyrki},
+  journal={arXiv preprint arXiv:2008.03926},
+  year={2020}
+}
+
+@article{butz2013homeostatic,
+  title={Homeostatic structural plasticity--a key to neuronal network formation and repair},
+  author={Butz, Markus and van Ooyen, Arjen},
+  journal={PLoS Computational Biology},
+  year={2013}
+}
+
+@article{parker2020nonlinear,
+  title={Nonlinear Time Series Classification Using Bispectrum-based Deep Convolutional Neural Networks},
+  author={Parker, Paul A. and Holan, Scott H. and Ravishanker, Nalini},
+  journal={arXiv preprint arXiv:2003.02353},
+  year={2020}
+}
+
+@article{roncevic2023molecule,
+  title={Supplementary Materials for A molecule with half-M{\"o}bius topology},
+  author={Ron{\v{c}}evi{\'c}, Igor and others},
+  journal={Nature Chemistry},
+  year={2023}
+}
+
 
 ## Development Notes
 
