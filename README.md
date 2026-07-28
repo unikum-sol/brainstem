@@ -426,7 +426,9 @@ This project builds upon concepts, algorithms, and theoretical frameworks establ
   author={Ron{\v{c}}evi{\'c}, Igor and others},
   journal={Nature Chemistry},
   year={2023}
-}
+}'''
+'</details›'
+
 
 ---
 
