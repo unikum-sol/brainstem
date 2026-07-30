@@ -183,6 +183,10 @@ Every answer the system produces is retrieved from proof, not generated. Each fa
 
 ---
 
+BrainStem does not operate as a continuously coupled system of differential equations. Instead, it traverses a cyclic state graph: each phase activates at most 2–3 dominant neuromodulators, while the remainder are kept inactive or passive. This sequential architecture prevents interaction cascades and enables deterministic debugging.
+
+---
+
 ### Two-Stage Data Pipeline
 
 | Stage | Name | Description |
