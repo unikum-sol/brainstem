@@ -51,84 +51,340 @@ YouTube - BrainStem Project AI conversation 22.07.26
   <img src="assets/Project-Structure.png" alt="Project-Structure" width="250" />
 </a>
 
+
 ### Current Validation Status
 
-The current repository and local database completed the bundled Stage-B Readiness Freeze validation with the verdict `STAGE_B_READY_FREEZE_PASS`, zero failures, and zero warnings. The validated scope included 66 Python files, AST and compile checks, central import smoke tests, registry consistency, empty-database bootstrap and bootstrap idempotence, SQLite integrity checks, protected-table invariance, source-file invariance, and the five included Stage-B and neuromodulator integration tests.
+The current BrainStem source package contains 66 Python modules and represents the integrated cooperative neuromodulator and sleep/wake build as of 31 July 2026.
 
-A new full 1,344-cycle stability and drift validation is currently running against this exact frozen Stage-B state. The run is bounded and records all twelve neuromodulator signals, sleep/wake state, hypothesis and graduation counts, and Phase-7a event counts. Its final checks include cycle completion, runtime errors, database integrity, schema and source fingerprints, protected production tables, bounded finite signal values, per-signal drift, sleep ratio, Sleep entries, Wake exits, and sleep/wake dwell lengths.
+The current source package has completed the following checks:
+- complete Base64 project extraction without decoding errors
+- AST parsing and Python compilation across all 66 Python modules
+- cooperative neuromodulator schema creation and schema self-check
+- isolated SQLite execution of the six-core neuromodulator regulator
+- before/after delta verification for all six core neuromodulators
+- cooperative sleep-score calculation and state persistence
+- phase-registry integration checks
+- Stage-B wrapper-chain continuity checks
+- Phase-7d cooperative sleep-entry integration checks
+- GUI cooperative-state integration checks
+- presence checks for Efraimidis-Spirakis weighted sampling and sigmoid soft clipping
 
-The running validation must not be described as passed until all requested cycles complete and the final report returns `VALIDATION_OK_STAGE_B_FROZEN_FULL_STABILITY_BASELINE_ESTABLISHED`.
+The updated build is an integrated release candidate. It has not yet completed a new full live-database stability and drift validation after the cooperative neuromodulator and sleep/wake changes. The historical 1,344-cycle drift result applies only to the earlier state that was tested at that time.
+
+The current build must therefore not be described as fully Stage-B validated until a new frozen-state validation completes successfully against the live database and exact current source fingerprints.
 
 ### Current Architecture
 
-- Legacy Cleanup large slices A through C are complete. Obsolete NLP, CorpusReader / Phase-3d, and historical Phase-4def through Phase-4p paths were removed.
-- The canonical outer runtime owner remains Phase 7cort.
+- BrainStem remains a phase-based, hypothesis-centered language and text understanding system.
+- The Python package remains `ki_system`.
+- The primary project path remains `Z:\Temp\Ki_System\BrainStem\`.
+- `autonomous.py` remains the minimal autonomous loop kernel.
+- `phase_registry.py` remains the central installer and ordering authority for the runtime phase chain.
 - SQLite remains the canonical relational source.
-- The central phase registry currently contains 27 validated module entries without duplicates.
+- The learning mode remains `context_hypotheses_with_neuromodulators`.
+- Legacy Cleanup large slices A through C remain incorporated.
+- Obsolete NLP, CorpusReader / Phase-3d, and historical Phase-4def through Phase-4p paths remain removed.
 - The Modern Gap Candidate Bridge remains checkpoint-based, bounded to at most 512 hypotheses per cycle, `observed_only`, shadow-only, and non-productive.
-- Stage-B gap flow distinguishes `real_candidates_observed_shadow_only` from `measured_zero_no_new_sources` without opening downstream productive writes.
-- Guarded computational kernels and adapters preserve wrapper-owned evidence, critic, transaction, logging, and persistence responsibilities. No unvalidated kernel runtime cutover is authorized.
+- Stage-B gap flow continues to distinguish real shadow-observed candidates from measured zero-source intervals without opening productive downstream writes.
+- Guarded computational kernels and adapters continue to preserve wrapper-owned evidence, critic, transaction, logging, and persistence responsibilities.
+- No unvalidated replacement of the canonical runtime kernel or relational data source is authorized.
+
+### Runtime Phase Structure
+
+The effective runtime architecture includes:
+1. context observation and integrated hypothesis learning
+2. strategy refinement, outcome closure, and observation memory
+3. context expansion and effectiveness evaluation
+4. strategy selection, experiment memory, and outcome learning
+5. outcome-driven strategy diversification
+6. Phase-6a offline replay and meta-plasticity
+7. Phase-6b replay effectiveness evaluation
+8. Phase-6c bias persistence and self-regulating meta-control
+9. Phase-6d saturation homeostasis and meta-metaplasticity
+10. Phase-7a adenosine homeostasis
+11. Phase-7b endocannabinoid regulation
+12. Phase-7b1 wake-chain bridging
+13. Phase-7c adaptive boundaries, E/I balance, and sigmoid soft clipping
+14. Phase-7d slow-wave sleep and down-selection
+15. Phase-7e histamine wake/arousal regulation
+16. Phase-7f orexin wake-endurance regulation
+17. Phase-7g BDNF growth and consolidation regulation
+18. Phase-7cort stability observation and guarded Cortisol Stage 2 regulation
+19. cooperative six-core neuromodulator and sleep/wake authority
+20. guarded Stage-B hypothesis graduation
+21. non-productive shadow recheck runtime
+22. Stage-B gapflow runtime contract
 
 ### Corpus and Learning State
 
 The latest explicitly documented corpus baseline remains:
-
 - 102,275 of 102,275 imported chunks read
 - 949,760 context hypotheses recorded
 
-These are the latest documented values and are not a new live recount from the running validation. Replay, consolidation, and the extended neuromodulator phases can continue after corpus completion. Replay activity does not yet prove replay-caused semantic improvement or independent outcome-based effectiveness.
+These values are the latest documented baseline and are not presented as a new live recount.
+
+Corpus completion does not stop autonomous learning. Replay, consolidation, hypothesis evaluation, neuromodulator regulation, sleep/wake transitions, and guarded Stage-B preparation can continue after all imported chunks have been read.
+
+Replay activity alone does not prove replay-caused semantic improvement. Independent outcome evidence and real-user dialogue measurements remain necessary for semantic-effectiveness claims.
+
+### Six-Core Neuromodulator State
+
+The six core neuromodulators are:
+- dopamine
+- serotonin
+- glutamate
+- GABA
+- noradrenaline
+- acetylcholine
+
+The current build adds a common canonical runtime authority for these six values in:
+
+`v8_cooperative_core_neuromodulator_sleep_authority_release.py`
+
+The regulator derives target values from existing BrainStem signals, including:
+- observed learning outcome
+- exploration bias
+- consolidation bias
+- inhibition bias
+- revision bias
+- persistent unresolved-gap pressure
+- adenosine
+- histamine
+- orexin
+- BDNF
+- cortisol
+- Phase-7c glutamate and GABA state
+
+The final six-core values are written to:
+
+`phase6a_neuromodulated_sleep_state`
+
+This is also the canonical source read by the GUI.
+
+The regulator does not introduce random fluctuations. Each value approaches its calculated target through bounded smoothing:
+
+`new = old + 0.18 * (target - old)`
+
+Core values are constrained to the interval from 0.05 to 0.95. A value may stabilize when its input signals and target stabilize. The intended behavior is responsive but bounded adaptation, not continuous artificial movement.
+
+An isolated SQLite functional test produced measurable before/after changes in all six core values and confirmed that the regulator can update the canonical state without opening productive knowledge-write paths.
+
+#### Extended Neuromodulator State
+
+The extended neuromodulator and regulatory systems remain:
+- adenosine
+- endocannabinoids
+- cortisol
+- histamine
+- orexin
+- BDNF
+
+All twelve intended systems are represented in code and runtime state and remain connected to the GUI.
+
+Their current functional roles include:
+- adenosine as homeostatic sleep pressure and downscaling input
+- endocannabinoids as retrograde gain-control and stabilization signals
+- cortisol as allostatic-load and stability regulation
+- histamine as wake/arousal drive
+- orexin as wake endurance and curiosity support
+- BDNF as growth and consolidation readiness
+
+### Cooperative Sleep/Wake Authority
+
+The current build supplements the existing adenosine homeostat with a cooperative sleep/wake authority.
+
+Adenosine remains an important sleep-pressure signal, but it is no longer the only available sleep-entry authority.
+
+The cooperative sleep score combines:
+- 35% adenosine pressure
+- 25% release from wake and arousal drive
+- 20% inhibitory readiness
+- 12% consolidation readiness
+- 8% absence of cortisol-related stress blocking
+
+Wake and arousal drive includes:
+- histamine
+- orexin
+- noradrenaline
+- acetylcholine
+- cortisol
+
+Inhibitory readiness includes:
+- Phase-7c GABA state
+- inhibition bias
+- reduced glutamate dominance
+
+Consolidation readiness includes:
+- consolidation bias
+- BDNF
+- serotonin
+
+The cooperative state machine uses:
+- sleep-entry threshold: 0.62
+- wake-entry threshold: 0.42
+- minimum dwell time: 3 cycles
+
+The separate entry and exit thresholds provide hysteresis and reduce rapid state oscillation.
+
+The canonical cooperative state is stored in:
+- `cooperative_sleep_wake_state`
+- `cooperative_sleep_wake_cycles`
+
+Cycle-level provenance includes the previous and current state, transition reason, total sleep score, component scores, six-core values before regulation, calculated targets, and final values after regulation.
+
+### Adenosine and Slow-Wave Sleep
+
+The Phase-7a adenosine homeostat remains active and continues to provide:
+- wake-related adenosine accumulation
+- homeostatic sleep pressure
+- sleep-related downscaling
+- post-sleep recovery
+- coordination with endocannabinoid regulation
+
+Phase 7d now accepts either of two valid sleep-entry authorities:
+- the existing Phase-7a adenosine homeostat
+- the cooperative sleep/wake state
+
+The Slow-Wave result records whether entry was authorized by `adenosine_homeostat` or `cooperative`.
+
+The underlying Phase-7d slow-wave mechanism remains intact, including oscillations, candidate reactivation, adaptive thresholds, anchor interleaving, participation requirements, consistency-based survival, reinforcement, weakening, and GABA/glutamate-dependent selection pressure.
+
+#### Efraimidis-Spirakis Sampling
+
+Efraimidis-Spirakis weighted sampling without replacement remains active in Phase 7d.
+
+The algorithm continues to assign randomized weighted keys derived from candidate activity and selects the strongest keys for each slow-wave oscillation. The cooperative sleep/wake integration changes the admission authority for slow-wave processing but does not replace or modify the weighted sampling mechanism.
+
+### Sigmoid Soft Clipping and E/I Balance
+
+Phase 7c continues to provide:
+- adaptive boundaries
+- persistent glutamate/GABA E/I state
+- sigmoid soft clipping
+- bounded E/I regulation
+
+The `_soft_clamp()` implementation, `sigmoid_softness` parameter, persistent state marker, and runtime flag remain present.
+
+The cooperative six-core regulator consumes the Phase-7c glutamate and GABA state. It does not replace the Phase-7c E/I kernel.
+
+### Histamine, Orexin, BDNF, and Cortisol
+
+Phase 7e continues to calculate histamine from adenosine coupling, measured wake activity, and the previous smoothed histamine state. Histamine consumes the cooperative sleep/wake state when available and falls back to the Phase-7a mode before cooperative state initialization.
+
+Phase 7f continues to calculate orexin from unread corpus fraction, marginal progress, and histamine. Orexin contributes to the cooperative arousal component.
+
+Phase 7g continues to calculate BDNF from consolidation consistency, marginal progress, and activity. BDNF contributes to cooperative consolidation readiness.
+
+Phase 7cort continues to calculate allostatic load and cortisol from threshold drift, survivor behavior, effectiveness, oscillation, and saturation. Guarded Stage-2 nudges remain constrained by stage, warm-up, load gates, cooldown, a per-value cap, a total cycle budget, savepoint protection, and postcondition checks.
+
+### GUI State
+
+The GUI continues to display all twelve neuromodulators.
+
+The six core values are read from the same canonical state updated by the cooperative regulator:
+
+`phase6a_neuromodulated_sleep_state`
+
+The GUI first reads the cooperative sleep/wake state. If the cooperative state has not yet been initialized, the prior adenosine/histamine heuristic remains available as a startup fallback.
+
+One visible autonomous GUI cycle contains five real backend cycles. The intended GUI contract includes:
+- one outer autonomous-cycle heading
+- five internal diagnostic evaluations
+- progress based on completed backend subcycles
+- visible progress from 0 through 20, 40, 60, 80, and 100 percent
+- bounded log output
+- main-thread widget updates through the GUI queue and pump
 
 ### Stage-B Functional State
 
-The Stage-B implementation and readiness contracts are present and test-validated:
-
+The Stage-B implementation and guarded readiness contracts remain present:
 - guarded Cortisol Stage 2 regulation
 - observer and safety gates
-- at least three survived 7d consolidations before graduation eligibility
+- at least three survived Phase-7d consolidations before graduation eligibility
 - `_critic_gate`
 - warm-up damping
 - an initial maximum budget of one graduation per cycle
 - Facts promotion disabled
-- productive protected tables unchanged during the readiness suite
 
-The C/D integration test demonstrated warm-up blocking and bounded graduation behavior. The E/F integration test demonstrated both real shadow-only candidate observation and a correctly classified measured zero-source interval.
+The cooperative neuromodulator and sleep/wake phase is positioned after the existing Cortisol phase and before guarded Stage-B graduation. The Stage-B wrapper chain explicitly includes the cooperative authority.
 
-Stage B is therefore readiness-complete for the frozen pre-validation state. Full frozen-state runtime stability remains pending until the active 1,344-cycle validation finishes successfully.
-
-### Neuromodulator and Sleep/Wake Status
-
-All twelve intended neuromodulator systems are represented in code and runtime state: dopamine, serotonin, glutamate, GABA, noradrenaline, acetylcholine, adenosine, endocannabinoids, cortisol, histamine, orexin, and BDNF.
-
-The all-neuromodulator cooperation test passed without opening Fact promotion. The targeted Phase-7a gated sleep-discharge test used 40 deliberately constructed cycles, including 20 simulated sleep cycles. That 50 percent test ratio is path coverage, not evidence of BrainStem's natural sleep frequency.
-
-The running full validation measures natural sleep ratio, Sleep-entry and Wake-exit counts, minimum and mean sleep and wake dwell lengths, state runs of one or two cycles, and adenosine range and drift. No final claim about long-term adenosine stability or natural sleep frequency is made before that validation completes.
+Because the cooperative authority changes the current runtime architecture, the exact updated build requires a new frozen-state live-database readiness, stability, and drift validation before final Stage-B readiness can be claimed.
 
 ### Current Safety Boundary
 
 The following remain closed:
-
 - productive `internal_learning_gaps` writes
 - productive Attention writes
-- productive Phase-5f, Phase-5g, and Phase-5i experiments
-- Phase-5g outcomes
-- direct Facts, Relations, and Questions writes
+- productive Phase-5f experiments
+- productive Phase-5g experiments
+- productive Phase-5i experiments
+- productive Phase-5g outcomes
+- direct Facts writes
+- direct Relations writes
+- direct Questions writes
 - Fact promotion
 - unvalidated kernel runtime cutover
 - replacement of SQLite as the canonical relational source
 
-The Stage-B readiness validation observed zero rows in all checked protected production areas before and after execution.
+The cooperative authority writes only:
+- the six canonical core-neuromodulator values
+- cooperative sleep/wake state
+- bounded sleep/wake cycle provenance
 
-A vector database may only be evaluated at the dedicated architecture checkpoint after stable identities, a concrete semantic retrieval use case, measurable requirements, and a read-only or shadow comparison against the SQLite baseline exist. It must not replace the canonical relational source or open productive gates.
+It does not write facts, relations, questions, attention entries, learning gaps, experiment outcomes, graduated facts, or promoted knowledge.
+
+A vector database may only be evaluated at the dedicated architecture checkpoint after stable data identities, a concrete semantic retrieval use case, measurable requirements, and a read-only or shadow comparison against the SQLite baseline exist. It must not replace the canonical relational source or open productive gates.
+
+### Schema and Bootstrap Discipline
+
+The cooperative module defines all new columns in `SCHEMA_TABLES` and provides:
+- idempotent `ensure_schema`
+- `_self_check_schema`
+- explicit state-table creation
+- explicit cycle-table creation
+- a cycle index
+- validation before runtime state changes
+
+Key/value reads continue to follow the repository contract:
+
+`return dict(con.execute("SELECT key,value FROM " + table).fetchall())`
+
+Any future schema change must be added to the central bootstrap at the same time as the runtime schema definition.
 
 ### Current Evidence Boundary
 
-The successful Stage-B readiness result proves code, schema, bootstrap, registry, safety-gate, and included integration-test consistency for the frozen state. It does not prove semantic learning effectiveness, independent real outcomes, permanent freedom from drift, real-user dialogue usefulness, or readiness for productive Fact promotion.
+The current validation proves source extraction, compilation, local schema materialization, isolated six-core regulation, cooperative score calculation, state persistence, registry integration, wrapper-chain continuity, and preservation of the key safety boundaries in the tested package.
 
-Even a successful 1,344-cycle validation will establish a runtime stability baseline only for the exact tested state.
+It does not yet prove:
+- long-term stability against the live database
+- a new drift baseline for the current build
+- natural long-run sleep frequency
+- repeated live cooperative Sleep entries and Wake exits
+- semantic learning effectiveness
+- replay-caused semantic improvement
+- independent real-world outcomes
+- real-user dialogue usefulness
+- readiness for productive Fact promotion
+
+A successful future long-duration validation will establish a runtime stability baseline only for the exact source and database state tested.
 
 ### Next Major Step
 
-Keep the repository frozen until the active 1,344-cycle stability and drift validation completes. Then evaluate the final verdict, protected-table invariance, schema and source hashes, per-modulator drift, adenosine behavior, natural sleep ratio, Sleep/Wake transition counts, and dwell-duration metrics before authorizing any further Stage-B change.
+Treat the cooperative neuromodulator and sleep/wake build as the current integrated release candidate.
+
+Before additional Stage-B changes, validate the exact current build against the live database and then freeze it for a new complete readiness, stability, and drift run. The validation should verify:
+- database integrity
+- schema and source fingerprints
+- protected-table invariance
+- six-core before/after behavior
+- bounded and finite values for all twelve neuromodulators
+- per-signal drift
+- cooperative sleep score
+- natural Sleep-entry and Wake-exit counts
+- sleep and wake dwell lengths
+- Stage-B graduation bounds
+- absence of productive Fact promotion
+- GUI/backend continuity during long-duration execution
 
 
 ## Core Philosophy
