@@ -1,0 +1,817 @@
+BrainStem Project Status
+
+Status date: 31 July 2026
+ Project name: BrainStem
+ Former name: KI-System V8
+ Python package: ki_system
+
+1. Live
+
+2. Current Architectural State
+
+The current project snapshot contains a phase-based autonomous runtime built around AutonomousLoop.
+
+The minimal loop kernel is defined in:
+
+ki_system\autonomous.py
+
+The concrete learning chain is installed through:
+
+ki_system\phase_registry.py
+
+This separation is intentional:
+
+autonomous.py remains a minimal execution kernel.
+phase_registry.py defines the runtime phase order.
+Individual phase modules implement learning, replay, regulation, sleep-wake behavior, stability observation, and guarded Stage-B preparation.
+Later runtime wrappers extend the chain without introducing direct fact, relation, or question writes.
+
+The current project snapshot contains 65 original source files. The cooperative neuromodulator and sleep-wake integration adds one new module, resulting in 66 Python modules in the updated package. All 66 Python files passed compilation in the delivered build.
+
+3. Learning Model
+
+BrainStem currently uses the learning mode:
+
+context_hypotheses_with_neuromodulators
+
+The system learns through context hypotheses and related observation structures rather than direct conversion of text into facts.
+
+The active conceptual learning path includes:
+
+Context observation
+Integrated self-improving learning
+Strategy refinement
+Outcome closure
+Observation and strategy memory
+Context expansion
+Effectiveness evaluation
+Strategy selection
+Experiment outcome learning
+Outcome-driven diversification
+Offline replay
+Meta-plasticity
+Homeostatic regulation
+Sleep-wake regulation
+Slow-wave consolidation
+Stability and allostatic monitoring
+Guarded hypothesis graduation preparation
+
+The current learning chain remains hypothesis-centered. Facts, relations, and user-facing questions are not used as unrestricted learning targets.
+
+4. Digital Neuromodulator System
+
+BrainStem has twelve digital neuromodulators.
+
+Six core neuromodulators
+Dopamine
+Serotonin
+Glutamate
+GABA
+Noradrenaline
+Acetylcholine
+Six extended neuromodulators and regulators
+Adenosine
+Endocannabinoids
+Cortisol
+Histamine
+Orexin
+BDNF
+
+All twelve are connected to the graphical interface.
+
+The six core neuromodulators now have a common canonical runtime authority. Their final cycle values are written to:
+
+phase6a_neuromodulated_sleep_state
+
+This is also the source used by the GUI, so the backend writer and graphical reader now share the same canonical state.
+
+5. Six-Core Neuromodulator Dynamics
+
+The new canonical regulation module is:
+
+ki_system\v8_cooperative_core_neuromodulator_sleep_authority_release.py
+
+It computes target states for all six core neuromodulators using existing BrainStem signals.
+
+Inputs used by the regulator
+
+The regulator reads:
+
+average learning outcome,
+exploration bias,
+consolidation bias,
+inhibition bias,
+revision bias,
+persistent unresolved-gap pressure,
+adenosine level,
+histamine level,
+orexin level,
+BDNF level,
+cortisol level,
+Phase-7c glutamate state,
+and Phase-7c GABA state.
+
+The values are not changed randomly. Each target is derived from current internal system conditions.
+
+Regulation method
+
+The canonical value approaches its target gradually:
+
+new value = old value + 0.18 × (target value - old value)
+
+This produces bounded, interpretable dynamics rather than abrupt state changes or artificial oscillations.
+
+All core values are constrained to a safe operating interval between 0.05 and 0.95.
+
+Functional interpretation
+Dopamine
+
+Dopamine is influenced by:
+
+observed outcomes,
+exploration,
+reduction of persistent unresolved pressure,
+and low stress.
+
+It represents motivation, reward-related learning value, and exploratory readiness.
+
+Serotonin
+
+Serotonin is influenced by:
+
+consolidation readiness,
+low stress,
+successful outcomes,
+and inhibitory stability.
+
+It supports stabilization, persistence, and controlled consolidation.
+
+Glutamate
+
+Glutamate is influenced by:
+
+exploration,
+orexin-supported activity,
+unresolved pressure,
+and the current sleep tendency.
+
+It represents excitatory learning drive while remaining subject to Phase-7c E/I regulation.
+
+GABA
+
+GABA is influenced by:
+
+inhibition bias,
+cooperative sleep readiness,
+cortisol-related protective pressure,
+and reduced exploration.
+
+It acts as a system-wide inhibitory and stabilizing regulator.
+
+GABA is not interpreted as a word-specific or relation-specific error suppressor.
+
+Noradrenaline
+
+Noradrenaline is influenced by:
+
+unresolved pressure,
+histamine,
+orexin,
+and cortisol.
+
+It represents arousal, alerting, and pressure-sensitive activation.
+
+Acetylcholine
+
+Acetylcholine is influenced by:
+
+revision requirements,
+histamine,
+orexin,
+and exploration.
+
+It supports attention, precision, revision, and active processing.
+
+6. Glutamate-GABA E/I Regulation
+
+The Phase-7c adaptive E/I mechanism remains active in:
+
+ki_system\v8_phase7c_adaptive_boundaries_and_ei_balance_release.py
+
+This phase provides:
+
+adaptive boundaries,
+glutamate-GABA balance,
+persistent E/I state,
+and sigmoid soft clipping.
+Sigmoid soft clipping
+
+The _soft_clamp() implementation remains present and active.
+
+The configuration parameter:
+
+sigmoid_softness
+
+also remains present.
+
+Runtime and state markers continue to identify:
+
+sigmoid_soft_clipping = True
+
+Soft clipping prevents abrupt hard-limit behavior while retaining sensitivity as values approach their boundaries.
+
+The cooperative six-core authority consumes the Phase-7c GABA and glutamate states. It does not replace the E/I mechanism.
+
+7. Cooperative Sleep-Wake Architecture
+
+BrainStem now supports a cooperative sleep-wake decision instead of relying exclusively on an adenosine threshold.
+
+Adenosine remains an important homeostatic sleep-pressure signal, but the final state can also reflect the combined condition of the wider neuromodulator network.
+
+Cooperative sleep score
+
+The current sleep score consists of:
+
+35% adenosine pressure
+25% release from wake and arousal drive
+20% inhibitory readiness
+12% consolidation readiness
+8% absence of cortisol-related stress blocking
+Arousal component
+
+The arousal calculation includes:
+
+histamine,
+orexin,
+noradrenaline,
+acetylcholine,
+and cortisol.
+
+A decrease in these wake-supporting signals increases the possibility of sleep entry.
+
+Inhibitory readiness
+
+Inhibitory readiness considers:
+
+Phase-7c GABA,
+inhibition bias,
+and reduced glutamate dominance.
+Consolidation readiness
+
+Consolidation readiness considers:
+
+consolidation bias,
+BDNF,
+and serotonin.
+Stress blocking
+
+Elevated cortisol reduces sleep readiness.
+
+Cortisol therefore represents more than a graphical status value. It contributes to whether the system is sufficiently stable to enter a consolidation-oriented state.
+
+8. Sleep-Wake State Machine
+
+The cooperative state machine is stored in:
+
+cooperative_sleep_wake_state
+
+Cycle-level provenance is stored in:
+
+cooperative_sleep_wake_cycles
+
+Default thresholds
+Sleep-entry threshold: 0.62
+Wake-entry threshold: 0.42
+Minimum dwell time: 3 cycles
+
+The gap between the entry and exit thresholds provides hysteresis and helps prevent rapid state oscillation.
+
+Recorded cycle data
+
+Each cooperative sleep-wake cycle records:
+
+cycle index,
+previous state,
+current state,
+transition status,
+transition reason,
+total sleep score,
+adenosine pressure,
+release from arousal,
+inhibitory readiness,
+consolidation readiness,
+cortisol-related stress block,
+core neuromodulator state before regulation,
+calculated core targets,
+and core state after regulation.
+Transition reasons
+
+The implemented transition reasons include:
+
+cooperative_sleep_entry
+cooperative_wake_entry
+hold
+
+The state is not forced to change merely because one component varies.
+
+9. Adenosine Homeostat
+
+The existing Phase-7a adenosine homeostat remains active.
+
+Adenosine continues to:
+
+accumulate with wake activity,
+represent homeostatic sleep pressure,
+respond to activity and acetylcholine,
+trigger homeostatic downscaling,
+interact with endocannabinoid regulation,
+and recover after sleep-related downscaling.
+
+The cooperative sleep mechanism supplements the adenosine homeostat rather than removing it.
+
+BrainStem therefore has two valid sleep-entry sources:
+
+the established adenosine homeostat,
+the cooperative neuromodulator state.
+10. Histamine and Wake Arousal
+
+Phase 7e continues to regulate histamine.
+
+Histamine is calculated from:
+
+adenosine coupling,
+measured wake activity,
+and a smoothed previous histamine state.
+
+The current histamine regime can include:
+
+wake_active
+wake_transition
+sleep_permissive
+transition
+
+The histamine phase now consumes the cooperative sleep-wake state when that state exists.
+
+If the cooperative state has not yet been initialized, the existing adenosine homeostat remains the fallback source.
+
+11. Orexin and Wake Endurance
+
+Phase 7f continues to regulate orexin.
+
+Orexin is influenced by:
+
+unread corpus fraction,
+marginal learning progress,
+and histamine.
+
+Its regimes remain:
+
+curious_drive
+balanced
+satiated
+
+Orexin contributes to the cooperative arousal score and therefore influences whether the system remains awake or becomes sleep-ready.
+
+12. BDNF and Consolidation
+
+Phase 7g continues to regulate BDNF.
+
+BDNF is based on:
+
+consolidation consistency,
+marginal progress,
+and current activity.
+
+Its regimes include:
+
+growth
+maintenance
+low_plasticity
+
+BDNF contributes to cooperative consolidation readiness.
+
+The guarded computational kernel path for BDNF remains present.
+
+13. Cortisol and Stability Regulation
+
+The Phase-7cort stability watcher remains active.
+
+It evaluates:
+
+threshold drift,
+survivor behavior,
+effectiveness,
+oscillation,
+saturation,
+and combined allostatic load.
+
+Cortisol is smoothed from the resulting allostatic load.
+
+The stability watcher can classify conditions such as:
+
+chronic effectiveness pressure,
+over-selection,
+under-selection,
+threshold drift,
+oscillation,
+and E/I saturation.
+
+Stage-2 nudges remain bounded by:
+
+Stage-2 activation,
+warm-up requirements,
+allostatic-load gates,
+cooldown,
+per-value nudge limits,
+a total cycle budget,
+savepoint protection,
+and postcondition validation.
+
+The cooperative sleep authority consumes the cortisol state as a stress-blocking factor.
+
+14. Offline Replay and Meta-Plasticity
+
+Phase 6a continues to perform offline replay after wake cycles.
+
+Replay candidates can be derived from:
+
+context hypotheses,
+internal learning gaps,
+and Phase-5g experiment outcomes.
+
+Replay behavior considers:
+
+outcome score,
+closure delta,
+overlap,
+no-candidate rate,
+replay priority,
+persistent pressure,
+and plasticity.
+
+The replay system maintains:
+
+candidate history,
+replay events,
+replay memory,
+cycle summaries,
+meta-plasticity state,
+and neuromodulator profiles.
+
+The new six-core authority uses the Phase-6a meta-plasticity signals while providing the final canonical six-core state.
+
+15. Slow-Wave Sleep
+
+Phase 7d continues to implement slow-wave sleep and self-regulating down-selection.
+
+Slow-wave sleep can now start when either:
+
+the existing Phase-7a homeostat is in sleep mode,
+or the cooperative sleep-wake state is sleep.
+
+The cycle result identifies the active entry authority:
+
+adenosine_homeostat
+cooperative
+Slow-wave processing
+
+The slow-wave phase continues to use:
+
+multiple oscillations,
+candidate reactivation,
+anchor interleaving,
+adaptive thresholds,
+participation requirements,
+consistency-based survival,
+reinforcement,
+weakening,
+GABA-dependent selection pressure,
+and glutamate-dependent activity.
+16. Efraimidis-Spirakis Sampling
+
+The Efraimidis-Spirakis weighted sampling algorithm remains active in Phase 7d.
+
+It is used during slow-wave oscillations to perform weighted sampling without replacement.
+
+The implementation generates randomized weighted keys from candidate activity values:
+
+random_value ** (1.0 / activity_weight)
+
+Candidates are sorted by these keys, and the strongest weighted selections are used for the current oscillation.
+
+The cooperative sleep work did not replace or modify this selection mechanism.
+
+17. Endocannabinoid Regulation
+
+The Phase-7b endocannabinoid mechanism remains active.
+
+It includes:
+
+2-AG decay,
+anandamide regulation,
+LTD-like pull toward balanced states,
+retrograde learning-rate dampening,
+and adenosine-coordinated override behavior.
+
+Endocannabinoid actions remain focused on modulation and stabilization of learning dynamics.
+
+They do not open direct fact, relation, or question writes.
+
+18. GUI State
+
+The GUI continues to display all twelve neuromodulators.
+
+Core values
+
+The first six values are read from:
+
+phase6a_neuromodulated_sleep_state
+
+These values are now updated by the cooperative six-core authority after the existing downstream neuromodulator chain has completed.
+
+Sleep display
+
+The GUI first checks:
+
+cooperative_sleep_wake_state.state
+
+If no cooperative state exists yet, the GUI falls back to the previous adenosine/histamine heuristic.
+
+The GUI also receives:
+
+sleep authority,
+sleep score,
+current sleep-wake state,
+neuromodulator values,
+neuromodulator regimes,
+and current homeostatic state.
+Autonomous GUI-cycle contract
+
+One visible GUI cycle contains five real backend cycles.
+
+The GUI provides:
+
+one outer autonomous-cycle heading,
+five internal evaluations,
+five diagnostic snapshots,
+and incremental progress states from 0 to 100 percent.
+
+Progress corresponds to actual completed backend work rather than a visual-only animation.
+
+GUI logs remain bounded to prevent unlimited growth.
+
+The GUI queue and pump keep Tkinter widget updates on the main thread.
+
+19. Stage-B Preparation
+
+Stage-B functionality remains guarded.
+
+The current architecture includes:
+
+guarded hypothesis graduation,
+consolidation requirements,
+warm-up protection,
+critic-gate preparation,
+bounded promotion budgeting,
+and safety checks.
+
+The intended graduation threshold remains:
+
+at least three survived 7d consolidations before a hypothesis can become eligible.
+
+The initial graduation budget remains:
+
+one promotion per cycle.
+
+This does not enable fact promotion.
+
+A stable hypothesis and a promoted fact remain separate concepts.
+
+20. Productive Write Safety
+
+The following productive paths remain closed:
+
+direct facts writes,
+direct relations writes,
+direct questions writes,
+unrestricted internal-learning-gap production,
+Attention production,
+Phase-5f productive experiments,
+Phase-5g productive experiments,
+Phase-5i productive experiments,
+direct fact promotion.
+
+The new cooperative module writes only:
+
+the six canonical neuromodulator values,
+cooperative sleep-wake state,
+and bounded sleep-wake cycle provenance.
+
+It does not write facts, relations, questions, attention items, learning gaps, experiment outcomes, or promoted knowledge.
+
+21. Schema Discipline
+
+The new cooperative module defines all of its columns in SCHEMA_TABLES.
+
+It provides:
+
+idempotent ensure_schema,
+_self_check_schema,
+explicit state-table creation,
+explicit cycle-table creation,
+an index on cycle identity,
+and validation before state calculation.
+
+The key-value read contract uses:
+
+return dict(con.execute("SELECT key,value FROM " + table).fetchall())
+
+The new tables are compatible with an existing BrainStem database. Missing cooperative tables are created when the new phase first executes.
+
+22. Runtime Registration
+
+The cooperative authority is registered in:
+
+ki_system\phase_registry.py
+
+It is positioned after the existing cortisol phase and before guarded Stage-B graduation.
+
+The relevant effective order is:
+
+Context and hypothesis-learning phases
+Phase 6a replay and meta-plasticity
+Phase 6b replay effectiveness
+Phase 6c bias persistence and self-regulation
+Phase 6d saturation homeostasis
+Phase 7a adenosine homeostasis
+Phase 7b endocannabinoid regulation
+Phase 7b1 wake-chain bridge
+Runtime acceleration layers
+Phase 7c E/I balance and sigmoid soft clipping
+Phase 7d slow-wave sleep
+Phase 7e histamine
+Phase 7f orexin
+Phase 7g BDNF
+Phase 7cort stability and cortisol
+Cooperative six-core and sleep-wake authority
+Guarded Stage-B graduation
+Shadow recheck runtime
+Stage-B gapflow runtime contract
+
+The guarded Stage-B wrapper explicitly invokes the cooperative authority so that later wrappers do not bypass the new phase.
+
+23. Validation Status
+
+The updated source package contains 66 Python files.
+
+Completed checks
+Base64 project extraction: passed
+Extracted project sections: 65
+Base64 decoding errors: 0
+Updated Python modules: 66
+Full Python compilation: passed
+Python compilation errors: 0
+Cooperative schema creation: passed
+Cooperative schema self-check: passed
+SQLite state-write test: passed
+Six-core before/after delta test: passed
+Sleep-score calculation: passed
+Hysteresis-state persistence: passed
+Runtime registry check: passed
+Stage-B wrapper-chain check: passed
+Phase-7d cooperative entry check: passed
+GUI cooperative-state check: passed
+Efraimidis-Spirakis presence check: passed
+Sigmoid soft-clipping presence check: passed
+Functional test result
+
+Using representative existing BrainStem states, the isolated SQLite test produced measurable changes in all six core neuromodulators:
+
+Dopamine: +0.051120
+Serotonin: +0.049554
+Glutamate: +0.000718
+GABA: +0.033592
+Noradrenaline: -0.032850
+Acetylcholine: -0.026370
+
+The calculated sleep score was:
+
+0.5262
+
+This remained below the default sleep-entry threshold of 0.62, so the test correctly retained the wake state.
+
+The test confirms that the regulator can change all six values without forcing a sleep transition.
+
+24. Stability and Drift Status
+
+The historical 1,344-cycle drift validation applied to an earlier project state.
+
+Because the current project contains later architectural changes, including:
+
+runtime integration work,
+updated GUI behavior,
+cooperative six-core regulation,
+and cooperative sleep-wake authority,
+
+the earlier drift result must not be treated as a validation of the current build.
+
+A new full stability and drift validation remains required before the current architecture can be declared fully Stage-B ready.
+
+Such a validation should be performed on a frozen release candidate rather than after every small change.
+
+25. Known Development Boundaries
+
+The current source package has been validated through compilation and an isolated SQLite functional test.
+
+The supplied project export did not include the productive ki_memory.sqlite3 database. Therefore, the following require validation in the live project environment:
+
+actual six-core deltas under the present production state,
+real sleep-score development over long runs,
+real wake-to-sleep and sleep-to-wake transitions,
+interaction with the current database history,
+long-duration GUI synchronization,
+long-duration state stability,
+and full drift behavior.
+
+These are validation requirements, not missing source components.
+
+26. Legacy and Compatibility Status
+Replaced or superseded behavior
+Adenosine as the only effective sleep-entry authority
+GUI sleep detection based only on an adenosine/histamine heuristic
+absence of a common final writer for all six core neuromodulators
+exclusive dependence of the visible core state on Phase-6a replay outputs
+Slow-wave admission based only on phase7a homeostat mode
+Retained behavior
+Adenosine homeostasis
+Phase-7c E/I balance
+Sigmoid soft clipping
+Phase-7d slow-wave processing
+Efraimidis-Spirakis weighted sampling
+Histamine regulation
+Orexin regulation
+BDNF regulation
+Cortisol stability monitoring
+Endocannabinoid retrograde regulation
+Phase-6a replay
+Phase-6b effectiveness evaluation
+Stage-B safety gates
+three-consolidation eligibility threshold
+warm-up dampening
+one-promotion-per-cycle budget
+closed fact-promotion path
+no word blacklists
+no direct fact, relation, or question writes
+27. Current Readiness Assessment
+Implemented
+hypothesis-centered learning architecture,
+modern phase registry,
+twelve digital neuromodulators,
+canonical six-core neuromodulator dynamics,
+cooperative sleep-wake score,
+sleep-wake hysteresis,
+adenosine fallback authority,
+histamine, orexin, BDNF, cortisol, and endocannabinoid regulation,
+E/I balancing,
+sigmoid soft clipping,
+slow-wave replay,
+Efraimidis-Spirakis sampling,
+GUI integration,
+Stage-B guarded runtime structure,
+schema-safe state persistence,
+and productive-write restrictions.
+Validated at source and isolated-runtime level
+complete compilation,
+schema materialization,
+six-core state changes,
+cooperative score calculation,
+sleep-wake state persistence,
+runtime registration,
+wrapper-chain continuity,
+and safety metadata.
+Still required before final Stage-B readiness
+validation against the live database,
+long-duration runtime observation,
+full current-build stability validation,
+full current-build drift validation,
+verification of repeated natural cooperative sleep transitions,
+and confirmation that the six neuromodulators remain responsive without unstable oscillation or artificial drift.
+28. Current Project Summary
+
+BrainStem is currently a self-learning, hypothesis-centered language and text understanding system with a phase-based autonomous runtime.
+
+The project now has:
+
+a unified dynamic authority for the six core neuromodulators,
+a cooperative and biologically inspired sleep-wake decision,
+preservation of the adenosine homeostat,
+preserved glutamate-GABA E/I control,
+preserved sigmoid soft clipping,
+preserved Efraimidis-Spirakis slow-wave selection,
+integrated histamine, orexin, BDNF, cortisol, and endocannabinoid regulation,
+a GUI connected to the canonical neuromodulator and sleep state,
+and guarded preparation for Stage-B hypothesis graduation.
+
+The current build is technically integrated and passes source-level and isolated SQLite validation. It should now be treated as the candidate basis for live database testing and a new full stability and drift validation.
+
+Overall status: Integrated current-build candidate, safety gates preserved, live-system and long-duration validation pending.
