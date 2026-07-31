@@ -11,6 +11,12 @@ from ki_system.autonomous import AutonomousLoop
 from ki_system.dialogue import DialogueManager
 from ki_system.search import semantic_search, answer
 
+# BEGIN BRAINSTEM CANONICAL PER-CYCLE RUNTIME STARTUP ACTIVATION V1.1
+# Startup-only activation. The imported bridge remains shadow-only.
+import importlib as _brainstem_runtime_importlib
+_brainstem_runtime_importlib.import_module("ki_system.v8_non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1")
+# END BRAINSTEM CANONICAL PER-CYCLE RUNTIME STARTUP ACTIVATION V1.1
+
 NEURO_CORE = ["dopamine", "serotonin", "glutamate", "gaba", "noradrenaline", "acetylcholine"]
 NEURO_NEW = ["adenosine", "endocannabinoid", "cortisol", "histamine", "orexin", "bdnf"]
 NEURO_LABELS = {
@@ -107,9 +113,12 @@ def read_all_neuromods(con):
         "cortisol": _kv(con, "cortisol_state").get("last_regime", "n/a"),
         "histamine": _kv(con, "phase7e_histamine_state").get("last_regime", "n/a"),
     }
-    asleep = ((vals["adenosine"] >= 0.6 and vals["histamine"] <= 0.45)
-              or regimes["histamine"] == "sleep_permissive")
+    cooperative = _kv(con, "cooperative_sleep_wake_state")
+    cooperative_mode = str(cooperative.get("state", "")).strip().lower()
+    asleep = (cooperative_mode == "sleep") if cooperative_mode in ("wake", "sleep") else ((vals["adenosine"] >= 0.6 and vals["histamine"] <= 0.45) or regimes["histamine"] == "sleep_permissive")
     regimes["_asleep"] = bool(asleep)
+    regimes["sleep_authority"] = "cooperative" if cooperative_mode in ("wake", "sleep") else "legacy_fallback"
+    regimes["sleep_score"] = cooperative.get("sleep_score", "n/a")
     return vals, regimes
 
 def compute_mood(vals, regimes):
@@ -217,6 +226,11 @@ class App(tk.Tk):
         self._cov_cache = None
         self._cov_ts = 0.0
         self._ui()
+        self._gui_pending = []
+        self._gui_pending_lock = threading.Lock()
+        self._gui_pump_scheduled = True
+        self._refresh_running = False
+        self.after(50, self._gui_pump)  # GUI_MAINLOOP_STABILIZATION_V1_1
         self._create_floating_head()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.refresh()
@@ -491,7 +505,7 @@ class App(tk.Tk):
                 self.log.see(tk.END)
             except Exception:
                 pass
-        self.after(0, _do)
+        self._gui_enqueue(_do)
     def _cycle_diag_text(self, n, step):
         import sqlite3
         lines = ["=== Autonomer Zyklus %d / Schritt %d ===" % (n, step)]
@@ -535,12 +549,11 @@ class App(tk.Tk):
             lines.append("(Diagnose nicht verfuegbar: " + str(e) + ")")
         return "\n".join(lines)
     def progress(self, c, t, msg=""):
-        if self.mode == "learn":
-            return
-        self.after(0, lambda: (self.bar_cycle.configure(value=(c / max(1, t)) * 100),
-                               self.status.configure(text="%s/%s %s" % (c, t, msg))))
+        # BRAINSTEM GUI FIVE STEP PROGRESS FIX V1
+        # Preserve real backend substep callbacks in learn/auto mode.
+        self._gui_enqueue(lambda: (self.bar_cycle.configure(value=c / max(1, t) * 100), self.status.configure(text='%s/%s %s' % (c, t, msg))))
     def _set_cycle_bar(self, step, total):
-        self.after(0, lambda: self.bar_cycle.configure(value=(step / max(1, total)) * 100))
+        self._gui_enqueue(lambda: self.bar_cycle.configure(value=step / max(1, total) * 100))
     def _corpus_stats(self):
         now = time.time()
         if self._cov_cache is not None and (now - self._cov_ts) < 10.0:
@@ -600,7 +613,7 @@ class App(tk.Tk):
             self.auto_stop_btn.configure(state=tk.NORMAL if r else tk.DISABLED)
             if hasattr(self, "reset_btn"):
                 self.reset_btn.configure(state=tk.DISABLED if r else tk.NORMAL)
-        self.after(0, _apply)        
+        self._gui_enqueue(_apply)        
     def auto_start(self):
         if self.auto_running:
             return
@@ -619,6 +632,19 @@ class App(tk.Tk):
             except Exception: pass
         self.println("Stop-Anforderung gesetzt.")
     def _auto_worker(self):
+        # BEGIN BRAINSTEM MERGED HISTORICAL FIVE-EVALUATION WORKER V1
+        # BEGIN BRAINSTEM LATE RUNTIME REPATCH V1.2
+        # Re-apply after all later phase autoloads have replaced AutonomousLoop.cycle.
+        import importlib as _brainstem_late_importlib
+        _brainstem_late_runtime = _brainstem_late_importlib.import_module("ki_system.v8_non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1")
+        # The class marker can be stale when a later phase replaces AutonomousLoop.cycle.
+        from ki_system.autonomous import AutonomousLoop as _brainstem_late_loop
+        _brainstem_patch_marker = "_brainstem_per_cycle_runtime_provenance_fix_v1"
+        _brainstem_current_cycle = getattr(_brainstem_late_loop, "cycle", None)
+        if not hasattr(_brainstem_current_cycle, "__wrapped__") and hasattr(_brainstem_late_loop, _brainstem_patch_marker):
+            delattr(_brainstem_late_loop, _brainstem_patch_marker)
+        _brainstem_late_runtime.autoload(_brainstem_late_loop)
+        # END BRAINSTEM LATE RUNTIME REPATCH V1.2
         n = 0
         self.mode = "learn"
         try:
@@ -632,11 +658,11 @@ class App(tk.Tk):
                         break
                     self.auto_loop.cycle()
                     backend_step = (n - 1) * 5 + step + 1
-                    if backend_step % 25 == 0:
-                        self.println(self._cycle_diag_text(n, step + 1))
-                    if backend_step % 5 == 0 or step == 4:
-                        self._set_cycle_bar(step + 1, 5)
-                        self.refresh()
+                    # GUI_FIVE_EVALUATION_CONTRACT_FIX_V1: diagnose every real subcycle
+                    self.println(self._cycle_diag_text(n, step + 1))
+                    # GUI_FIVE_EVALUATION_CONTRACT_FIX_V1: render every real subcycle
+                    self._set_cycle_bar(step + 1, 5)
+                    self.refresh()
                 self.auto_loop = None
                 for _ in range(10):
                     if self.auto_stop:
@@ -688,7 +714,7 @@ class App(tk.Tk):
         if self.mood_name is not None:
             self.mood_name.configure(text=name)
     def refresh(self):
-        self.after(0, self._refresh)
+        self._gui_enqueue(self._refresh)
     def _drift_tab(self):
         f = self.tabs["Drift-Report"]
         self.drift_running = False
@@ -870,6 +896,29 @@ class App(tk.Tk):
                 self.after(2000, self._refresh)
             except Exception:
                 pass
+
+
+    def _gui_enqueue(self, callback):
+        if not callable(callback): return
+        lock=getattr(self, '_gui_pending_lock', None)
+        if lock is None: return
+        with lock:
+            if len(self._gui_pending)>=256: del self._gui_pending[:-128]
+            self._gui_pending.append(callback)
+
+    def _gui_pump(self):
+        batch=[]; lock=getattr(self, '_gui_pending_lock', None)
+        if lock is not None:
+            with lock:
+                if self._gui_pending:
+                    batch=self._gui_pending[-32:]; self._gui_pending.clear()
+        for callback in batch:
+            try: callback()
+            except Exception as exc:
+                try: print('[GUI_PUMP_ERROR]',repr(exc))
+                except Exception: pass
+        try: self.after(50,self._gui_pump)
+        except Exception: self._gui_pump_scheduled=False
 
 def main():
     App().mainloop()

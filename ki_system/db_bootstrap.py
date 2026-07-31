@@ -705,6 +705,8 @@ PHASE_REGISTRY: List[Tuple[str, str]] = [
     ("v8_phase7b_endocannabinoid_retrograde_gain_control_release", "phase7b"),
     ("v8_stageb_guarded_hypothesis_graduation_release", "stageb_graduation"),
     ("v8_stageb_gapflow_runtime_contract_release", "stageb_ef"),
+
+    ('v8_non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1', 'non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1'),  # CANONICAL_AUTOLOAD_SHADOW_RUNTIME_SCHEMA_V1
 ]
 
 def register_phase_module(module_name, phase_name):
