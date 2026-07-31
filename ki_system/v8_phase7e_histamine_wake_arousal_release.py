@@ -141,7 +141,8 @@ def run_phase7e_cycle(db_or_obj=None, cycle_index=None):
     reciprocal_gate = _clamp(histamine_level - ade + 0.5)
     wake_hi = _get_p(con, "wake_gate_high", 0.65); sleep_lo = _get_p(con, "sleep_gate_low", 0.35)
     phase7a_state = _read_kv(con, "phase7a_adenosine_state") if _table_exists(con, "phase7a_adenosine_state") else {}
-    canonical_mode = str(phase7a_state.get("homeostat_mode", "wake")).strip().lower()
+    cooperative_state = _read_kv(con, "cooperative_sleep_wake_state") if _table_exists(con, "cooperative_sleep_wake_state") else {}
+    canonical_mode = str(cooperative_state.get("state", phase7a_state.get("homeostat_mode", "wake"))).strip().lower()
     if canonical_mode == "sleep":
         regime = "sleep_permissive"
     elif canonical_mode == "wake" and histamine_level >= wake_hi and histamine_level > ade:

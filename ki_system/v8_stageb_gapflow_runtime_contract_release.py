@@ -82,7 +82,8 @@ def managed_cycle(self,progress=None):
     try:
         from ki_system import v8_stageb_guarded_hypothesis_graduation_release as m;downstream=m.managed_cycle(self,progress)
     except Exception as exc:downstream={"status":"downstream_error","error":str(exc)}
-    try:result=observe_cycle(self)
+    # BRAINSTEM CALLBACK PROPAGATION FIX V1
+    try:result=observe_cycle(self, progress)
     except Exception as exc:result={"phase":PHASE,"status":"error","error":type(exc).__name__+":"+str(exc),"productive_writes":0}
     return {"phase":PHASE,"downstream_result":downstream,"stageb_runtime_contract_result":result}
 def managed_run(self,cycles=1,progress=None):return {"phase":PHASE,"results":[managed_cycle(self,progress) for _ in range(max(1,int(cycles or 1)))]}

@@ -383,11 +383,14 @@ def run_phase7d_cycle(db_or_obj=None, cycle_index=None):
     neuromod = _read_neuromod(con); ade = _get_adenosine_level(con)
     phase7a_state = _read_kv(con, "phase7a_adenosine_state") if _table_exists(con, "phase7a_adenosine_state") else {}
     canonical_mode = str(phase7a_state.get("homeostat_mode", "wake")).strip().lower()
-    if canonical_mode == "sleep":
+    cooperative_state = _read_kv(con, "cooperative_sleep_wake_state") if _table_exists(con, "cooperative_sleep_wake_state") else {}
+    cooperative_mode = str(cooperative_state.get("state", "wake")).strip().lower()
+    if canonical_mode == "sleep" or cooperative_mode == "sleep":
         sw = _run_slow_wave_sleep(con, cycle_index, neuromod, ade); status = "slow_wave_sleep_executed"
+        sw["entry_authority"] = "cooperative" if cooperative_mode == "sleep" else "adenosine_homeostat"
     else:
-        sw = {"skipped": True, "reason": "canonical_phase7a_mode_is_wake", "adenosine": ade,
-              "canonical_homeostat_mode": canonical_mode}; status = "awake_no_slow_wave"
+        sw = {"skipped": True, "reason": "canonical_and_cooperative_modes_are_wake", "adenosine": ade,
+              "canonical_homeostat_mode": canonical_mode, "cooperative_mode": cooperative_mode}; status = "awake_no_slow_wave"
     for k, v in [("cycle_count", cycle_index), ("last_cycle_at", _now()), ("phase", PHASE), ("phase_version", PHASE_VERSION),
                  ("learning_mode", LEARNING_MODE), ("no_word_blacklists", True), ("direct_fact_writes", "disabled"),
                  ("direct_relation_writes", "disabled"), ("fact_promotion", "disabled"), ("slow_wave_sleep", True)]:

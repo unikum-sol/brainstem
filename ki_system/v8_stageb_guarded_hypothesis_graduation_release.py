@@ -127,7 +127,7 @@ def run_graduation_cycle(obj=None,cycle_index=None):
 def managed_cycle(self,progress=None):
     downstream=None
     try:
-        from ki_system import v8_phase7cort_stability_watch_release as m
+        from ki_system import v8_cooperative_core_neuromodulator_sleep_authority_release as m
         downstream=m.managed_cycle(self,progress)
     except Exception as exc: downstream={"status":"downstream_error","error":str(exc)}
     try: result=run_graduation_cycle(self)
