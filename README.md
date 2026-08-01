@@ -247,7 +247,7 @@ The Slow-Wave result records whether entry was authorized by `adenosine_homeosta
 
 The underlying Phase-7d slow-wave mechanism remains intact, including oscillations, candidate reactivation, adaptive thresholds, anchor interleaving, participation requirements, consistency-based survival, reinforcement, weakening, and GABA/glutamate-dependent selection pressure.
 
-#### Efraimidis-Spirakis Sampling
+### Efraimidis-Spirakis Sampling
 
 Efraimidis-Spirakis weighted sampling without replacement remains active in Phase 7d.
 
