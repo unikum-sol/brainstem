@@ -31,7 +31,7 @@ BrainStem is a biologically inspired, Real Neuro-Symbolic (RNS-AI) cognitive arc
 
 [![BrainStem Project AI conversation](https://img.youtube.com/vi/4nN7zELSAMo/mqdefault.jpg)](https://www.youtube.com/watch?v=4nN7zELSAMo)
 
-YouTube - BrainStem Project AI conversation 22.07.26
+YouTube - AI conversation about BrainStem Project
 
 ---
 
