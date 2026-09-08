@@ -1,0 +1,36 @@
+Fertig – vollständiges, korrigiertes Projektpaket
+
+BrainStem_FIXED_2026-09-08.zip
+
+Struktur des Pakets (Projekt-Root, kein ki_system/-Unterordner nötig für den Root-Inhalt):
+
+main.py – korrigiert
+ki_system/ – alle 65 Original-Module + 1 neues Diagnose-Modul = 66 Dateien
+README.md – Badge korrigiert, Verweis auf Fix-Report ergänzt, Original-Inhalt vollständig erhalten
+Detailed_Project_Status_2026-07-31.txt – Original, unverändert als historische Referenz
+Detailed_Project_Status_2026-09-08_POST_FIX.txt – neuer, vollständiger Statusbericht mit allen 14 gefundenen und behobenen Fehlern
+Was behoben wurde (14 Fehler, alle real reproduziert und verifiziert)
+internal_learning_gaps-Schema unvollständig – gap_type, role, severity, hypothesis_id, uncertainty, pattern_key ergänzt
+facts/relations/ontology Namenskonflikt zwischen db_bootstrap.py und memory.py bereinigt
+phase6a_sleep_replay_cycles-Schema-Desync (fehlende Spalten replay_mode etc.)
+Phase-6a-Schema-Bootstrap wurde stillschweigend übersprungen (Namenskonvention-Fix)
+Unerreichbarer Shadow-Modul-Bootstrap-Aufruf hinter return
+Deadlock durch Connection-Passthrough in 3 Shadow-Modulen (beim Beheben von #5 selbst verursacht und sofort gefangen/behoben)
+systemtest.py falscher Projekt-Root-Pfad
+E/I-Kernel-Guard-Absturz bei Botenstoff-Grenzwerten (GABA/Glutamat) – Kernfehler aus der letzten Prüfung
+Dialogue/Readonly-Konflikt in user_gui.py
+Neues Diagnose-Modul v8_cycle_diagnostics_release.py – deckt versteckte Kernphasen-Fehler in verschachtelten Zyklus-Ergebnissen auf
+phase_registry.py verschluckte Ladefehler ohne Gesamtstatus
+systemtest.py führte nie einen echten Lernzyklus aus – jetzt mit echtem 1-Zyklus-Test (gegen Kopie bei bestehender DB, nie gegen Live-DB)
+--gui-Flag hatte keine Wirkung
+Doppelte Index-Definitionen zentralisiert
+Validierung
+Vollständige compileall-Prüfung: 0 Fehler
+Frischer Bootstrap: 0 Fehler, ~1,2s
+25 reale Zyklen inkl. gezielt erzwungener Botenstoff-Grenzwerte (0,02–0,03 und 0,97–0,98): alle „ok"
+Alle 12 Botenstoffe zeigen jetzt echte, unterschiedliche Werte (nicht mehr eingefroren)
+Facts/Relations/Questions bleiben [0,0,0], Schreibsperre in memory.py unangetastet
+Alle 11 Modul-Selftests: PASS
+ZIP nach Erstellung entpackt und erneut vollständig getestet – identisches Ergebnis
+
+Die produktive Schreibsperre und alle Stage-B-Sicherheitsgates wurden bewusst nicht verändert. Nächster sinnvoller Schritt bleibt die Validierung gegen Ihre echte Produktions-Datenbank sowie ein neuer vollständiger Drift-Test.

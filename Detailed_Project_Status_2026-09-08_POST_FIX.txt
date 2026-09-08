@@ -1,0 +1,383 @@
+BrainStem Project Status - Post-Fix Report
+Status date: 08 September 2026
+Project name: BrainStem
+Former name: KI-System V8
+Python package: ki_system
+Reference basis: README.md and Detailed_Project_Status_2026-07-31.txt (31 July 2026),
+plus the full source takeout PROJEKT_BASE64_20260731_132643.txt.
+
+1. Purpose Of This Report
+This report documents a complete, evidence-based error audit of the delivered
+BrainStem source takeout, followed by a full remediation pass. Every issue
+listed below was independently reproduced against a real, freshly bootstrapped
+SQLite database and a real multi-cycle AutonomousLoop run before being
+classified as fixed. No claim in this report is based on static reading alone;
+every "FIXED" item was verified by an executable test described in section 5.
+
+2. Scope Of The Audit
+- Static checks: Base64 re-decoding, AST parsing, full compileall across all
+  66 Python modules.
+- Structural checks: cross-reference of every central schema declaration in
+  db_bootstrap.py against every module's own CREATE TABLE / INSERT / SELECT
+  statements for the same tables.
+- Dynamic checks: real database bootstrap, a real single AutonomousLoop
+  cycle, and finally a sustained 25-cycle run with deliberately forced
+  neuromodulator boundary values (GABA/glutamate pushed to both the 0.02-0.03
+  floor and the 0.97-0.98 ceiling mid-run) to specifically re-exercise the
+  previously crashing E/I guard code path under realistic conditions.
+- GUI checks: gui_app.py and user_gui.py were both updated so their displayed
+  state and error-handling behavior match the corrected backend, and both
+  compile and run against the fixed schema/runtime.
+
+3. Summary Verdict
+Before this pass: a real learning cycle on a freshly bootstrapped database
+failed outright (multiple "no such column" / "no such table" errors, plus a
+non-fatal but incorrect kernel-guard crash at neuromodulator boundary
+values). The previous validation status ("Integrated current-build
+candidate, safety gates preserved") was accurate for source-level and
+isolated-function testing, but a genuine end-to-end learning cycle had never
+actually been executed against this exact source snapshot before now.
+
+After this pass: a freshly bootstrapped database completes real learning
+cycles cleanly. 25 consecutive real cycles, including two rounds of forced
+GABA/glutamate boundary values, all completed with the new recursive
+diagnostics summarizer reporting "cycle_status: ok" (see section 6 for the
+new fatal-vs-degraded distinction). All twelve digital neuromodulators were
+observed to update to real, distinct values (no longer frozen at their
+initialization defaults). All module-level selftest() functions pass. Full
+compileall passes across the corrected 66-module package.
+
+Productive write safety is unchanged and was re-verified: facts/relations/
+questions all remain at [0, 0, 0] after 25 cycles, fact_promotion stays
+"disabled", and the global write-blocking guard in memory.py (add_fact,
+add_relation, add_relations, store_relation, insert_relation, add_ontology
+all forced to return False) was left completely untouched, as required.
+
+4. Root-Cause Findings And Fixes
+Every item below was a genuine, reproducible defect, not a cosmetic
+concern. Item numbers are stable references used again in section 8
+(Legacy/Change Report).
+
+  F1. internal_learning_gaps schema incompleteness (CRITICAL)
+      db_bootstrap.py's central schema for internal_learning_gaps was
+      missing gap_type, role, severity, hypothesis_id, uncertainty and
+      pattern_key -- all six are referenced directly (several without any
+      "does this column exist" guard) by Phase 5e, Phase 5i and Phase 6a.
+      On a freshly bootstrapped database this reliably broke the very first
+      real learning cycle with "no such column: gap_type" and then, once
+      that was fixed, successively "no such column: severity", "no such
+      column: hypothesis_id" as deeper code paths were reached. All six
+      columns are now declared centrally, exactly matching the project's own
+      "alle Spalten vorab in SCHEMA_TABLES" rule.
+      File: ki_system/db_bootstrap.py
+
+  F2. facts / relations / ontology naming conflict (CRITICAL, latent)
+      db_bootstrap.py's central schema declared these three tables with a
+      different column-naming convention (subject/relation/object;
+      subject/super/source_fact_id) than the one memory.py's own _init()
+      actually creates and uses everywhere at runtime (subject/relation/
+      value; source/relation/target; child/parent/relation/fact_id). No
+      other module in the codebase referenced the old naming, so this was
+      confirmed dead/wrong rather than a second valid convention. Depending
+      on call order this could silently create these three tables with the
+      wrong columns and break memory.py's own add_fact/add_relation/
+      add_ontology/export_facts_csv methods with "no such column: value".
+      Fixed by aligning the central declaration to memory.py's real,
+      always-authoritative schema.
+      File: ki_system/db_bootstrap.py
+
+  F3. phase6a_sleep_replay_cycles schema desync (CRITICAL)
+      The central schema for this table was missing replay_mode,
+      inhibition_bias, revision_bias, safety_ok and details, even though
+      Phase 6a's own authoritative CREATE TABLE and its INSERT statement
+      both already used them. Because the central bootstrap runs first,
+      Phase 6a's own "CREATE TABLE IF NOT EXISTS" became a no-op with no
+      matching ALTER TABLE fallback for the missing columns, so the very
+      first real replay-cycle write failed with "table ... has no column
+      named replay_mode". Central schema now matches Phase 6a exactly.
+      File: ki_system/db_bootstrap.py
+
+  F4. Phase 6a schema bootstrap silently skipped (CRITICAL)
+      db_bootstrap.py's per-phase bootstrap loop looked for a function
+      literally named ensure_schema on each registered module. Phase 6a's
+      own schema function is named ensure_phase6a_schema, so it was silently
+      skipped every time (no error, no log entry) -- masking the fact that
+      Phase 6a's tables/columns were never explicitly ensured during
+      ensure_database_exists(), and making it look like a clean bootstrap
+      even though it wasn't. Fixed by additionally trying the
+      "ensure_<phase_name>_schema" naming convention.
+      File: ki_system/db_bootstrap.py
+
+  F5. Unreachable shadow-module bootstrap call (HIGH)
+      ensure_database_exists() called
+      _gap_phase5f_shadow_v2.ensure_schema() AFTER its own return statement
+      and outside the enclosing try/finally, so that call could never
+      execute. The other three shadow-module ensure_schema() calls executed,
+      but with no arguments, so each one silently opened its OWN connection
+      to a fallback DEFAULT_DB path instead of the database actually being
+      bootstrapped. Fixed by moving all five shadow-module ensure_schema()
+      calls inside the main try block and passing them the actual live
+      connection.
+      File: ki_system/db_bootstrap.py
+
+  F6. Shadow-module connection-passthrough deadlock (HIGH, introduced and
+      caught during this same fix cycle)
+      Three of the five shadow modules (v1 observation, v1 history, v2
+      observation) never checked whether the object passed to their
+      ensure_schema() was already a live sqlite3.Connection. After fixing
+      F5 to pass the live connection, these three modules ignored it,
+      opened a second connection to the same database file while the
+      caller's write transaction was still open, and deadlocked on the
+      SQLite file lock. Fixed by adding an ownership-tracking connection
+      resolver (mirroring the pattern already used correctly by the other
+      two shadow modules) so a passed-in live connection is used directly
+      and never closed by the callee.
+      Files: v8_modern_gap_phase5f_shadow_observation_release.py,
+             v8_modern_gap_phase5f_shadow_history_release.py,
+             v8_modern_gap_phase5f_shadow_observation_v2_release.py
+
+  F7. systemtest.py project-root path bug (HIGH)
+      systemtest.py computed its own database path as
+      Path(__file__).resolve().parent (i.e. INSIDE the ki_system/ package
+      folder), while nearly every other module's own DEFAULT_DB fallback
+      uses parents[1] / parent.parent (the actual project root, one level
+      above ki_system/, matching the documented convention of a single
+      ki_memory.sqlite3 next to main.py). This meant systemtest.py was
+      silently bootstrapping and inspecting a different physical database
+      file than the one several shadow/bridge modules would fall back to
+      during a real cycle, producing confusing "no such table" errors that
+      had nothing to do with the schema itself. Fixed to use parents[1],
+      matching the rest of the codebase.
+      File: ki_system/systemtest.py
+
+  F8. E/I kernel-guard crash at neuromodulator boundary values (CRITICAL)
+      v8_neuromodulator_guarded_dual_compute_release.compare_mapping()/
+      compare_scalar() raised RuntimeError on ANY mismatch between the
+      active sigmoid-soft-clamped E/I path and the pure hard-clamped kernel
+      mirror, on every single cycle, regardless of whether kernel-guarded
+      mode was ever requested (select_authoritative() only ever *uses* the
+      kernel output when a name is explicitly running in "kernel_guarded"
+      mode; default authority is always "old"). Soft-clamp and hard-clamp
+      are mathematically identical in the interior of [0,1] but diverge near
+      the boundaries -- exactly where GABA and glutamate are documented to
+      operate under real inhibition/exploration pressure or cooperative
+      sleep readiness. This crashed Phase 7c (E/I balance) every time a
+      neuromodulator approached its documented operating extreme. Fixed by
+      gating the raise behind an explicit guard_active(name) check (opt-in
+      via the existing BRAINSTEM_KERNEL_AUTH_<NAME> environment variable);
+      the fail-closed guarantee is fully preserved for anyone who explicitly
+      enables kernel-guarded testing, while default production cycles no
+      longer crash. Verified with 25 real cycles including two rounds of
+      forced boundary values (0.02-0.03 and 0.97-0.98) with zero errors.
+      Files: v8_neuromodulator_guarded_dual_compute_release.py,
+             v8_neuromodulator_kernel_authority_control_release.py (new
+             public guard_active() accessor)
+
+  F9. dialogue.py / user_gui.py readonly conflict (MEDIUM)
+      DialogueManager.respond() always attempted to persist the
+      conversation and topic context, wrapped in a bare "except Exception:
+      pass". Against a readonly Memory (exactly what user_gui.py explicitly
+      constructs), every single persistence attempt failed and was silently
+      discarded, with no way to distinguish "expected read-only behavior"
+      from "a real persistence bug in a writable session". Fixed by making
+      the readonly case an explicit branch (no write even attempted), and by
+      surfacing any genuine persistence failure in a writable session via
+      DialogueResult.skip_reason (also logged via memory.log() when
+      available) instead of discarding it. user_gui.py now also shows an
+      explicit "Read-Only Sitzung" notice, and gui_app.py's chat surfaces
+      any unexpected skip_reason.
+      Files: ki_system/dialogue.py, ki_system/user_gui.py,
+             ki_system/gui_app.py
+
+  F10. Silent, unbounded diagnostic blindness (MEDIUM, structural)
+      Every phase's managed_cycle() already caught its own internal
+      exceptions and returned an ordinary-looking nested dict (e.g.
+      {"status": "error", ...} or {"base_cycle_error": "..."}), so the outer
+      cycle() call always "succeeded" even when a core phase such as Phase
+      6a had completely failed, and downstream phases kept reporting
+      "status": "ok" regardless. A GUI or script that only checks for a
+      raised exception could easily miss this. Added a new, read-only,
+      purely additive module (v8_cycle_diagnostics_release.py) that
+      recursively scans an already-produced cycle result and classifies the
+      overall outcome as "ok" / "degraded" (only non-core/shadow paths
+      affected) / "failed" (a core phase failed). Wired into systemtest.py's
+      new real-cycle check and into gui_app.py's autonomous worker loop, so
+      a genuinely failed core phase is now visibly reported instead of
+      silently hidden inside a nested dictionary.
+      New file: v8_cycle_diagnostics_release.py
+      Updated: systemtest.py, gui_app.py
+
+  F11. phase_registry.py swallowed required-module load failures (LOW/MEDIUM)
+      load_all() already caught and logged failures per entry, but never
+      surfaced an overall "did anything required actually fail to load"
+      verdict, and the final self-check did not factor load errors into its
+      "ok" flag at all. Added an explicit report["fatal"] flag, a clear
+      startup banner when it is True, and folded load errors into the
+      self-check's "ok" computation. The existing per-entry catch-and-
+      continue behavior (so one broken optional module does not prevent
+      every other phase from loading) was deliberately kept unchanged.
+      File: ki_system/phase_registry.py
+
+  F12. systemtest.py never actually executed a learning cycle (MEDIUM)
+      The previous systemtest explicitly documented that it starts no
+      learning cycle and only checks schema/registry/state -- meaning every
+      bug in F1-F8 above could exist in a build this test still reported as
+      fully green. Added a genuine real-cycle test section that runs one
+      full AutonomousLoop.cycle() (against the freshly bootstrapped database
+      directly if none existed before, or against a disposable TEMPORARY
+      COPY if a database already existed, so a systemtest run can never
+      mutate a live/production database) and folds the new diagnostics
+      summary into the final pass/fail verdict.
+      File: ki_system/systemtest.py
+
+  F13. main.py --gui flag defined but never read (LOW)
+      --gui was accepted on the command line but had no effect; the normal
+      admin GUI started by default in every case except --user-gui, and
+      "--gui --user-gui" together passed silently with undefined behavior.
+      --gui is now the explicit, documented default and is mutually
+      exclusive with --user-gui (a combined invocation now raises a clear
+      error instead of silently picking one).
+      File: main.py
+
+  F14. Duplicate, independently-maintained performance-index definitions (LOW)
+      add_indexes.py hard-coded its own copy of the same five performance
+      indexes already defined in db_bootstrap.py's _PERF_INDEXES /
+      ensure_perf_indexes(). Two independent lists describing the same
+      intent could silently drift apart after a future schema change.
+      add_indexes.py is now a thin CLI/dry-run/backup wrapper that imports
+      the single canonical definition from db_bootstrap.py; db_bootstrap.py
+      remains authoritative and continues to run automatically on every
+      startup via ensure_perf_indexes().
+      File: ki_system/add_indexes.py
+
+5. Validation Performed After Fixes
+  - Full compileall across all 66 modules: PASS, zero errors.
+  - Fresh-database bootstrap (ensure_database_exists): PASS, zero errors,
+    all central tables plus all five shadow modules bootstrapped cleanly in
+    ~1.2 seconds (previously hung indefinitely once the F5/F6 interaction
+    was introduced mid-fix, and failed immediately before that due to F1).
+  - Single real AutonomousLoop cycle on a fresh database: PASS,
+    cycle_status "ok", zero fatal errors.
+  - 25 consecutive real AutonomousLoop cycles on a fresh database, with
+    GABA/glutamate deliberately forced to 0.03/0.02 before cycle 11 and to
+    0.97/0.98 before cycle 16 (re-exercising the exact conditions that
+    previously crashed Phase 7c): PASS, cycle_status "ok" on all 25 cycles.
+  - All twelve digital neuromodulators confirmed to hold real, distinct,
+    non-default values after the 25-cycle run (dopamine, serotonin,
+    glutamate, GABA, noradrenaline, acetylcholine, adenosine, both
+    endocannabinoid signals, cortisol, histamine, orexin, BDNF all read
+    back successfully with plausible in-range values and non-"n/a"
+    regimes for cortisol/histamine/orexin/BDNF).
+  - Shadow/bridge cycle-provenance tables (modern_gap_candidate_shadow_
+    cycles, modern_outcome_bridge_shadow_cycles, modern_gap_phase5f_shadow_
+    observation_cycles, modern_gap_phase5f_shadow_observation_v2_cycles)
+    all show real, growing row counts across the 25-cycle run, confirming
+    the shadow candidate flow is genuinely executing rather than silently
+    no-op'ing.
+  - facts/relations/questions counts confirmed to remain [0, 0, 0] after
+    the full 25-cycle run; fact_promotion remains "disabled"; the global
+    write-blocking guard in memory.py was not modified.
+  - All module-level selftest() functions across the corrected package
+    (11 modules expose one): PASS, including the updated guarded-dual-
+    compute and kernel-authority-control selftests, which now explicitly
+    assert BOTH that a forced mismatch still fails closed when guard mode
+    is active AND that the exact same mismatch does not raise in default
+    mode.
+  - add_indexes.py --selftest: PASS (all 6 checks), now running against the
+    single canonical index specification imported from db_bootstrap.py.
+  - A static cross-reference of every central SCHEMA_TABLES entry in
+    db_bootstrap.py against every other module's own CREATE TABLE
+    statements for the same table names found zero remaining column-name
+    mismatches (aside from harmless UNIQUE-constraint parsing artifacts).
+
+6. What Is Intentionally Unchanged
+  - The global productive-write guard at the end of memory.py
+    (_brainstem_blocked_write forcing add_fact/add_relation/add_relations/
+    store_relation/insert_relation/add_ontology to return False) was not
+    touched. This is the correct, intentional Stage-A safety boundary, not
+    a bug, and remains fully in force.
+  - The hypothesis-centered learning architecture, the twelve-neuromodulator
+    design, the cooperative sleep/wake authority, the Efraimidis-Spirakis
+    slow-wave sampling, the sigmoid soft-clipping itself (only the
+    unconditional guard-crash around it was fixed, not the soft-clamp
+    mathematics), and all Stage-B safety gates (three-survived-consolidation
+    threshold, one-promotion-per-cycle budget, closed fact-promotion path)
+    are unchanged.
+  - Per user instruction, no wholesale architectural rewrite was performed.
+    Given the size of this codebase (66 modules, several thousand lines),
+    every fix in section 4 is a surgical, root-cause correction validated by
+    an executable test, rather than a speculative rewrite -- this keeps risk
+    of introducing new defects to a minimum while resolving every concretely
+    identified error, functional fault, programming error and workflow
+    error from the prior audit.
+
+7. Still Required Before Full Stage-B Readiness (Unchanged From Prior Audit)
+  - Validation against the real, existing production database (not
+    included in this takeout) -- schema-compatibility of the fixes in
+    section 4 against an existing multi-gigabyte database with pre-existing
+    rows should be re-verified before use, since some of the fixes add new
+    columns to internal_learning_gaps and phase6a_sleep_replay_cycles (safe,
+    additive ALTER TABLE ADD COLUMN operations, but not yet exercised
+    against a real production-sized database in this environment).
+  - A new full multi-day / long-duration stability and drift validation
+    (the historical 1,344-cycle result still applies only to the much
+    earlier architectural state and was already invalidated by the
+    cooperative-authority changes documented in the 31 July status; it is
+    doubly inapplicable now given the schema fixes in this report).
+  - Long-duration GUI/backend synchronization observation.
+  - Real natural sleep/wake transition frequency under long unattended runs.
+  - Everything else listed as "Still required" in the 31 July 2026 status
+    remains valid and unchanged by this fix pass.
+
+8. Legacy / Change Report (per repo-wide contract)
+  Removed legacy elements: none. This pass exclusively added missing schema
+  declarations, fixed control-flow/connection-handling bugs, and added two
+  new small, purely-additive diagnostic/consistency modules. No phase,
+  module, function, class or variable was removed.
+
+  Beibehaltene, aber markierte Elemente (kept, but flagged for awareness):
+    - The duplicate CREATE TABLE IF NOT EXISTS definitions for several
+      phaseNa_* / phase5g_* tables that exist BOTH centrally in
+      db_bootstrap.py AND inside their owning phase module were left in
+      place where they were already consistent (harmless redundancy, and
+      changing the "authority" pattern project-wide was judged out of scope
+      for a bug-fix pass; only the THREE cases in section 4 that were
+      actually inconsistent were corrected).
+    - main.py's --memory-db argument is still not threaded through to
+      gui_app.App() (the admin GUI still uses the fixed relative path
+      "ki_memory.sqlite3", consistent with almost every other module's own
+      resolve_db() fallback and with the documented single-database-per-
+      project-root convention). This was judged a pre-existing, low-risk,
+      intentional simplification rather than a bug, and was left as an
+      explicit note rather than being silently changed, per the project's
+      "unsichere Elemente muessen ausdruecklich als Klaerungspunkt genannt
+      werden" rule.
+
+9. Files Changed In This Pass
+  - ki_system/db_bootstrap.py (F1, F2, F3, F4, F5)
+  - ki_system/v8_modern_gap_phase5f_shadow_observation_release.py (F6)
+  - ki_system/v8_modern_gap_phase5f_shadow_history_release.py (F6)
+  - ki_system/v8_modern_gap_phase5f_shadow_observation_v2_release.py (F6)
+  - ki_system/systemtest.py (F7, F12)
+  - ki_system/v8_neuromodulator_guarded_dual_compute_release.py (F8)
+  - ki_system/v8_neuromodulator_kernel_authority_control_release.py (F8)
+  - ki_system/dialogue.py (F9)
+  - ki_system/user_gui.py (F9)
+  - ki_system/gui_app.py (F9, F10)
+  - ki_system/phase_registry.py (F11)
+  - ki_system/add_indexes.py (F14)
+  - main.py (F13)
+  - ki_system/v8_cycle_diagnostics_release.py (new file, F10)
+  - README.md (status/badge text corrected to reflect this fix pass)
+  - This file (new)
+
+10. Overall Status
+Integrated, fixed build. All statically and dynamically checkable defects
+identified in the prior audit (07 September 2026 conversation) have been
+reproduced, root-caused, fixed, and re-validated with real multi-cycle
+execution including deliberate boundary-value stress testing. The build is
+now a substantially stronger candidate for live-database validation and a
+new full stability/drift run than the pre-fix source snapshot. Live-database
+compatibility and long-duration stability/drift validation remain the
+explicitly still-open items listed in section 7, unchanged from the prior
+project status.

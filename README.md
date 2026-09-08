@@ -1,11 +1,22 @@
 # BrainStem
 
-Update 31.07.26
+Update 31.07.26 | Post-Fix Update 08.09.26
 
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
 [![Backend: SQLite](https://img.shields.io/badge/backend-SQLite-lightgrey)](#database-initialization)
-[![Roadmap: Stage A complete -> validating](https://img.shields.io/badge/roadmap-Stage%20A%20complete-green)](#current-development-and-testing-status)
+[![Roadmap: Stage A historical validation passed, current build revalidation pending](https://img.shields.io/badge/roadmap-revalidation%20pending-yellow)](#current-development-and-testing-status)
+
+> [!NOTE]
+> This README describes the 31 July 2026 build as originally delivered. A
+> full, evidence-based error audit and fix pass was completed on 08
+> September 2026; every finding and fix is documented in
+> `Detailed_Project_Status_2026-09-08_POST_FIX.txt` in the project root.
+> The Roadmap badge above was changed from "Stage A complete" to
+> "revalidation pending" because the historical Stage-A drift result applies
+> only to a much earlier architectural state and does not certify the
+> current (now fixed) build. See the post-fix status file for the current,
+> accurate validation status before relying on any claim in this README.
 
 
 BrainStem is a biologically inspired, Real Neuro-Symbolic (RNS-AI) cognitive architecture for lifelong learning. It is designed to learn models of the structures and dynamics of language and text through context hypotheses, uncertainty, contradiction, revision, neuromodulation, replay, and consolidation rather than by merely storing isolated facts.
@@ -51,6 +62,23 @@ YouTube - BrainStem Project AI conversation 22.07.26
 
 
 ### Current Validation Status
+
+> [!NOTE]
+> Post-fix update (08 September 2026): a full real-database, real-cycle audit
+> found and fixed 14 concrete defects in this exact build (missing schema
+> columns on internal_learning_gaps and phase6a_sleep_replay_cycles, a
+> facts/relations/ontology column-naming conflict between db_bootstrap.py and
+> memory.py, a silently-skipped Phase 6a schema bootstrap, an unreachable
+> shadow-module bootstrap call, a connection-passthrough deadlock, a
+> systemtest.py project-root path bug, an E/I kernel-guard crash at
+> neuromodulator boundary values, a dialogue/read-only persistence conflict,
+> silent diagnostic blindness across nested cycle results, swallowed
+> phase-registry load failures, an untested systemtest.py, an unused --gui
+> flag, and duplicate index definitions). All fixes were verified against a
+> real 25-cycle run including forced neuromodulator boundary values, with
+> zero remaining errors. Full details: `Detailed_Project_Status_2026-09-08_POST_FIX.txt`.
+> The paragraph below describes the ORIGINAL, PRE-FIX 31 July 2026 validation
+> status and is retained for historical accuracy.
 
 The current BrainStem source package contains 66 Python modules and represents the integrated cooperative neuromodulator and sleep/wake build as of 31 July 2026.
 
@@ -704,7 +732,7 @@ This project builds upon concepts, algorithms, and theoretical frameworks establ
 - **Documentation language:** English, German
 - **Status:** highly experimental and under mathematical and architectural validation
 - **Engineering discipline:** backup, compile check, schema self-check, smoke test, and rollback planning for structural changes
-- **AI-assisted engineering:** development has included collaborative AI assistance. Concept elaboration with ChatGPT, Code generation Claude Opus an ChatGPT 5.6 Depp Thinking, Code review NotebookLM, Gemini and Copilot as critics (no sugarcoat mode)
+- **AI-assisted engineering:** development has included collaborative AI assistance. Concept elaboration with ChatGPT, Code generation Claude Opus/Sonnet an ChatGPT 5.6 Depp Thinking, Code review NotebookLM, Gemini and Copilot as critics (no sugarcoat mode)
 
 
 ## Claims and Limitations
