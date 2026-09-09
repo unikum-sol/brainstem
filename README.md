@@ -2,6 +2,11 @@
 
 Update 31.07.26 | Post-Fix Update 08.09.26 | Live-Incident Fix 09.09.26
 
+[![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
+[![Backend: SQLite](https://img.shields.io/badge/backend-SQLite-lightgrey)](#database-initialization)
+[![Roadmap: Stage A historical validation passed, current build revalidation pending](https://img.shields.io/badge/roadmap-revalidation%20pending-yellow)](#current-development-and-testing-status)
+
 > [!NOTE]
 > 09 September 2026: Real production evidence from a 167,661-chunk live
 > database (800+ real cycles) surfaced three real, confirmed defects, all
@@ -19,10 +24,6 @@ Update 31.07.26 | Post-Fix Update 08.09.26 | Live-Incident Fix 09.09.26
 > loop. Full details, root-cause chains, and verification evidence:
 > `Detailed_Project_Status_2026-09-09_LIVE_INCIDENT_FIX.txt`.
 
-[![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
-[![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
-[![Backend: SQLite](https://img.shields.io/badge/backend-SQLite-lightgrey)](#database-initialization)
-[![Roadmap: Stage A historical validation passed, current build revalidation pending](https://img.shields.io/badge/roadmap-revalidation%20pending-yellow)](#current-development-and-testing-status)
 
 > [!NOTE]
 > This README describes the 31 July 2026 build as originally delivered. A
