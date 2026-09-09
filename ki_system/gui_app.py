@@ -11,6 +11,7 @@ from ki_system.autonomous import AutonomousLoop
 from ki_system.dialogue import DialogueManager
 from ki_system.search import semantic_search, answer
 from ki_system import v8_cycle_diagnostics_release as _cycle_diagnostics
+from ki_system import v8_wal_maintenance_release as _wal_maintenance
 
 # BEGIN BRAINSTEM CANONICAL PER-CYCLE RUNTIME STARTUP ACTIVATION V1.1
 # Startup-only activation. The imported bridge remains shadow-only.
@@ -664,7 +665,34 @@ class App(tk.Tk):
                 for step in range(5):
                     if self.auto_stop:
                         break
-                    cycle_result = self.auto_loop.cycle()
+                    # BRAINSTEM_AUTO_WORKER_CYCLE_CRASH_CONTAINMENT_FIX_V1:
+                    # self.auto_loop.cycle() previously had no exception
+                    # handling at all. A production crash at 167,661-chunk
+                    # scale showed that an uncaught sqlite3.OperationalError
+                    # ("database is locked"), originating deep inside a
+                    # non-productive audit-log write, could propagate all
+                    # the way up through the entire wrapped cycle() chain
+                    # and silently kill this background thread: the GUI
+                    # only ever showed the generic "Autonomes Dauerlernen
+                    # gestoppt." from the outer finally: block below, while
+                    # the actual exception and traceback were only visible
+                    # as an unhandled "Exception in thread brainstem-auto"
+                    # in the console -- never in the GUI itself. That
+                    # specific audit-write crash is now separately fixed at
+                    # its source (see v8_non_productive_recheck_canonical_
+                    # autoload_shadow_runtime_integration_v1.py), but this
+                    # call is now also defensively guarded so that ANY
+                    # future unexpected exception from a real cycle is
+                    # caught, fully logged to the visible GUI log with its
+                    # exact type and message, and autonomous learning stops
+                    # cleanly and visibly instead of dying silently.
+                    try:
+                        cycle_result = self.auto_loop.cycle()
+                    except Exception as cycle_exc:
+                        self.println("!! AUTONOMER ZYKLUS ABGEBROCHEN (unerwarteter Fehler) !!")
+                        self.println("   " + type(cycle_exc).__name__ + ": " + str(cycle_exc))
+                        self.auto_stop = True
+                        break
                     backend_step = (n - 1) * 5 + step + 1
                     # BRAINSTEM_GUI_DIAGNOSTICS_SURFACE_FIX_V1: previously the
                     # GUI only ever displayed database state read back after
@@ -690,6 +718,35 @@ class App(tk.Tk):
                     self._set_cycle_bar(step + 1, 5)
                     self.refresh()
                 self.auto_loop = None
+                # BRAINSTEM_WAL_CHECKPOINT_MAINTENANCE_WIRING_V1: explicitly
+                # authorized fix for the (previously unconfirmed) WAL-growth
+                # hypothesis raised after a real 167,661-chunk production
+                # run showed increasing GUI sluggishness followed by a
+                # "database is locked" failure. No module anywhere in this
+                # codebase ever explicitly checkpoints the WAL journal, and
+                # this admin GUI's own periodic self.after(2000,self._refresh)
+                # read loop is exactly the kind of long-lived reader that can
+                # prevent SQLite's automatic passive checkpointing from ever
+                # fully shrinking the on-disk -wal file during a long
+                # autonomous-learning session. A checkpoint is now run once
+                # after every completed outer ("Autonomer Dauerlern-Zyklus")
+                # GUI cycle -- i.e. every 5 real cycles -- which keeps the
+                # WAL file consistently small rather than letting it grow
+                # for hundreds of cycles before ever being reclaimed. This
+                # call is fully guarded and can never raise or interrupt
+                # autonomous learning; a failure here is only ever logged.
+                try:
+                    db_for_checkpoint = getattr(self.mem, "db", None)
+                    if db_for_checkpoint is not None:
+                        wal_result = _wal_maintenance.checkpoint_now(db_for_checkpoint, mode="TRUNCATE")
+                        if wal_result.get("status") == "ok":
+                            self.println("(i) WAL-Checkpoint: busy=%s log=%s checkpointed=%s wal_bytes %s -> %s" % (
+                                wal_result.get("busy"), wal_result.get("log_frames"), wal_result.get("checkpointed_frames"),
+                                wal_result.get("wal_file_size_bytes_before"), wal_result.get("wal_file_size_bytes_after")))
+                        else:
+                            self.println("(i) WAL-Checkpoint uebersprungen: " + str(wal_result.get("error")))
+                except Exception as wal_exc:
+                    self.println("(i) WAL-Checkpoint-Fehler (nicht kritisch): " + str(wal_exc))
                 for _ in range(10):
                     if self.auto_stop:
                         break

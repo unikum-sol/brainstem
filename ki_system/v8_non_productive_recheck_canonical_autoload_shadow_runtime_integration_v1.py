@@ -107,9 +107,52 @@ def _run_shadow(loop,args,kwargs):
         v["status"]="error";v["exception_type"]=type(exc).__name__;v["exception_text"]=str(exc)[:2000];v["result_json"]=json.dumps({"error":type(exc).__name__,"message":str(exc)},ensure_ascii=False)
         print("[NP_RECHECK_PER_CYCLE_ERROR] "+type(exc).__name__+": "+str(exc),flush=True)
     finally:
-        v["runtime_cycle_rows_after"],v["neuromod_updated_at_after"],v["neuromod_event_rows_after"]=_snapshot(con);_record(con,v)
-        # NP_RECHECK_PER_CYCLE_QUIET_SUCCESS_V1: successful cycles are persisted but not printed.
-        if owned:con.close()
+        # BRAINSTEM_NP_RECHECK_AUDIT_WRITE_CONTAINMENT_FIX_V1
+        #
+        # Root cause of a production crash observed at scale (167,661
+        # chunks, 800+ real cycles): this non-productive, audit-only module
+        # opens its OWN separate sqlite3 connection every single cycle (via
+        # _fallback_connection(), since a freshly constructed
+        # AutonomousLoop() instance normally has no reusable cached
+        # connection that _connection_from() can discover). At large
+        # database sizes, a concurrent long-running write transaction
+        # elsewhere in the same cycle (e.g. Phase 5f/5g/5i bulk experiment
+        # writes) can hold SQLite's write lock long enough that this
+        # module's own audit-log INSERT inside _record() -- which used to
+        # run completely unguarded inside this finally: block -- raises
+        # sqlite3.OperationalError: database is locked. Because that raise
+        # happened inside finally (not inside the try/except above it), it
+        # was never caught anywhere in this function. It then escaped
+        # managed_cycle() below (which wraps the ENTIRE
+        # AutonomousLoop.cycle() chain) and propagated all the way into
+        # gui_app.py's _auto_worker thread, which has no handler around
+        # self.auto_loop.cycle() either -- silently killing the entire
+        # autonomous-learning background thread. The GUI only ever showed
+        # the generic "Autonomes Dauerlernen gestoppt." from
+        # _auto_worker's own finally: block; the actual cause was only
+        # visible as an unhandled "Exception in thread brainstem-auto"
+        # traceback in the console, never surfaced anywhere in the GUI.
+        #
+        # This module is explicitly non-productive/audit-only (see project
+        # compass: shadow/telemetry writes must never be allowed to affect
+        # or interrupt the real learning cycle). A failed audit-log write
+        # is therefore now handled as a soft, logged skip: the real
+        # registered-phase result computed above is preserved unchanged;
+        # only this module's OWN bookkeeping row is skipped for that one
+        # cycle. This does NOT address the underlying lock contention
+        # itself (that requires live instrumentation to pinpoint exactly
+        # which concurrent transaction holds the lock, per the project's
+        # "erst messen, dann aendern" rule) but guarantees a transient lock
+        # here can never again crash autonomous learning.
+        try:
+            v["runtime_cycle_rows_after"],v["neuromod_updated_at_after"],v["neuromod_event_rows_after"]=_snapshot(con);_record(con,v)
+        except Exception as audit_exc:
+            print("[NP_RECHECK_PER_CYCLE_AUDIT_WRITE_SKIPPED] "+type(audit_exc).__name__+": "+str(audit_exc),flush=True)
+            if v["status"] != "error":
+                v["status"] = "audit_write_skipped"
+        if owned:
+            try:con.close()
+            except Exception:pass
     return {"phase":PHASE,"status":v["status"],"gate_reason":v["gate_reason"],"runtime_continued":True,"productive_writes":0,"phase5i_writes":0}
 
 def autoload(AutonomousLoop=None):

@@ -47,7 +47,15 @@ def _self_check_schema(c):
     if missing:raise RuntimeError('V2 schema missing '+repr(missing))
     return {'overall':True}
 def record_dual_write(con,item,now=None):
-    _self_check_schema(con);now=int(now or time.time());sk=stable_key(item['shadow_key'],item['hypothesis_id']);sf,pf=fingerprints(item);prev=con.execute('SELECT * FROM '+LATEST+' WHERE stable_observation_key=?',(sk,)).fetchone()
+    # BRAINSTEM_SELF_HEALING_SCHEMA_FIX_V1: this function called only
+    # _self_check_schema(con), which merely verifies existing columns and
+    # never creates the tables itself. ensure_schema(con) is idempotent
+    # (CREATE TABLE IF NOT EXISTS) and must run first so this function is
+    # self-sufficient even when db_bootstrap.ensure_database_exists() was
+    # never invoked externally (confirmed to be the case for the real
+    # main.py/gui_app.py startup path -- see record_cycle() below for the
+    # matching, more severe case that had NO schema guard at all).
+    ensure_schema(con);_self_check_schema(con);now=int(now or time.time());sk=stable_key(item['shadow_key'],item['hypothesis_id']);sf,pf=fingerprints(item);prev=con.execute('SELECT * FROM '+LATEST+' WHERE stable_observation_key=?',(sk,)).fetchone()
     if prev and prev['latest_source_fingerprint']==sf and prev['latest_projection_fingerprint']==pf:return {'latest_insert':0,'latest_update':0,'version_insert':0,'identical_retry':1,'change_kind':'technical_retry_or_identical_state'}
     if prev is None:kind='initial_observation';previous_id=None
     else:
@@ -59,6 +67,23 @@ def record_dual_write(con,item,now=None):
         con.execute('INSERT INTO '+LATEST+'(stable_observation_key,shadow_key,hypothesis_id,latest_source_updated_at,latest_source_fingerprint,latest_projection_fingerprint,center_chunk_id,target_chunk_ids,target_count,projected_window_strategy,projected_window_radius,projected_action,expected_gain,closure_delta,overlap_score,read_no_candidate_rate,projected_effectiveness,neuromodulators,source_default_path,real_outcome_observation_available,observation_ready,productive_gap_id,productive_write,first_seen_at,last_seen_at,version_count,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(sk,item['shadow_key'],int(item['hypothesis_id']))+common[:-1]+(1,0,0,None,0,now,now,1,_canon({'contract':'stable_obs_v2_shadow_v1'})));return {'latest_insert':1,'latest_update':0,'version_insert':1,'identical_retry':0,'change_kind':kind}
     con.execute('UPDATE '+LATEST+' SET latest_source_updated_at=?,latest_source_fingerprint=?,latest_projection_fingerprint=?,center_chunk_id=?,target_chunk_ids=?,target_count=?,projected_window_strategy=?,projected_window_radius=?,projected_action=?,expected_gain=?,closure_delta=?,overlap_score=?,read_no_candidate_rate=?,projected_effectiveness=?,neuromodulators=?,last_seen_at=?,version_count=version_count+1 WHERE stable_observation_key=?',common+(sk,));return {'latest_insert':0,'latest_update':1,'version_insert':1,'identical_retry':0,'change_kind':kind}
 def record_cycle(con,v1_seen,v1_created,v1_updated,stats,productive_unchanged,now=None):
+    # BRAINSTEM_SELF_HEALING_SCHEMA_FIX_V1: this function previously
+    # performed a raw INSERT into CYCLES with NO schema check or ensure_schema
+    # call whatsoever. On a database where db_bootstrap.ensure_database_exists()
+    # was never called (confirmed to be the real, always-taken code path for
+    # main.py --gui / --user-gui, since gui_app.App()/user_gui.UserApp() only
+    # ever construct Memory(), which runs its own separate, minimal legacy
+    # schema and never touches db_bootstrap.py at all), this table simply did
+    # not exist, and this raw INSERT raised
+    # "sqlite3.OperationalError: no such table: modern_gap_phase5f_shadow_
+    # observation_v2_cycles" -- exactly the error reported from a real,
+    # large-scale production run (167,661 chunks). ensure_schema(con) is
+    # idempotent and cheap; calling it here makes this function
+    # self-sufficient regardless of how or whether the database was
+    # bootstrapped beforehand, matching the project's own "idempotentes
+    # ensure_schema" rule and the pattern already used correctly by most
+    # other runtime phase modules in this codebase.
+    ensure_schema(con)
     now=int(now or time.time());match=1 if int(v1_seen)==int(stats.get('inputs',0)) else 0
     con.execute('INSERT INTO '+CYCLES+'(v1_source_rows_seen,v1_creates,v1_updates,v2_latest_inserts,v2_latest_updates,v2_version_inserts,v2_identical_retries,v1_v2_input_count_match,productive_counts_unchanged,details,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(int(v1_seen),int(v1_created),int(v1_updated),int(stats.get('latest_insert',0)),int(stats.get('latest_update',0)),int(stats.get('version_insert',0)),int(stats.get('identical_retry',0)),match,1 if productive_unchanged else 0,_canon({'contract':'stable_obs_v2_shadow_v1'}),now))
     for k,v in {'last_v1_inputs':v1_seen,'last_v2_inputs':stats.get('inputs',0),'last_input_count_match':match,'last_productive_counts_unchanged':1 if productive_unchanged else 0}.items():con.execute('INSERT INTO '+STATE+'(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',(str(k),str(v)))

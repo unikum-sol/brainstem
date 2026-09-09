@@ -55,7 +55,24 @@ def _self_check_schema(c=None):
  finally:
   if own:c.close()
 def capture_event(con,source_event_id):
- _self_check_schema(con);eid=int(source_event_id)
+ # BRAINSTEM_SELF_HEALING_SCHEMA_FIX_V1: this function used to call only
+ # _self_check_schema(con), which merely VERIFIES columns already exist and
+ # raises "missing [...]" for every column if the table does not exist at
+ # all. It never called this module's own ensure_schema(con) first. Every
+ # other runtime phase module in this codebase (v8_phase7a, v8_phase7e,
+ # v8_phase7g, etc.) calls its own ensure_schema(con) at the top of its own
+ # run function, making it self-sufficient regardless of whether
+ # db_bootstrap.ensure_database_exists() was ever invoked externally. This
+ # module was the one exception, and db_bootstrap.ensure_database_exists()
+ # turned out to never actually be called by the real main.py/gui_app.py
+ # startup path (confirmed by direct code inspection and reproduction: a
+ # plain Memory()+AutonomousLoop().cycle() call, matching exactly how
+ # main.py --gui starts, reproduces "phase6a_replay_control_shadow_latest
+ # missing [...]" on a freshly created database). ensure_schema() is
+ # idempotent (CREATE TABLE IF NOT EXISTS) and cheap, so calling it here on
+ # every invocation is safe and matches the project's own "idempotentes
+ # ensure_schema" rule.
+ ensure_schema(con);_self_check_schema(con);eid=int(source_event_id)
  if con.execute('SELECT 1 FROM '+EVENTS+' WHERE source_event_id=?',(eid,)).fetchone():return {'classification':'identical_retry','written':0,'scoped':1}
  row=con.execute('SELECT id,source_table,source_id,replay_priority,replay_weight,replay_decision,plasticity_level,neuromodulator_profile,created_at FROM phase6a_sleep_replay_events WHERE id=?',(eid,)).fetchone()
  if row is None:raise RuntimeError('phase6a event not found: '+str(eid))
