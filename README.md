@@ -35,6 +35,10 @@ YouTube - AI conversation about BrainStem Project
 
 ---
 
+[NotebookLM codebase exploration](https://notebook.google.com/notebook/34b994eb-9f62-4fd7-a04d-facbd6041654) 08.09.2026
+
+---
+
 ## 📍 Navigation
 
 * [Core Philosophy](#core-philosophy)
@@ -44,12 +48,7 @@ YouTube - AI conversation about BrainStem Project
 * [ZIM Import](#zim-import)
 * [Academic References](#Academic-References)
 * [Development Notes](#development-notes)
-
     
----
-
-[NotebookLM codebase exploration](https://notebook.google.com/notebook/34b994eb-9f62-4fd7-a04d-facbd6041654) 08.09.2026
-
 ---
 
 ## Current State
