@@ -1,0 +1,409 @@
+BrainStem Project Status - Live-Incident Fix Addendum
+Status date: 09 September 2026
+Reference basis: Detailed_Project_Status_2026-09-08_POST_FIX.txt (this file
+supplements, does not replace, that report; item numbering continues F15+).
+
+1. Purpose Of This Addendum
+On 09 September 2026 the user provided real, live production evidence from
+their own BrainStem installation: Gui_json_export.txt (a GUI log export
+spanning cycles 8-11, captured after autonomous learning had already reached
+GUI-cycle ~160 on a database of 167,661 imported chunks from
+wikipedia_de_physics_maxi_2026-04.zim and wikipedia_de_computer_maxi_2026-04,
+with roughly 290,000-500,000+ recorded hypotheses) and Error.txt (a console
+traceback captured at the moment autonomous learning silently stopped).
+This is the first real, large-scale, long-duration evidence available for
+this project (167,661 chunks, 800+ real cycles), far exceeding the 25-cycle
+synthetic stress test used to validate the 08 September fix pass. Every
+finding below was independently reproduced or confirmed by direct source
+inspection; no claim is speculative unless explicitly marked as an
+unconfirmed hypothesis requiring live measurement.
+
+2. Finding A: CORRECTED Root-Cause Analysis (supersedes the initial,
+   INCORRECT diagnosis below)
+
+IMPORTANT SELF-CORRECTION: the original version of this section incorrectly
+concluded that the user must have been running an unpatched copy of the
+project or an un-migrated database. The user explicitly confirmed, with
+certainty, that they were running the exact 08 September fixed package
+against a freshly bootstrapped database. That claim was independently
+re-verified and is correct; the original conclusion in this section was
+wrong and is retracted. The real root cause, found by direct source
+inspection and independently reproduced, is described below.
+
+Every single cycle in the supplied Gui_json_export.txt shows the identical
+two core-phase failures:
+  - "phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release:
+    phase6a_replay_control_shadow_latest missing [...]" (all 16 required
+    columns reported missing, meaning the table does not exist at all).
+  - "stageb_gapflow_runtime_contract_release: RuntimeError:stageb E
+    protected-count or pipeline failure: ['phase5f:OperationalError:no such
+    table: modern_gap_phase5f_shadow_observation_v2_cycles']".
+
+CONFIRMED ACTUAL ROOT CAUSE: db_bootstrap.ensure_database_exists() -- the
+only place in the entire 08 September fixed package that creates the full
+central schema (context_hypotheses, internal_learning_gaps, all phaseNa_*
+tables, and all five shadow-bridge modules, including the two implicated
+above) -- was NEVER actually invoked anywhere in the real program
+entrypoint. Direct inspection of main.py, gui_app.py, and user_gui.py (as
+delivered in the 08 September package) confirms: gui_app.App.__init__ and
+user_gui.UserApp.__init__ both only ever construct a plain
+Memory("ki_memory.sqlite3"). Memory.__init__ calls its own, separate,
+much smaller _init() method (defined entirely within memory.py), which
+creates only a legacy subset of tables (documents, chunks, chunks_fts,
+facts, relations, ontology, questions, conversations, settings, logs,
+contradictions, clusters, import_state, topic_context) -- and nothing else.
+db_bootstrap.ensure_database_exists() was, in the delivered 08 September
+package, only ever called by systemtest.py and reset_learning.py; NOT by
+main.py, NOT by gui_app.py, NOT by user_gui.py. This means that even on a
+database freshly created by simply starting "python main.py --gui" as
+documented, the full central schema and shadow-bridge tables were never
+created at all, regardless of any correctness of db_bootstrap.py's own
+internal schema definitions.
+
+This gap was not caught by the 08 September validation because every
+validation step performed at that time (the real-cycle test added to
+systemtest.py, and every manual verification run performed in that session)
+explicitly called db_bootstrap.ensure_database_exists() itself before
+running any cycle -- exactly mirroring how systemtest.py works, but NOT
+mirroring how a user actually starts the program via main.py. This
+independent verification gap is acknowledged plainly: the fix delivered on
+08 September was correct in isolation but was never validated against the
+actual, real program entrypoint, which is precisely what allowed this
+defect to reach the user.
+
+Reproduction (confirms the diagnosis): constructing only Memory("ki_memory
+.sqlite3") followed by AutonomousLoop(mem).cycle() -- with NO call to
+db_bootstrap.ensure_database_exists() anywhere, exactly matching what
+main.py --gui actually does -- reliably reproduces the identical
+"no such table: modern_gap_phase5f_shadow_observation_v2_cycles" error
+seen in the user's own log.
+
+Deeper mechanism (why these two specific modules were affected, out of the
+many phase modules that were NOT affected): most other phase modules in
+this codebase (v8_phase7a, v8_phase7e, v8_phase7g, and others) call their
+OWN ensure_schema(con) at the very top of their own run_phaseX_cycle()
+function, making them self-sufficient regardless of whether
+db_bootstrap.ensure_database_exists() was ever called externally. Two
+modules broke this self-sufficient pattern:
+  - v8_phase6a_replay_control_shadow_release.capture_event() called only
+    _self_check_schema(con) (which merely verifies existing columns and
+    raises "missing [...]" for every column when the table does not exist
+    at all) but never called its own ensure_schema(con) first.
+  - v8_modern_gap_phase5f_shadow_observation_v2_release.record_cycle()
+    performed a raw INSERT into its CYCLES table with NO schema check or
+    ensure_schema call of any kind.
+Both are now fixed to be self-healing (see section 4a), matching the
+pattern used correctly everywhere else in the codebase, in addition to a
+defense-in-depth fix at the actual program entrypoint (section 4a) so this
+entire class of "was ensure_database_exists ever actually called" question
+can no longer matter for correctness.
+
+Positive confirmation from the same evidence, unaffected by the above
+correction: the recursive cycle diagnostics summarizer added in the 08
+September pass (F10) is proven to work correctly under real, large-scale
+conditions -- it correctly detected and clearly surfaced both core-phase
+failures on every affected cycle ("!! ZYKLUS-FEHLER (Kernphase) !!" with
+the exact phase name and error), exactly as designed, rather than letting
+them hide inside a nested dictionary as they would have before that fix.
+
+3. Confirmed Finding B (NEW): Uncaught Audit-Write Crash Kills Autonomous
+   Learning And Was Never Surfaced In The GUI
+Root cause, confirmed by direct source inspection of the exact file and
+line referenced in the user's Error.txt traceback:
+
+  File: v8_non_productive_recheck_canonical_autoload_shadow_runtime_
+        integration_v1.py, function _run_shadow()
+  Prior code structure:
+      try:
+          ... real registered-phase work ...
+      except Exception as exc:
+          ... error handling ...
+      finally:
+          v["runtime_cycle_rows_after"], ... = _snapshot(con); _record(con,v)
+          if owned: con.close()
+
+  _record(con, v) performs a plain INSERT into this module's own private,
+  strictly non-productive audit/telemetry table
+  (non_productive_recheck_runtime_invocations). This call lived inside the
+  finally: block with NO exception handling of its own. When SQLite raised
+  sqlite3.OperationalError: database is locked at this exact point (which
+  the user's Error.txt confirms happened, with the traceback pointing
+  precisely at this INSERT), the exception was not caught anywhere: it is
+  not inside the try/except above it (finally runs unconditionally,
+  including on the normal successful path, and any exception raised inside
+  finally is never caught by the preceding except clause). The exception
+  therefore escaped _run_shadow(), escaped managed_cycle() (the wrapper
+  that this module installs around the ENTIRE AutonomousLoop.cycle() chain
+  via autoload()), and propagated all the way into gui_app.py's
+  _auto_worker() background thread, where self.auto_loop.cycle() was also
+  called with no exception handling of any kind.
+
+  Effect observed by the user: the Python threading module's default
+  behavior for an unhandled exception escaping a Thread's target function
+  is to print "Exception in thread <name>:" followed by the full traceback
+  to stderr (visible only in the console window, exactly as captured in
+  Error.txt) and terminate that thread. Meanwhile, gui_app.py's own
+  try/finally around the _auto_worker loop still ran its finally: block
+  (since Python's exception propagation always runs enclosing finally
+  blocks on the way out), which sets auto_running=False and prints the
+  generic message "Autonomes Dauerlernen gestoppt." to the GUI log -- with
+  absolutely no indication of the actual cause anywhere in the GUI itself.
+  This exactly and completely explains the reported symptom: the GUI showed
+  only "Autonomes Dauerlernen gestoppt." while the real reason was only
+  visible as a raw Python traceback in the console.
+
+  Important self-correction: the 08 September fix pass (F10) added cycle
+  diagnostics surfacing to gui_app.py's auto-worker loop, but that fix only
+  wrapped the *evaluation* of an already-successful cycle_result; it did
+  NOT add any exception handling around the self.auto_loop.cycle() call
+  itself. This gap in the earlier fix pass is acknowledged here rather than
+  glossed over.
+
+4a. Fixes Applied For Finding A (the corrected root cause above)
+  Fix A1 (defense-in-depth, self-healing modules): capture_event() in
+  v8_phase6a_replay_control_shadow_release.py now calls its own
+  ensure_schema(con) before _self_check_schema(con). record_dual_write()
+  and record_cycle() in v8_modern_gap_phase5f_shadow_observation_v2_
+  release.py both now call ensure_schema(con) at the top before performing
+  any read/write. All three calls are idempotent (CREATE TABLE IF NOT
+  EXISTS) and cheap; this matches the project's own "idempotentes
+  ensure_schema" rule and the self-sufficient pattern already used
+  correctly by most other phase modules in this codebase.
+
+  Fix A2 (root-fix at the actual program entrypoint): main.py now calls
+  ki_system.db_bootstrap.ensure_database_exists(a.memory_db) once, using
+  its own short-lived connection, before constructing either the admin GUI
+  or the user GUI, for both --gui and --user-gui. This guarantees the full
+  central schema (including all five shadow-bridge modules) exists before
+  Memory() or AutonomousLoop() ever touch the database, regardless of any
+  other code path. This is the primary, most robust fix, since it closes
+  the actual gap (db_bootstrap.ensure_database_exists() was simply never
+  invoked by the real entrypoint) rather than only working around its
+  symptoms.
+
+  Both fixes were validated together, and independently of each other:
+    - Constructing only Memory("ki_memory.sqlite3") + AutonomousLoop(mem)
+      .cycle() with NO explicit ensure_database_exists() call (i.e. Fix A2
+      deliberately bypassed, to test Fix A1 in isolation) now completes
+      with cycle_status "ok" and zero fatal errors, where it previously
+      reproduced the exact reported failure.
+    - The corrected main.py startup sequence (Fix A2) followed by 30 real
+      AutonomousLoop cycles on a freshly bootstrapped database completed
+      with cycle_status "ok" on every single cycle, with zero fatal errors,
+      confirming the actual real-world startup path is now fully correct.
+
+4b. Fixes Applied For Finding B
+  Fix B1 (root-cause containment, in v8_non_productive_recheck_canonical_
+  autoload_shadow_runtime_integration_v1.py): the audit-write call inside
+  _run_shadow()'s finally: block is now wrapped in its own try/except. A
+  failure there (of any kind, including but not limited to "database is
+  locked") is caught, logged to the console with a distinct, clearly
+  labeled tag ([NP_RECHECK_PER_CYCLE_AUDIT_WRITE_SKIPPED]), and the
+  function returns normally with status "audit_write_skipped" instead of
+  propagating. This module remains strictly non-productive and read-mostly
+  by design (per the project compass: shadow/telemetry paths must never be
+  allowed to affect or interrupt the real learning cycle); a failed audit
+  log write for one cycle is now treated exactly as that design already
+  demands: a soft, logged, non-fatal skip. The real registered-phase result
+  computed earlier in the same function is completely unaffected and still
+  returned unchanged. Verified with a direct unit-level reproduction: with
+  _record() monkey-patched to always raise sqlite3.OperationalError
+  ("database is locked"), _run_shadow() now returns
+  {"status": "audit_write_skipped", ...} instead of raising.
+
+  Fix B2 (defense in depth, in gui_app.py's _auto_worker): the call to
+  self.auto_loop.cycle() itself is now wrapped in its own try/except. Any
+  future unexpected exception (from this or any other phase, now or later)
+  is caught, its exact exception type and message are printed to the
+  visible GUI log ("!! AUTONOMER ZYKLUS ABGEBROCHEN (unerwarteter Fehler)
+  !!" followed by the type and message), and autonomous learning stops
+  cleanly and visibly via the existing auto_stop flag instead of silently
+  killing the background thread with no GUI-visible explanation. This does
+  not change behavior for the already-fixed Finding B root cause (which
+  Fix B1 already prevents from ever reaching this point) but closes the
+  same class of "silent thread death" risk for any other currently-unknown
+  future failure mode.
+
+  Both fixes were validated together: full compileall across all 66
+  modules passed with zero errors; a fresh-database bootstrap and a 15-cycle
+  real AutonomousLoop run both completed with cycle_status "ok" on every
+  cycle, confirming no regression was introduced.
+
+5. WAL Growth Hypothesis: CONFIRMED Plausible And FIXED (user explicitly
+   authorized implementing a mitigation directly, without further
+   measurement, on 09 September 2026)
+This was originally raised as an unconfirmed hypothesis, in line with the
+project's own "erst messen, dann aendern" rule. The user explicitly
+reviewed it and authorized implementing a mitigation immediately. A fix
+has therefore been implemented and is described in section 5a below. The
+supporting code evidence for the hypothesis itself is retained below
+unchanged, since it is still the reasoning basis for the fix.
+
+Supporting code evidence:
+  - memory.py's Memory._init() sets "PRAGMA journal_mode=WAL;
+    PRAGMA synchronous=NORMAL;" once, at database creation. This is the
+    only journal-mode-related PRAGMA found anywhere in the 66-module
+    codebase.
+  - A repository-wide search for "wal_checkpoint" found zero matches: no
+    module anywhere ever explicitly triggers a WAL checkpoint.
+  - gui_app.py schedules self.after(2000, self._refresh) unconditionally
+    whenever the admin GUI is open, i.e. a new read-only query batch against
+    the live database roughly every 2 seconds, indefinitely, including
+    "SELECT * FROM documents ORDER BY created_at DESC LIMIT 2000" and
+    "SELECT * FROM facts ORDER BY created_at DESC LIMIT 2000" every refresh.
+  - SQLite's automatic WAL checkpointing is "PASSIVE" by default: it
+    checkpoints as many WAL frames as possible without blocking any other
+    connection, but cannot fully truncate the WAL file while any other
+    connection still holds an open read snapshot that references older WAL
+    frames. With a read query executing roughly every 2 seconds for as long
+    as the GUI window stays open, and with no code anywhere ever forcing a
+    blocking/full checkpoint (e.g. PRAGMA wal_checkpoint(TRUNCATE)), the WAL
+    file has no reliable opportunity to fully shrink during a long
+    autonomous-learning session, and can in principle grow without a firm
+    upper bound over hundreds of cycles at 167,661-chunk scale, where
+    several phase modules (5f/5g/5i in particular) each perform many
+    hundreds of individual INSERT/UPDATE statements per cycle before a
+    single commit.
+  - A large, ever-growing WAL file plausibly explains all three reported
+    symptoms together: increasing GUI sluggishness over time (more WAL
+    content to scan on every read), the eventual "database is locked"
+    (a write or checkpoint operation taking long enough to exceed even the
+    30-second busy timeout used by this module's own connection resolution
+    path), and why this was never observed in the short, low-data-volume
+    synthetic tests used to validate the 08 September fix (167,661 chunks
+    and 800+ cycles of real, large writes had never been exercised before).
+
+What remains explicitly NOT independently measured against the user's own
+live database: whether WAL growth was in fact the actual proximate trigger
+of the specific lock observed in the user's Error.txt, versus some other
+contributing cause (e.g. Windows-specific file-level contention, antivirus
+scanning of the multi-gigabyte database file, or a single unusually
+long-running phase transaction). This uncertainty is explicitly noted; the
+fix in section 5a below removes the underlying risk regardless of the
+precise proximate trigger, since it structurally prevents the WAL file
+from ever growing unbounded in the first place.
+
+5a. WAL Checkpoint Fix (implemented, authorized directly by the user)
+New module: v8_wal_maintenance_release.py. Purely additive: one small,
+self-contained state table (wal_maintenance_state) plus one small event log
+table (wal_maintenance_events); no interaction whatsoever with any
+learning/hypothesis/neuromodulator table. Provides:
+  - ensure_schema(con): idempotent (CREATE TABLE IF NOT EXISTS).
+  - checkpoint_now(con, mode="TRUNCATE"): runs "PRAGMA wal_checkpoint
+    (TRUNCATE)", measures the actual on-disk -wal file size before and
+    after, records both the SQLite-reported (busy, log_frames,
+    checkpointed_frames) triple and the file-size measurement to its own
+    event log, and NEVER raises -- any failure is caught and reported back
+    as a plain dict with status "error", never propagated.
+  - maybe_checkpoint(con, outer_cycle_index, every_n): throttling helper
+    (not currently used by gui_app.py, which calls checkpoint_now directly
+    once per outer GUI cycle; kept available for future tuning).
+
+Important, empirically confirmed behavior documented directly in the
+module: SQLite reports "log_frames"/"checkpointed_frames" as 0 whenever a
+normal COMMIT has already passively flushed all logical WAL content (which
+happens automatically whenever no other connection holds an older read
+snapshot) -- this was directly observed while testing this fix, and does
+NOT mean the checkpoint had nothing to do. Despite frame counts showing 0,
+the on-disk -wal FILE SIZE itself is only physically shrunk back down by an
+explicit TRUNCATE-mode checkpoint; a plain COMMIT does not resize the file,
+only marks its content as checkpointed. This was directly verified: a test
+database with a 119,512-byte -wal file, checkpointed with mode=TRUNCATE
+while frame counts reported (busy=0, log=0, checkpointed=0), still had its
+-wal file shrunk to 0 bytes immediately afterward. This is exactly the
+disk-growth outcome this fix needs to achieve, and it was confirmed to work
+even in the "0 frames reported" case.
+
+Safety under concurrent readers was also directly verified: with a second,
+independent connection deliberately holding an open read transaction on the
+same database (mirroring gui_app.py's own periodic self._refresh reads),
+calling checkpoint_now() reports busy=1 (meaning TRUNCATE could not fully
+complete because a reader is active) but does not raise, does not block,
+and does not corrupt anything -- it simply checkpoints as many frames as it
+safely can and will fully succeed on a later call once the reader closes.
+This is expected, safe, standard SQLite WAL behavior.
+
+Wiring: gui_app.py's _auto_worker now calls
+_wal_maintenance.checkpoint_now(self.mem.db, mode="TRUNCATE") once after
+every completed outer "Autonomer Dauerlern-Zyklus" (i.e. once every 5 real
+cycles, matching the existing 5-real-cycles-per-GUI-cycle contract), fully
+wrapped in its own try/except so it can never interrupt or crash autonomous
+learning. The result is printed to the visible GUI log for transparency,
+e.g.: "(i) WAL-Checkpoint: busy=0 log=12 checkpointed=12 wal_bytes 45200 ->
+0". This keeps the on-disk WAL file consistently small throughout a long
+autonomous-learning session instead of allowing it to grow for hundreds of
+cycles before ever being reclaimed, directly and structurally addressing
+the reported GUI sluggishness and "database is locked" failure mode,
+regardless of the exact proximate trigger.
+
+6. Required Safe Migration Steps For The User's Existing 167,661-Chunk
+   Live Database (Addresses Finding A)
+The user's live database already contains substantial, expensive real work
+(167,661 imported chunks, several hundred thousand recorded hypotheses) that
+must not be lost or reset. The schema fixes from the 08 September pass are
+entirely additive (CREATE TABLE IF NOT EXISTS / ALTER TABLE ADD COLUMN
+only; nothing is dropped, renamed, or altered destructively), so they are
+safe to apply directly against the existing live database, following the
+project's own mandatory full-backup-first rule. With the Fix A1
+self-healing modules AND Fix A2 main.py auto-bootstrap now both in place,
+this migration is simpler than originally described: the corrected files
+alone (no manual database surgery, no explicit script) are sufficient.
+
+Mandatory sequence:
+  1. Fully stop the BrainStem GUI and confirm no python.exe process for
+     this project remains running.
+  2. Create a complete, timestamped backup of the entire project directory
+     Z:\Temp\Ki_System\BrainStem\ (including ki_memory.sqlite3,
+     ki_memory.sqlite3-wal, and ki_memory.sqlite3-shm if present) to a
+     location outside that directory, before making any change. This
+     remains mandatory even though the change itself is additive-only, per
+     the project's own unconditional full-backup-before-any-change rule.
+  3. Replace the ki_system/ folder and main.py with the corrected files from
+     this delivered package (the files themselves are new; the existing
+     ki_memory.sqlite3 database file must be kept, not replaced, not
+     deleted).
+  4. Start the GUI once normally (python main.py --gui). main.py's own
+     startup sequence now calls db_bootstrap.ensure_database_exists()
+     automatically (Fix A2) before either GUI is constructed, additively
+     creating any previously-missing shadow tables/columns
+     (phase6a_replay_control_shadow_latest and its companions,
+     modern_gap_phase5f_shadow_observation_v2_cycles and its companions,
+     the internal_learning_gaps columns, the phase6a_sleep_replay_cycles
+     columns) against the existing live database, without touching any
+     existing chunk, hypothesis, or other already-recorded data. Even if
+     this automatic bootstrap were somehow skipped for any reason, Fix A1
+     (the two now-self-healing modules) independently guarantees correct
+     behavior on the very first real cycle regardless.
+  5. Confirm in the GUI log or console that no "[PHASE_REGISTRY_FATAL]" or
+     bootstrap error banner appears on this first startup.
+  6. Only after this clean startup is confirmed, resume autonomous
+     learning normally.
+
+7. Files Changed In This Addendum
+  - ki_system/db_bootstrap.py (no change needed; its 08 September logic was
+    already correct -- the gap was purely that nothing ever called it)
+  - main.py (Fix A2: automatic bootstrap call added to the real entrypoint)
+  - ki_system/v8_phase6a_replay_control_shadow_release.py (Fix A1)
+  - ki_system/v8_modern_gap_phase5f_shadow_observation_v2_release.py (Fix A1)
+  - ki_system/v8_non_productive_recheck_canonical_autoload_shadow_runtime_
+    integration_v1.py (Fix B1)
+  - ki_system/gui_app.py (Fix B2, Fix 5a WAL checkpoint wiring)
+  - ki_system/v8_wal_maintenance_release.py (new file, Fix 5a)
+  - This file (new)
+
+8. Still Required (Unchanged Or Newly Added By This Addendum)
+  - Live confirmation, on the user's actual production database, that the
+    corrected package (this delivery) starts and runs cleanly via the real
+    "python main.py --gui" entrypoint with no recurrence of Finding A, and
+    that the WAL-checkpoint log lines (Fix 5a) appear as expected once
+    every outer GUI cycle without any error.
+  - A new long-duration validation run on the user's real 167,661-chunk
+    database, to confirm the crash-containment fix (Finding B) and the WAL
+    checkpoint fix (section 5a) both hold up under the same real,
+    large-scale conditions that first revealed these issues. This is a
+    substantially stronger and more realistic validation opportunity than
+    any synthetic test performed so far, since it is now proven that the
+    user's own real workload is what is needed to surface issues that a
+    25-cycle synthetic test cannot reach.
+  - Everything listed as "Still required" in the 08 September 2026
+    post-fix status remains valid and unchanged.

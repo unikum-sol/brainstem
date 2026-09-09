@@ -1,6 +1,23 @@
 # BrainStem
 
-Update 08.09.26
+Update 31.07.26 | Post-Fix Update 08.09.26 | Live-Incident Fix 09.09.26
+
+> [!NOTE]
+> 09 September 2026: Real production evidence from a 167,661-chunk live
+> database (800+ real cycles) surfaced three real, confirmed defects, all
+> now fixed: (1) db_bootstrap.ensure_database_exists() -- the only place
+> creating the full central schema -- was never actually called by the
+> real main.py/gui_app.py entrypoint, so two schema-dependent shadow
+> modules failed on every cycle even on a correctly freshly-bootstrapped
+> database; both the entrypoint and the two affected modules are now
+> fixed. (2) An uncaught "database is locked" exception inside a
+> non-productive audit-log write could silently kill autonomous learning
+> with no GUI-visible explanation; now contained. (3) Unbounded WAL
+> growth (no module anywhere ever explicitly checkpointed the WAL journal)
+> plausibly explained increasing GUI sluggishness and the reported lock;
+> a periodic, safe WAL checkpoint is now wired into the autonomous-learning
+> loop. Full details, root-cause chains, and verification evidence:
+> `Detailed_Project_Status_2026-09-09_LIVE_INCIDENT_FIX.txt`.
 
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
@@ -731,7 +748,7 @@ This project builds upon concepts, algorithms, and theoretical frameworks establ
 - **Documentation language:** English, German
 - **Status:** highly experimental and under mathematical and architectural validation
 - **Engineering discipline:** backup, compile check, schema self-check, smoke test, and rollback planning for structural changes
-- **AI-assisted engineering:** development has included collaborative AI assistance. Concept elaboration with ChatGPT, Code generation Claude Opus/Sonnet an ChatGPT 5.6 Depp Thinking, Code review NotebookLM, Gemini and Copilot as critics (no sugarcoat mode)
+- **AI-assisted engineering:** development has included collaborative AI assistance. Concept elaboration with ChatGPT, Code generation Claude Opus/Sonnet and ChatGPT 5.6 Depp Thinking, Code review NotebookLM, Gemini and Copilot as critics (no sugarcoat mode)
 
 
 ## Claims and Limitations
