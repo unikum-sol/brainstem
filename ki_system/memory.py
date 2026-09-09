@@ -5,9 +5,31 @@ class Memory:
     def __init__(self,path='ki_memory.sqlite3',readonly=False):
         self.path=Path(path); self.readonly=readonly; self.lock=threading.RLock()
         if readonly:
-            self.db=sqlite3.connect(f'file:{self.path.resolve().as_posix()}?mode=ro',uri=True,check_same_thread=False)
+            self.db=sqlite3.connect(f'file:{self.path.resolve().as_posix()}?mode=ro',uri=True,check_same_thread=False,timeout=60)
         else:
-            self.path.parent.mkdir(parents=True,exist_ok=True); self.db=sqlite3.connect(str(self.path),check_same_thread=False)
+            self.path.parent.mkdir(parents=True,exist_ok=True); self.db=sqlite3.connect(str(self.path),check_same_thread=False,timeout=60)
+        # BRAINSTEM_MEMORY_TIMEOUT_FIX_V1: sqlite3.connect() without an
+        # explicit timeout defaults to only 5 seconds of SQLite "busy"
+        # waiting before raising "database is locked". At real production
+        # scale (167,661 chunks, several hundred INSERT/UPDATE statements
+        # per cycle across Phase 5f/5g/5i plus the shadow/bridge modules
+        # before a single commit), a concurrent writer or the periodic WAL
+        # checkpoint can legitimately hold SQLite's write lock for longer
+        # than 5 seconds under load. This was confirmed as a real, repeated
+        # cause of "OperationalError: database is locked" in a live run at
+        # GUI cycle 22 (three core phases affected in immediate succession:
+        # cooperative_core_neuromodulator_sleep_authority,
+        # stageb_guarded_hypothesis_graduation_release,
+        # stageb_gapflow_runtime_contract_release), even though autonomous
+        # learning itself continued afterward thanks to the separate crash-
+        # containment fixes (Fix B1/B2, 09 September 2026). Raising the
+        # busy-timeout to 60 seconds (matching the timeout already used
+        # consistently by every other module's own resolve_db()/_con()
+        # fallback throughout this codebase, e.g. v8_phase7a, the shadow
+        # modules, db_bootstrap.py's own ensure_database_exists) makes a
+        # concurrent writer simply wait instead of failing outright, while
+        # still bounded and safe (a genuine deadlock would still eventually
+        # raise after 60s rather than hanging forever).
         self.db.row_factory=sqlite3.Row
         if not readonly: self._init()
     def _json(self,o): return json.dumps(o,ensure_ascii=False,default=str)
@@ -128,13 +150,10 @@ class Memory:
         with open(path,'w',newline='',encoding='utf-8') as f:
             w=csv.writer(f); w.writerow(['subject','relation','value','confidence'])
             for r in self.rows('SELECT subject,relation,value,confidence FROM facts'): w.writerow([r['subject'],r['relation'],r['value'],r['confidence']])
-
-
 # BRAINSTEM_PURE_WRITE_GUARD
 # Technische Uebergangssperre: keine Klassifikation, keine Candidate-Umleitung.
 def _brainstem_blocked_write(self, *args, **kwargs):
     return False
-
 for _brainstem_name in (
     "add_fact", "add_relation", "add_relations", "store_relation",
     "insert_relation", "add_ontology"

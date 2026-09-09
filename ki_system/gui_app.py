@@ -512,7 +512,16 @@ class App(tk.Tk):
         import sqlite3
         lines = ["=== Autonomer Zyklus %d / Schritt %d ===" % (n, step)]
         try:
-            con = sqlite3.connect("ki_memory.sqlite3", timeout=5)
+            # BRAINSTEM_MEMORY_TIMEOUT_FIX_V1: this separate diagnostic
+            # connection previously used only timeout=5 (SQLite's default
+            # busy-wait if unspecified is also effectively very short).
+            # Raised to 60s to match the main Memory connection's own fix
+            # (see memory.py) and every other module's own resolve_db()
+            # fallback convention throughout this codebase, reducing the
+            # chance that this read-only diagnostic query itself contends
+            # with, or is blocked by, a concurrent long-running write from
+            # the real learning cycle at large database sizes.
+            con = sqlite3.connect("ki_memory.sqlite3", timeout=60)
             try:
                 vals, regimes = read_all_neuromods(con)
                 total = 0; covered = 0; hyp = 0
@@ -563,7 +572,9 @@ class App(tk.Tk):
         con = None
         covered = 0; total = 0; hypo = 0
         try:
-            con = sqlite3.connect("ki_memory.sqlite3", timeout=5)
+            # BRAINSTEM_MEMORY_TIMEOUT_FIX_V1: raised from timeout=5, see
+            # _cycle_diag_text() above for the full rationale.
+            con = sqlite3.connect("ki_memory.sqlite3", timeout=60)
             r = con.execute("SELECT COUNT(*) FROM chunks").fetchone()
             total = r[0] if r else 0
             try:
@@ -771,7 +782,7 @@ class App(tk.Tk):
             c = getattr(self.mem, attr, None)
             if isinstance(c, sqlite3.Connection):
                 return c, False
-        return sqlite3.connect("ki_memory.sqlite3", timeout=5), True
+        return sqlite3.connect("ki_memory.sqlite3", timeout=60), True
     def _update_neuro_dashboard(self):
         con, should_close = self._neuro_con()
         try:
@@ -860,7 +871,7 @@ class App(tk.Tk):
             self.after(0, lambda: self.drift_status.configure(text="Modul-Fehler: " + str(e)))
             self._drift_finish()
             return
-        con = sqlite3.connect(str(root / "ki_memory.sqlite3"), timeout=30.0)
+        con = sqlite3.connect(str(root / "ki_memory.sqlite3"), timeout=60.0)
         loop = AutonomousLoop(self.mem)
         limit_on = bool(self.drift_limit_on.get())
         cycles = int(self.drift_cycles.get()) if limit_on else None
