@@ -48,7 +48,7 @@ YouTube - AI conversation about BrainStem Project
     
 ---
 
-[NotebookLM codebase exploration](https://notebooklm.google.com/notebook/22f86efd-8cd6-447b-a43f-65f252259ab4?utm_source=nlmm_share) 08.09.2026
+[NotebookLM codebase exploration](https://notebook.google.com/notebook/34b994eb-9f62-4fd7-a04d-facbd6041654) 08.09.2026
 
 ---
 
