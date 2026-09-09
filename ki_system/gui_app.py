@@ -434,6 +434,23 @@ class App(tk.Tk):
                     db.close()
         except Exception:
             pass
+        # BRAINSTEM_SHARED_CONNECTION_THREAD_SAFETY_FIX_V1: also commit and
+        # close the dedicated worker connection (used by the autonomous-
+        # learning and drift/sensory-deprivation background threads), if one
+        # was ever created. Both worker threads are already joined above
+        # before this runs, so it is safe to close here.
+        try:
+            worker_mem = getattr(self, "_worker_mem", None)
+            if worker_mem is not None:
+                db = getattr(worker_mem, "db", None)
+                if db is not None:
+                    try:
+                        db.commit()
+                    except Exception:
+                        pass
+                    db.close()
+        except Exception:
+            pass
         try:
             if self.head is not None:
                 self.head.destroy()
@@ -634,6 +651,51 @@ class App(tk.Tk):
             if hasattr(self, "reset_btn"):
                 self.reset_btn.configure(state=tk.DISABLED if r else tk.NORMAL)
         self._gui_enqueue(_apply)        
+    def _get_worker_memory(self):
+        # BRAINSTEM_SHARED_CONNECTION_THREAD_SAFETY_FIX_V1
+        #
+        # Root-cause finding (09 September 2026, second occurrence): the
+        # previous fix (raising sqlite3 busy-timeouts from 5s to 60s) did
+        # NOT resolve "database is locked" -- the error recurred even
+        # EARLIER (cycle 14 vs. previously cycle 22). This is strong
+        # evidence that the error is NOT primarily SQLITE_BUSY (cross-
+        # connection file-lock contention, which busy-timeout retries DO
+        # help with), but SQLITE_LOCKED (a conflict caused by concurrent,
+        # unsynchronized statement execution on the SAME sqlite3.Connection
+        # object from multiple threads at once). SQLite's busy-handler/
+        # busy-timeout mechanism explicitly does NOT retry SQLITE_LOCKED
+        # errors, so no timeout value, however large, can fix this specific
+        # failure mode.
+        #
+        # The actual root cause: self.mem (and therefore self.mem.db, a
+        # single sqlite3.Connection) was shared between the GUI's own
+        # periodic self.after(2000, self._refresh) timer (running on the
+        # main/GUI thread, calling self.mem.rows()/self.mem.stats(), which
+        # DOES go through self.mem.lock) and the "brainstem-auto" background
+        # thread (running AutonomousLoop(self.mem).cycle(), where most
+        # v8_phase*.py modules call resolve_db(self) and then execute SQL
+        # DIRECTLY on the raw connection, completely bypassing self.mem.lock
+        # entirely). Two threads therefore issued SQL statements on the
+        # exact same Connection handle concurrently and without a shared
+        # mutex protecting every access path -- a well-documented Python/
+        # sqlite3 pitfall. The official, standard-practice fix (per Python's
+        # own sqlite3 documentation) is: give each thread its own dedicated
+        # connection instead of sharing one across threads.
+        #
+        # This method lazily creates ONE dedicated Memory instance (with its
+        # own separate sqlite3.Connection, same 60s busy-timeout as the
+        # main connection) reserved exclusively for the autonomous-learning
+        # background thread (and the drift/sensory-deprivation thread, which
+        # has the identical sharing problem via AutonomousLoop(self.mem)).
+        # The GUI's own self.mem connection continues to be used only by the
+        # main/GUI thread (chat, facts/documents browser, corpus stats,
+        # neuromodulator dashboard), so the two connections are now each
+        # confined to a single thread, eliminating the unsynchronized
+        # concurrent-access pattern at its root instead of only masking one
+        # symptom of it.
+        if getattr(self, "_worker_mem", None) is None:
+            self._worker_mem = Memory("ki_memory.sqlite3")
+        return self._worker_mem
     def auto_start(self):
         if self.auto_running:
             return
@@ -667,11 +729,16 @@ class App(tk.Tk):
         # END BRAINSTEM LATE RUNTIME REPATCH V1.2
         n = 0
         self.mode = "learn"
+        # BRAINSTEM_SHARED_CONNECTION_THREAD_SAFETY_FIX_V1: use a dedicated
+        # connection for this background thread instead of sharing self.mem
+        # with the GUI thread. See _get_worker_memory() for the full
+        # root-cause explanation.
+        worker_mem = self._get_worker_memory()
         try:
             while not self.auto_stop:
                 n += 1
                 self.println("=== Autonomer Dauerlern-Zyklus %d ===" % n)
-                self.auto_loop = AutonomousLoop(self.mem)
+                self.auto_loop = AutonomousLoop(worker_mem)
                 self._set_cycle_bar(0, 5)
                 for step in range(5):
                     if self.auto_stop:
@@ -747,7 +814,11 @@ class App(tk.Tk):
                 # call is fully guarded and can never raise or interrupt
                 # autonomous learning; a failure here is only ever logged.
                 try:
-                    db_for_checkpoint = getattr(self.mem, "db", None)
+                    # BRAINSTEM_SHARED_CONNECTION_THREAD_SAFETY_FIX_V1: use
+                    # worker_mem's own connection (this thread's dedicated
+                    # connection) rather than self.mem.db, so the checkpoint
+                    # call never touches the GUI thread's connection object.
+                    db_for_checkpoint = getattr(worker_mem, "db", None)
                     if db_for_checkpoint is not None:
                         wal_result = _wal_maintenance.checkpoint_now(db_for_checkpoint, mode="TRUNCATE")
                         if wal_result.get("status") == "ok":
@@ -872,7 +943,15 @@ class App(tk.Tk):
             self._drift_finish()
             return
         con = sqlite3.connect(str(root / "ki_memory.sqlite3"), timeout=60.0)
-        loop = AutonomousLoop(self.mem)
+        # BRAINSTEM_SHARED_CONNECTION_THREAD_SAFETY_FIX_V1: this background
+        # thread previously shared self.mem (and thus self.mem.db) with the
+        # GUI thread's own periodic reads, the identical root cause as the
+        # autonomous-learning worker (see _get_worker_memory() for the full
+        # explanation). drift_start() already refuses to run concurrently
+        # with autonomous learning, but the GUI's own self.after(2000,
+        # self._refresh) timer keeps running regardless of mode, so this
+        # thread still needs its own dedicated connection.
+        loop = AutonomousLoop(self._get_worker_memory())
         limit_on = bool(self.drift_limit_on.get())
         cycles = int(self.drift_cycles.get()) if limit_on else None
         def cycle_fn():
