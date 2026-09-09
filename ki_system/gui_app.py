@@ -117,10 +117,75 @@ def read_all_neuromods(con):
     }
     cooperative = _kv(con, "cooperative_sleep_wake_state")
     cooperative_mode = str(cooperative.get("state", "")).strip().lower()
-    asleep = (cooperative_mode == "sleep") if cooperative_mode in ("wake", "sleep") else ((vals["adenosine"] >= 0.6 and vals["histamine"] <= 0.45) or regimes["histamine"] == "sleep_permissive")
+    cooperative_asleep = (cooperative_mode == "sleep")
+    # BRAINSTEM_GUI_DUAL_SLEEP_AUTHORITY_FIX_V1
+    #
+    # Root cause (confirmed 09 September 2026 via diagnose_sleep_authority.py
+    # against a real 467-cycle production database): the GUI mood indicator
+    # previously relied EXCLUSIVELY on cooperative_sleep_wake_state.state.
+    # That cooperative authority combines five weighted signals behind a
+    # single, high, combined threshold (default 0.62) and, measured over
+    # 467 real cycles, never once crossed it (peak observed: 0.5403 at
+    # cycle 8, then oscillating between 0.31-0.54 -- i.e. NOT a data-
+    # maturity effect, since the score does not trend upward over time).
+    #
+    # Meanwhile phase7a_adenosine_homeostat_release.py -- the older,
+    # independent, single-signal adenosine homeostat -- was confirmed to be
+    # working correctly and extensively the entire time: 290 of 467 cycles
+    # recorded homeostat_mode='sleep', with 58 real transitions and a full
+    # sleep/wake event history (v8_phase7a_adenosine_homeostat_release.py,
+    # threshold_high=0.65). The two authorities structurally interfere with
+    # each other: phase7a enters sleep and begins actively discharging
+    # (decaying) adenosine as soon as its own single-signal 0.65 threshold
+    # is crossed, which is exactly the dominant (35% weight) input the
+    # cooperative authority needs to reach ITS OWN, later, combined 0.62
+    # threshold -- so by the time phase7a's decay has run its course, the
+    # cooperative score never gets a real chance to climb high enough on
+    # its own.
+    #
+    # This exact "OR both authorities together" pattern is already the
+    # established, working convention used elsewhere in this same codebase
+    # for entering real Slow-Wave-Sleep: see
+    # v8_phase7d_slow_wave_sleep_substructure_release.py:
+    #   if canonical_mode == "sleep" or cooperative_mode == "sleep":
+    # and v8_phase7e_histamine_wake_arousal_release.py, which reads
+    # phase7a's homeostat_mode the same way. Phase7d's own real slow-wave
+    # consolidation (reinforcement/weakening of hypotheses, the actual
+    # mechanism the user is asking to see reflected here) already runs
+    # whenever EITHER authority says "sleep" -- so real consolidation has
+    # been happening in the background this whole time, just never shown
+    # in the GUI, because the GUI checked only ONE of the two authorities
+    # that phase7d itself already treats as equally valid.
+    #
+    # Fix: mirror phase7d/phase7e's own established pattern in the GUI's
+    # mood/regime read path. The GUI now shows "sleep" whenever EITHER the
+    # cooperative authority OR the phase7a homeostat reports sleep, exactly
+    # matching what actually gates real consolidation in phase7d. This is
+    # not a new, invented threshold or behavior -- it is the GUI catching
+    # up to a convention that already governs real learning behavior
+    # elsewhere in this codebase.
+    phase7a_state = _kv(con, "phase7a_adenosine_state")
+    phase7a_mode = str(phase7a_state.get("homeostat_mode", "wake")).strip().lower()
+    phase7a_asleep = (phase7a_mode == "sleep")
+    if cooperative_mode in ("wake", "sleep"):
+        asleep = cooperative_asleep or phase7a_asleep
+        if cooperative_asleep and phase7a_asleep:
+            sleep_authority = "cooperative+phase7a"
+        elif cooperative_asleep:
+            sleep_authority = "cooperative"
+        elif phase7a_asleep:
+            sleep_authority = "phase7a"
+        else:
+            sleep_authority = "none"
+    else:
+        legacy_asleep = ((vals["adenosine"] >= 0.6 and vals["histamine"] <= 0.45) or regimes["histamine"] == "sleep_permissive")
+        asleep = legacy_asleep or phase7a_asleep
+        sleep_authority = "legacy_fallback+phase7a" if phase7a_asleep else ("legacy_fallback" if legacy_asleep else "none")
     regimes["_asleep"] = bool(asleep)
-    regimes["sleep_authority"] = "cooperative" if cooperative_mode in ("wake", "sleep") else "legacy_fallback"
+    regimes["sleep_authority"] = sleep_authority
     regimes["sleep_score"] = cooperative.get("sleep_score", "n/a")
+    regimes["phase7a_mode"] = phase7a_mode
+    regimes["cooperative_mode"] = cooperative_mode or "n/a"
     return vals, regimes
 
 def compute_mood(vals, regimes):
@@ -134,6 +199,13 @@ def compute_mood(vals, regimes):
     if cortisol >= 0.6:
         return ("(>_<)", "Gestresst")
     if asleep or adeno >= 0.75:
+        # BRAINSTEM_GUI_DUAL_SLEEP_AUTHORITY_FIX_V1: distinguish which
+        # authority triggered sleep, for transparency in the mood label.
+        authority = regimes.get("sleep_authority", "")
+        if authority == "phase7a":
+            return ("(-_-) zzz", "Konsolidiert (Phase7a)")
+        if authority in ("cooperative", "cooperative+phase7a"):
+            return ("(-_-) zzz", "Schlaeft")
         return ("(-_-) zzz", "Schlaeft")
     if regimes.get("orexin") == "curious_drive" and regimes.get("bdnf") == "growth":
         return ("(^o^)/", "Wissbegierig")
@@ -569,6 +641,14 @@ class App(tk.Tk):
                 lines.append("Regime -> Orexin: %s | BDNF: %s | Cortisol: %s | Histamin: %s" % (
                     regimes.get("orexin", "n/a"), regimes.get("bdnf", "n/a"),
                     regimes.get("cortisol", "n/a"), regimes.get("histamine", "n/a")))
+                # BRAINSTEM_GUI_DUAL_SLEEP_AUTHORITY_FIX_V1: surface both
+                # sleep authorities explicitly in the per-cycle diagnostic
+                # text, so it is fully transparent which one (if any) is
+                # currently asleep, instead of only the combined GUI mood.
+                lines.append("Schlaf -> Kooperativ: %s (Score %s) | Phase7a: %s | Aktiv: %s (%s)" % (
+                    regimes.get("cooperative_mode", "n/a"), regimes.get("sleep_score", "n/a"),
+                    regimes.get("phase7a_mode", "n/a"),
+                    "JA" if regimes.get("_asleep") else "nein", regimes.get("sleep_authority", "none")))
                 lines.append("7d Slow-Wave -> Survivors %s | Participated %s | Weakened %s | Schwelle %.3f" % (surv, part, weak, float(thr)))
                 lines.append("SAFETY facts/relations/questions: %s" % safe)
             finally:
@@ -866,10 +946,14 @@ class App(tk.Tk):
                     pass
         core_line = " | ".join("%s %.2f" % (NEURO_LABELS[k], vals.get(k, 0.0)) for k in NEURO_CORE)
         self.neuro_text.configure(text="Neuromodulatoren: " + core_line)
-        self.behavior_text.configure(text="Regime: Orexin %s (%.2f) | BDNF %s (%.2f) | Cortisol %s (%.2f)" % (
+        # BRAINSTEM_GUI_DUAL_SLEEP_AUTHORITY_FIX_V1: surface both sleep
+        # authorities in the Regime line too, so the user can see at a
+        # glance which one (if either) reports sleep, not just the emoji.
+        self.behavior_text.configure(text="Regime: Orexin %s (%.2f) | BDNF %s (%.2f) | Cortisol %s (%.2f) | Schlaf: koop=%s/phase7a=%s" % (
             regimes.get("orexin", "n/a"), vals.get("orexin", 0.0),
             regimes.get("bdnf", "n/a"), vals.get("bdnf", 0.0),
-            regimes.get("cortisol", "n/a"), vals.get("cortisol", 0.0)))
+            regimes.get("cortisol", "n/a"), vals.get("cortisol", 0.0),
+            regimes.get("cooperative_mode", "n/a"), regimes.get("phase7a_mode", "n/a")))
         self.trend_text.configure(text="Homeostase: ADE %.2f | ECB %.2f | HIS %.2f" % (
             vals.get("adenosine", 0.0), vals.get("endocannabinoid", 0.0), vals.get("histamine", 0.0)))
         self.neuro_bars.draw(vals)
