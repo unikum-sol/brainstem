@@ -25,18 +25,6 @@ Update 09.09.26
 > `Detailed_Project_Status_2026-09-09_LIVE_INCIDENT_FIX.txt`.
 
 
-> [!NOTE]
-> This README describes the 31 July 2026 build as originally delivered. A
-> full, evidence-based error audit and fix pass was completed on 08
-> September 2026; every finding and fix is documented in
-> `Detailed_Project_Status_2026-09-08_POST_FIX.txt` in the project root.
-> The Roadmap badge above was changed from "Stage A complete" to
-> "revalidation pending" because the historical Stage-A drift result applies
-> only to a much earlier architectural state and does not certify the
-> current (now fixed) build. See the post-fix status file for the current,
-> accurate validation status before relying on any claim in this README.
-
-
 BrainStem is a biologically inspired, Real Neuro-Symbolic (RNS-AI) cognitive architecture for lifelong learning. It is designed to learn models of the structures and dynamics of language and text through context hypotheses, uncertainty, contradiction, revision, neuromodulation, replay, and consolidation rather than by merely storing isolated facts.
 
 >One CPU Core /
