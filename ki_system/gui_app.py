@@ -320,7 +320,7 @@ class App(tk.Tk):
         ttk.Button(f, text="Export Fakten CSV", command=self._safe_export_facts).pack(anchor=tk.W, pady=(4, 8))
         ttk.Separator(f).pack(fill=tk.X, pady=8)
         ttk.Label(f, text="Max. ZIM-Artikel beim Import").pack(anchor=tk.W)
-        self.max_articles = tk.IntVar(value=int(self.mem.get_setting("max_articles", 10000000) or 2000))
+        self.max_articles = tk.IntVar(value=int(self.mem.get_setting("max_articles", 2000) or 2000))
         ttk.Spinbox(f, from_=1, to=1000000, textvariable=self.max_articles, width=12).pack(anchor=tk.W, pady=(4, 4))
         ttk.Button(f, text="Speichern", command=self.save_config).pack(anchor=tk.W)
         self.config_status = ttk.Label(f, text="Aktueller Wert: " + str(self.mem.get_setting("max_articles", 2000)))
