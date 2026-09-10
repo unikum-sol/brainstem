@@ -50,11 +50,6 @@ YouTube - AI conversation about BrainStem Project
 
 ## Current State
 
-### Project-Structure
-
-<a href="assetsStructure.png
-  <img src="assets/Project-Structure.png" alt="t Validation Status
-
 > [!NOTE]
 > Update (10 September 2026): Following the 08 September 2026 static/synthetic
 > audit (14 defects found and fixed), the system underwent its first real,
