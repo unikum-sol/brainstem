@@ -48,7 +48,6 @@ YouTube - AI conversation about BrainStem Project
   <img src="assets/Project-Structure.png" alt="Project-Structure" width="250" />
 </a>
 
-
 ### Current Validation Status
 
 > [!NOTE]
