@@ -118,23 +118,7 @@ def read_all_neuromods(con):
     cooperative = _kv(con, "cooperative_sleep_wake_state")
     cooperative_mode = str(cooperative.get("state", "")).strip().lower()
     cooperative_asleep = (cooperative_mode == "sleep")
-    # BRAINSTEM_GUI_DUAL_SLEEP_AUTHORITY_FIX_V1
-    #
-    # Root cause (confirmed 09 September 2026 via diagnose_sleep_authority.py
-    # against a real 467-cycle production database): the GUI mood indicator
-    # previously relied EXCLUSIVELY on cooperative_sleep_wake_state.state.
-    # That cooperative authority combines five weighted signals behind a
-    # single, high, combined threshold (default 0.62) and, measured over
-    # 467 real cycles, never once crossed it. Meanwhile phase7a_adenosine_
-    # homeostat_release.py -- the older, independent, single-signal
-    # adenosine homeostat -- was confirmed to be working correctly and
-    # extensively the entire time. This exact "OR both authorities
-    # together" pattern is already the established, working convention used
-    # elsewhere in this same codebase for entering real Slow-Wave-Sleep:
-    # see v8_phase7d_slow_wave_sleep_substructure_release.py:
-    #   if canonical_mode == "sleep" or cooperative_mode == "sleep":
-    # Fix: mirror phase7d's own established pattern in the GUI's mood/
-    # regime read path.
+    # BRAINSTEM_GUI_DUAL_SLEEP_AUTHORITY_FIX_V1 (09 September 2026)
     phase7a_state = _kv(con, "phase7a_adenosine_state")
     phase7a_mode = str(phase7a_state.get("homeostat_mode", "wake")).strip().lower()
     phase7a_asleep = (phase7a_mode == "sleep")
@@ -205,6 +189,57 @@ class NeuroTooltip:
             self.tip = None
 
 class NeuromodulatorBars(ttk.Frame):
+    # BRAINSTEM_NEURO_BARS_ITEM_REUSE_FIX_V1 (10 September 2026)
+    #
+    # Root cause (confirmed via Process Explorer thread-stack inspection at
+    # 87.8% progress, PLUS the user's own key follow-up observation that
+    # restarting the GUI process -- with the exact same, unchanged database
+    # -- immediately restores full responsiveness): draw() previously called
+    # canvas.delete("all") followed by a full re-creation of all 48 canvas
+    # items (12 neuromodulators x 4 items: background bar, fill bar, label
+    # text, value text) on every single call. If the slowdown were caused
+    # purely by the fixed per-call cost of creating 48 items (Tk widget
+    # configuration, GDI font-metric queries for each create_text), a fresh
+    # GUI process would recreate the exact same 48 items just as "expensively"
+    # as the aged process and should be equally slow immediately -- but it
+    # is not. This strongly indicates that the actual cost accumulates
+    # inside the live Tcl/Tk interpreter's own item/font/binding bookkeeping
+    # across MANY repeated delete+recreate cycles over a long run (hundreds
+    # to thousands of GUI ticks), not from the per-call rendering cost
+    # itself, which a process restart fully resets to zero.
+    #
+    # Fix (combines the user's requested "B: skip unchanged values" and
+    # "C: reuse existing canvas items" approaches, explicitly WITHOUT any
+    # tab-visibility gating -- the user has an "Import & Jobs" tab open
+    # continuously during autonomous learning and wants every single real
+    # learning cycle reflected immediately):
+    #   - All 48 canvas items (2 rectangles + 2 texts per neuromodulator)
+    #     are now created exactly ONCE, in _build_items(), the first time
+    #     draw() is ever called. Their canvas item IDs are cached in
+    #     self._items. No canvas.delete() is ever called again afterwards
+    #     during normal operation.
+    #   - Every subsequent draw() call only ever calls canvas.coords() (to
+    #     resize/reposition the fill-bar rectangle) and canvas.itemconfig()
+    #     (to update the numeric value text) on these EXISTING items --
+    #     never creating or destroying anything -- which avoids the
+    #     accumulating Tcl/Tk bookkeeping cost entirely, not just deferring
+    #     or reducing it.
+    #   - The static background bars and the neuromodulator name labels
+    #     never change after creation, so they are configured once and never
+    #     touched again on subsequent draws.
+    #   - Before touching the fill-bar/value-text of a given neuromodulator,
+    #     the new value is compared against the last-drawn value for that
+    #     same neuromodulator; if the absolute difference is below
+    #     CHANGE_THRESHOLD (0.005, i.e. below the 2-decimal display
+    #     precision already used for the value text), the update is skipped
+    #     entirely for that one neuromodulator on that tick. This still
+    #     draws every real learning cycle as requested -- it just avoids
+    #     spending any Tk work on a value that would be rendered identically
+    #     anyway (a very common case, since several neuromodulators such as
+    #     dopamine/serotonin/GABA were observed to remain essentially flat
+    #     across hundreds of consecutive real cycles in the user's own logs).
+    CHANGE_THRESHOLD = 0.005
+
     def __init__(self, master, width=320, height=210):
         super().__init__(master)
         self.width = width
@@ -216,30 +251,62 @@ class NeuromodulatorBars(ttk.Frame):
         self.tooltip = NeuroTooltip(self)
         self.canvas.bind("<Motion>", self._on_motion)
         self.canvas.bind("<Leave>", lambda e: self.tooltip.hide())
+        self._items = {}  # name -> dict(fill_id, value_id, top_y, base_y, bar_w, x)
+        self._last_values = {}  # name -> last value actually rendered
+        self._built = False
         self.draw({k: 0.0 for k in (NEURO_CORE + NEURO_NEW)})
-    def _draw_row(self, keys, values, top_y, base_y):
+
+    def _layout_row(self, keys, top_y, base_y):
         margin = 14
         bar_w = 26
         gap = 18
         x = margin
+        out = []
         for name in keys:
+            out.append((name, x, top_y, base_y, bar_w))
+            x += bar_w + gap
+        return out
+
+    def _build_items(self, values):
+        row_h = (self.height - 20) / 2
+        layout = (self._layout_row(NEURO_CORE, 16, 16 + row_h - 24) +
+                  self._layout_row(NEURO_NEW, 16 + row_h + 10, 16 + 2 * row_h - 14))
+        self.hitboxes = []
+        for name, x, top_y, base_y, bar_w in layout:
             value = _clamp01(values.get(name, 0.0))
             color = NEURO_COLORS.get(name, "#888888")
             label = NEURO_LABELS.get(name, name[:3].upper())
             usable_h = base_y - top_y
             h = usable_h * value
+            # Static background bar and name label: created once, never
+            # updated again (they never change after initial layout).
             self.canvas.create_rectangle(x, top_y, x + bar_w, base_y, outline="#dddddd", fill="#f7f7f7")
-            self.canvas.create_rectangle(x, base_y - h, x + bar_w, base_y, outline=color, fill=color)
+            fill_id = self.canvas.create_rectangle(x, base_y - h, x + bar_w, base_y, outline=color, fill=color)
             self.canvas.create_text(x + bar_w / 2, base_y + 10, text=label, font=("Arial", 8))
-            self.canvas.create_text(x + bar_w / 2, top_y - 6, text="%.2f" % value, font=("Arial", 7))
+            value_id = self.canvas.create_text(x + bar_w / 2, top_y - 6, text="%.2f" % value, font=("Arial", 7))
+            self._items[name] = {
+                "fill_id": fill_id, "value_id": value_id,
+                "x": x, "top_y": top_y, "base_y": base_y, "bar_w": bar_w,
+            }
+            self._last_values[name] = value
             self.hitboxes.append((x, x + bar_w, top_y - 12, base_y + 14, name))
-            x += bar_w + gap
+        self._built = True
+
     def draw(self, values):
-        self.canvas.delete("all")
-        self.hitboxes = []
-        row_h = (self.height - 20) / 2
-        self._draw_row(NEURO_CORE, values, 16, 16 + row_h - 24)
-        self._draw_row(NEURO_NEW, values, 16 + row_h + 10, 16 + 2 * row_h - 14)
+        if not self._built:
+            self._build_items(values)
+            return
+        for name, item in self._items.items():
+            value = _clamp01(values.get(name, 0.0))
+            last = self._last_values.get(name, None)
+            if last is not None and abs(value - last) < self.CHANGE_THRESHOLD:
+                continue  # unchanged (within display precision): skip Tk work entirely
+            top_y = item["top_y"]; base_y = item["base_y"]; x = item["x"]; bar_w = item["bar_w"]
+            usable_h = base_y - top_y
+            h = usable_h * value
+            self.canvas.coords(item["fill_id"], x, base_y - h, x + bar_w, base_y)
+            self.canvas.itemconfig(item["value_id"], text="%.2f" % value)
+            self._last_values[name] = value
     def _on_motion(self, event):
         for x0, x1, y0, y1, key in self.hitboxes:
             if x0 <= event.x <= x1 and y0 <= event.y <= y1:
@@ -268,11 +335,10 @@ class App(tk.Tk):
         self.mode = "idle"
         self._cov_cache = None
         self._cov_ts = 0.0
-        # BRAINSTEM_GUI_LAZY_TAB_REFRESH_FIX_V1: track which tab is
-        # currently visible so _refresh() can skip expensive, unindexed-
-        # scale-sensitive Treeview repopulation for tabs the user isn't
-        # even looking at. See _ui()/_on_tab_changed() and _refresh() below
-        # for the full explanation.
+        # BRAINSTEM_GUI_LAZY_TAB_REFRESH_FIX_V1 (09 September 2026): track
+        # which tab is currently visible so _refresh() can skip expensive,
+        # data-scale-sensitive widget repopulation for tabs the user isn't
+        # even looking at.
         self._current_tab_name = "Chat"
         self._ui()
         self._gui_pending = []
@@ -292,11 +358,6 @@ class App(tk.Tk):
             f = ttk.Frame(nb, padding=8)
             nb.add(f, text=n)
             self.tabs[n] = f
-        # BRAINSTEM_GUI_LAZY_TAB_REFRESH_FIX_V1: react to tab switches so a
-        # newly-visible "Datenbank"/"Fakten/Relationen" tab gets an
-        # immediate one-off refresh instead of waiting up to 2s for the
-        # next periodic tick, while still not refreshing it every 2s while
-        # NOT visible (see _refresh() for the actual skip logic).
         nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self._chat_tab()
         self._import_tab()
@@ -496,11 +557,6 @@ class App(tk.Tk):
                     db.close()
         except Exception:
             pass
-        # BRAINSTEM_SHARED_CONNECTION_THREAD_SAFETY_FIX_V1: also commit and
-        # close the dedicated worker connection (used by the autonomous-
-        # learning and drift/sensory-deprivation background threads), if one
-        # was ever created. Both worker threads are already joined above
-        # before this runs, so it is safe to close here.
         try:
             worker_mem = getattr(self, "_worker_mem", None)
             if worker_mem is not None:
@@ -591,19 +647,30 @@ class App(tk.Tk):
         import sqlite3
         lines = ["=== Autonomer Zyklus %d / Schritt %d ===" % (n, step)]
         try:
-            # BRAINSTEM_MEMORY_TIMEOUT_FIX_V1: this separate diagnostic
-            # connection previously used only timeout=5. Raised to 60s to
-            # match the main Memory connection's own fix.
+            # BRAINSTEM_MEMORY_TIMEOUT_FIX_V1: raised from timeout=5 to 60s.
             con = sqlite3.connect("ki_memory.sqlite3", timeout=60)
             try:
                 vals, regimes = read_all_neuromods(con)
-                total = 0; covered = 0; hyp = 0
-                try: total = con.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-                except Exception: pass
-                try: covered = con.execute("SELECT COUNT(*) FROM reading_queue WHERE COALESCE(read_count,0)>0").fetchone()[0]
-                except Exception: pass
-                try: hyp = con.execute("SELECT COUNT(*) FROM context_hypotheses").fetchone()[0]
-                except Exception: pass
+                # BRAINSTEM_GUI_DIAG_REDUNDANT_COUNT_FIX_V1 (10 September 2026)
+                #
+                # Root cause (confirmed via Process Explorer thread-stack
+                # inspection at 87.8% progress / 1,396,802 hypotheses): this
+                # function previously ran its OWN separate, uncached
+                # "SELECT COUNT(*) FROM context_hypotheses" (plus two more
+                # COUNT queries) on this THIRD ad-hoc connection, once per
+                # real learning cycle (5x more often than the GUI's own 2s
+                # timer). As context_hypotheses grows into the millions of
+                # rows, this COUNT(*) becomes progressively more expensive
+                # (SQLite must still traverse the underlying b-tree leaf
+                # pages to count rows even via the rowid/primary-key index),
+                # and it duplicates work _corpus_stats() already computes
+                # and caches for 10 seconds via the exact same three values
+                # (covered, total, hypo). Reusing that cache here removes
+                # this redundant, increasingly expensive query from the
+                # hot per-cycle path entirely, at the cost of the count
+                # being at most ~10s stale in this diagnostic log line
+                # (acceptable for a human-readable progress log).
+                covered, total, hyp = self._corpus_stats()
                 surv = part = weak = 0; thr = 0.0
                 try:
                     r = con.execute("SELECT candidates_survived,candidates_participated,weakened,adaptive_threshold_avg FROM phase7d_slow_wave_cycles ORDER BY id DESC LIMIT 1").fetchone()
@@ -637,8 +704,6 @@ class App(tk.Tk):
             lines.append("(Diagnose nicht verfuegbar: " + str(e) + ")")
         return "\n".join(lines)
     def progress(self, c, t, msg=""):
-        # BRAINSTEM GUI FIVE STEP PROGRESS FIX V1
-        # Preserve real backend substep callbacks in learn/auto mode.
         self._gui_enqueue(lambda: (self.bar_cycle.configure(value=c / max(1, t) * 100), self.status.configure(text='%s/%s %s' % (c, t, msg))))
     def _set_cycle_bar(self, step, total):
         self._gui_enqueue(lambda: self.bar_cycle.configure(value=step / max(1, total) * 100))
@@ -649,7 +714,6 @@ class App(tk.Tk):
         con = None
         covered = 0; total = 0; hypo = 0
         try:
-            # BRAINSTEM_MEMORY_TIMEOUT_FIX_V1: raised from timeout=5.
             con = sqlite3.connect("ki_memory.sqlite3", timeout=60)
             r = con.execute("SELECT COUNT(*) FROM chunks").fetchone()
             total = r[0] if r else 0
@@ -707,14 +771,6 @@ class App(tk.Tk):
                 self.reset_btn.configure(state=tk.DISABLED if r else tk.NORMAL)
         self._gui_enqueue(_apply)        
     def _get_worker_memory(self):
-        # BRAINSTEM_SHARED_CONNECTION_THREAD_SAFETY_FIX_V1
-        # Root-cause finding (09 September 2026): self.mem (a single
-        # sqlite3.Connection) was shared between the GUI's own periodic
-        # self.after(2000, self._refresh) timer and the "brainstem-auto"
-        # background thread, causing unsynchronized concurrent statement
-        # execution on the same Connection handle from multiple threads.
-        # This method lazily creates ONE dedicated Memory instance reserved
-        # exclusively for background worker threads.
         if getattr(self, "_worker_mem", None) is None:
             self._worker_mem = Memory("ki_memory.sqlite3")
         return self._worker_mem
@@ -736,8 +792,6 @@ class App(tk.Tk):
             except Exception: pass
         self.println("Stop-Anforderung gesetzt.")
     def _auto_worker(self):
-        # BEGIN BRAINSTEM MERGED HISTORICAL FIVE-EVALUATION WORKER V1
-        # BEGIN BRAINSTEM LATE RUNTIME REPATCH V1.2
         import importlib as _brainstem_late_importlib
         _brainstem_late_runtime = _brainstem_late_importlib.import_module("ki_system.v8_non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1")
         from ki_system.autonomous import AutonomousLoop as _brainstem_late_loop
@@ -746,7 +800,6 @@ class App(tk.Tk):
         if not hasattr(_brainstem_current_cycle, "__wrapped__") and hasattr(_brainstem_late_loop, _brainstem_patch_marker):
             delattr(_brainstem_late_loop, _brainstem_patch_marker)
         _brainstem_late_runtime.autoload(_brainstem_late_loop)
-        # END BRAINSTEM LATE RUNTIME REPATCH V1.2
         n = 0
         self.mode = "learn"
         worker_mem = self._get_worker_memory()
@@ -837,12 +890,32 @@ class App(tk.Tk):
             regimes.get("cooperative_mode", "n/a"), regimes.get("phase7a_mode", "n/a")))
         self.trend_text.configure(text="Homeostase: ADE %.2f | ECB %.2f | HIS %.2f" % (
             vals.get("adenosine", 0.0), vals.get("endocannabinoid", 0.0), vals.get("histamine", 0.0)))
-        self.neuro_bars.draw(vals)
+        # BRAINSTEM_GUI_NEURO_CANVAS_LAZY_REDRAW_FIX_V1 (10 September 2026,
+        # revised same day after user feedback)
+        #
+        # IMPORTANT REVISION: an earlier version of this fix skipped the
+        # canvas redraw unless the "Import & Jobs" tab was the currently
+        # visible tab. The user correctly pointed out that this tab is
+        # exactly the one they keep open continuously during autonomous
+        # learning specifically to watch this dashboard -- so tab-visibility
+        # gating would have had close to zero real-world effect for their
+        # actual usage pattern, while also not matching their explicit
+        # requirement that the display update after every single real
+        # learning cycle regardless of which tab is shown. That gating has
+        # been removed; draw() is now called unconditionally every tick as
+        # before Fix V1, and the real performance fix instead lives entirely
+        # inside NeuromodulatorBars.draw() itself (see the class docstring
+        # above _build_items()/draw()): items are created once and reused
+        # via coords()/itemconfig() instead of delete()+recreate, and
+        # per-neuromodulator updates are skipped only when the underlying
+        # value has not changed beyond display precision -- never based on
+        # tab visibility.
         emoji, name = compute_mood(vals, regimes)
         if self.mood_emoji is not None:
             self.mood_emoji.configure(text=emoji)
         if self.mood_name is not None:
             self.mood_name.configure(text=name)
+        self.neuro_bars.draw(vals)
     def refresh(self):
         self._gui_enqueue(self._refresh)
     def _drift_tab(self):
@@ -1013,36 +1086,9 @@ class App(tk.Tk):
                     self._update_neuro_dashboard()
                 except Exception as exc:
                     self.neuro_text.configure(text="Neuromodulatoren: nicht verfuegbar: " + str(exc))
-            # BRAINSTEM_GUI_LAZY_TAB_REFRESH_FIX_V1
-            #
-            # Root cause (confirmed 10 September 2026 via Process Explorer
-            # thread-stack inspection of a real, live "Not Responding" GUI
-            # after 2871 real cycles / 327,637 hypotheses / 9.2 GB database):
-            # this method previously repopulated BOTH the "Datenbank" and
-            # "Fakten/Relationen" Treeviews unconditionally on every single
-            # 2-second tick, regardless of which tab (if any) the user was
-            # actually looking at. Each repopulation deletes all existing
-            # Treeview rows and re-inserts up to 2000 fresh rows from an
-            # ORDER BY created_at DESC query. The GUI main thread's stack
-            # was found stuck deep inside sqlite3_step, busy (not blocked),
-            # with over 6 hours of accumulated CPU time on that single
-            # thread -- consistent with this exact per-tick cost growing
-            # over a very long run until the main thread could no longer
-            # keep up with its own 2-second schedule, making Windows report
-            # "Not Responding" even though the process (and the separate
-            # autonomous-learning worker thread) remained fully healthy.
-            #
-            # Fix: only repopulate whichever of these two specific tabs is
-            # CURRENTLY the visible tab (tracked via _on_tab_changed(), which
-            # also triggers one immediate refresh on switching to either tab
-            # so the data never looks stale to the user). All other tabs
-            # (Chat, Import & Jobs, neuromodulator dashboard, etc.) continue
-            # to update every 2 seconds exactly as before -- this fix is
-            # scoped exclusively to the two specific, expensive, rarely-
-            # viewed Treeview populations that scale with total database
-            # size. Combined with the companion index fix in memory.py
-            # (idx_documents_created_at, idx_facts_created_at), even the
-            # occasional refresh when a tab IS visible remains fast.
+            # BRAINSTEM_GUI_LAZY_TAB_REFRESH_FIX_V1 (09 September 2026):
+            # only repopulate these two specific, expensive, database-size-
+            # scaling Treeviews when their tab is actually visible.
             if hasattr(self, "docs") and self._current_tab_name == "Datenbank":
                 self.docs.delete(*self.docs.get_children())
                 for d in self.mem.rows("SELECT * FROM documents ORDER BY created_at DESC LIMIT 2000"):
