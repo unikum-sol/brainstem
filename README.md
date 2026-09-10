@@ -1,6 +1,6 @@
 # BrainStem
 
-Update 09.09.26
+Update 10.09.26
 
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
