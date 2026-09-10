@@ -15,21 +15,11 @@ class Memory:
         # per cycle across Phase 5f/5g/5i plus the shadow/bridge modules
         # before a single commit), a concurrent writer or the periodic WAL
         # checkpoint can legitimately hold SQLite's write lock for longer
-        # than 5 seconds under load. This was confirmed as a real, repeated
-        # cause of "OperationalError: database is locked" in a live run at
-        # GUI cycle 22 (three core phases affected in immediate succession:
-        # cooperative_core_neuromodulator_sleep_authority,
-        # stageb_guarded_hypothesis_graduation_release,
-        # stageb_gapflow_runtime_contract_release), even though autonomous
-        # learning itself continued afterward thanks to the separate crash-
-        # containment fixes (Fix B1/B2, 09 September 2026). Raising the
-        # busy-timeout to 60 seconds (matching the timeout already used
-        # consistently by every other module's own resolve_db()/_con()
-        # fallback throughout this codebase, e.g. v8_phase7a, the shadow
-        # modules, db_bootstrap.py's own ensure_database_exists) makes a
-        # concurrent writer simply wait instead of failing outright, while
-        # still bounded and safe (a genuine deadlock would still eventually
-        # raise after 60s rather than hanging forever).
+        # than 5 seconds under load. Raising the busy-timeout to 60 seconds
+        # (matching the timeout already used consistently by every other
+        # module's own resolve_db()/_con() fallback throughout this
+        # codebase) makes a concurrent writer simply wait instead of
+        # failing outright, while still bounded and safe.
         self.db.row_factory=sqlite3.Row
         if not readonly: self._init()
     def _json(self,o): return json.dumps(o,ensure_ascii=False,default=str)
@@ -52,6 +42,7 @@ class Memory:
         with self.lock: self.db.executescript(sql); self.db.commit()
         self._ensure_core_import_schema()
         self._self_check_core_import_schema()
+        self._ensure_perf_indexes()
     # BRAINSTEM_CORE_IMPORT_SCHEMA_V1
     CORE_IMPORT_SCHEMA = {
         "documents": (("kind", "TEXT"), ("metadata_json", "TEXT"), ("source_score", "REAL DEFAULT 1")),
@@ -79,6 +70,47 @@ class Memory:
         if missing:
             raise RuntimeError("Core import schema missing: " + ", ".join(missing))
         return True
+    def _ensure_perf_indexes(self):
+        # BRAINSTEM_MEMORY_PERF_INDEX_FIX_V1
+        #
+        # Root cause (confirmed 10 September 2026 via Process Explorer
+        # thread-stack inspection of a real, live "Not Responding" GUI):
+        # the admin GUI's periodic self.after(2000, self._refresh) timer
+        # (running on the single Tkinter main thread) repopulates the
+        # "Datenbank" and "Fakten/Relationen" Treeview tabs every 2 seconds
+        # via "SELECT * FROM documents ORDER BY created_at DESC LIMIT 2000"
+        # and the equivalent query on facts, with NO index on the
+        # created_at column of either table. As the database grows over a
+        # long autonomous-learning run (observed: 9.2 GB after 2871 real
+        # cycles / 327,637 hypotheses), this unindexed ORDER BY forces a
+        # full table scan plus sort on every single refresh call. The
+        # thread-stack evidence showed the GUI main thread stuck deep
+        # inside sqlite3_step, busy (not blocked/waiting), with over 6
+        # hours of accumulated CPU time on that one thread alone --
+        # consistent with this exact query becoming progressively more
+        # expensive over the life of a long run until the main thread can
+        # no longer keep up with its own 2-second refresh schedule, making
+        # the window appear "Not Responding" even though the process (and
+        # the separate autonomous-learning worker thread) remains fully
+        # healthy and actively learning throughout.
+        #
+        # This index alone does not fully solve the scaling problem (see
+        # the companion fix in gui_app.py, which stops refreshing these two
+        # specific tabs unless they are actually the currently visible tab),
+        # but it removes the unindexed full-table-scan-plus-sort cost for
+        # whenever these queries DO run, matching the existing, established
+        # SCHEMA_INDEXES / ensure_perf_indexes() convention already used in
+        # db_bootstrap.py for the exact same class of problem elsewhere in
+        # this codebase. Idempotent (CREATE INDEX IF NOT EXISTS) and safe to
+        # run on every startup, including against the user's existing large
+        # production database, with no data modification of any kind.
+        with self.lock:
+            try:
+                self.db.execute("CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at)")
+                self.db.execute("CREATE INDEX IF NOT EXISTS idx_facts_created_at ON facts(created_at)")
+                self.db.commit()
+            except Exception:
+                pass
     def rows(self,sql,params=()):
         with self.lock: return list(self.db.execute(sql,params))
     def add_document(self,path,title,kind,metadata=None,score=1.0):

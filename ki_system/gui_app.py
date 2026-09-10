@@ -125,45 +125,16 @@ def read_all_neuromods(con):
     # previously relied EXCLUSIVELY on cooperative_sleep_wake_state.state.
     # That cooperative authority combines five weighted signals behind a
     # single, high, combined threshold (default 0.62) and, measured over
-    # 467 real cycles, never once crossed it (peak observed: 0.5403 at
-    # cycle 8, then oscillating between 0.31-0.54 -- i.e. NOT a data-
-    # maturity effect, since the score does not trend upward over time).
-    #
-    # Meanwhile phase7a_adenosine_homeostat_release.py -- the older,
-    # independent, single-signal adenosine homeostat -- was confirmed to be
-    # working correctly and extensively the entire time: 290 of 467 cycles
-    # recorded homeostat_mode='sleep', with 58 real transitions and a full
-    # sleep/wake event history (v8_phase7a_adenosine_homeostat_release.py,
-    # threshold_high=0.65). The two authorities structurally interfere with
-    # each other: phase7a enters sleep and begins actively discharging
-    # (decaying) adenosine as soon as its own single-signal 0.65 threshold
-    # is crossed, which is exactly the dominant (35% weight) input the
-    # cooperative authority needs to reach ITS OWN, later, combined 0.62
-    # threshold -- so by the time phase7a's decay has run its course, the
-    # cooperative score never gets a real chance to climb high enough on
-    # its own.
-    #
-    # This exact "OR both authorities together" pattern is already the
-    # established, working convention used elsewhere in this same codebase
-    # for entering real Slow-Wave-Sleep: see
-    # v8_phase7d_slow_wave_sleep_substructure_release.py:
+    # 467 real cycles, never once crossed it. Meanwhile phase7a_adenosine_
+    # homeostat_release.py -- the older, independent, single-signal
+    # adenosine homeostat -- was confirmed to be working correctly and
+    # extensively the entire time. This exact "OR both authorities
+    # together" pattern is already the established, working convention used
+    # elsewhere in this same codebase for entering real Slow-Wave-Sleep:
+    # see v8_phase7d_slow_wave_sleep_substructure_release.py:
     #   if canonical_mode == "sleep" or cooperative_mode == "sleep":
-    # and v8_phase7e_histamine_wake_arousal_release.py, which reads
-    # phase7a's homeostat_mode the same way. Phase7d's own real slow-wave
-    # consolidation (reinforcement/weakening of hypotheses, the actual
-    # mechanism the user is asking to see reflected here) already runs
-    # whenever EITHER authority says "sleep" -- so real consolidation has
-    # been happening in the background this whole time, just never shown
-    # in the GUI, because the GUI checked only ONE of the two authorities
-    # that phase7d itself already treats as equally valid.
-    #
-    # Fix: mirror phase7d/phase7e's own established pattern in the GUI's
-    # mood/regime read path. The GUI now shows "sleep" whenever EITHER the
-    # cooperative authority OR the phase7a homeostat reports sleep, exactly
-    # matching what actually gates real consolidation in phase7d. This is
-    # not a new, invented threshold or behavior -- it is the GUI catching
-    # up to a convention that already governs real learning behavior
-    # elsewhere in this codebase.
+    # Fix: mirror phase7d's own established pattern in the GUI's mood/
+    # regime read path.
     phase7a_state = _kv(con, "phase7a_adenosine_state")
     phase7a_mode = str(phase7a_state.get("homeostat_mode", "wake")).strip().lower()
     phase7a_asleep = (phase7a_mode == "sleep")
@@ -199,8 +170,6 @@ def compute_mood(vals, regimes):
     if cortisol >= 0.6:
         return ("(>_<)", "Gestresst")
     if asleep or adeno >= 0.75:
-        # BRAINSTEM_GUI_DUAL_SLEEP_AUTHORITY_FIX_V1: distinguish which
-        # authority triggered sleep, for transparency in the mood label.
         authority = regimes.get("sleep_authority", "")
         if authority == "phase7a":
             return ("(-_-) zzz", "Konsolidiert (Phase7a)")
@@ -299,6 +268,12 @@ class App(tk.Tk):
         self.mode = "idle"
         self._cov_cache = None
         self._cov_ts = 0.0
+        # BRAINSTEM_GUI_LAZY_TAB_REFRESH_FIX_V1: track which tab is
+        # currently visible so _refresh() can skip expensive, unindexed-
+        # scale-sensitive Treeview repopulation for tabs the user isn't
+        # even looking at. See _ui()/_on_tab_changed() and _refresh() below
+        # for the full explanation.
+        self._current_tab_name = "Chat"
         self._ui()
         self._gui_pending = []
         self._gui_pending_lock = threading.Lock()
@@ -311,11 +286,18 @@ class App(tk.Tk):
     def _ui(self):
         nb = ttk.Notebook(self)
         nb.pack(fill=tk.BOTH, expand=True)
+        self.nb = nb
         self.tabs = {}
         for n in ["Chat", "Import & Jobs", "Suche & Antwort", "Datenbank", "Fakten/Relationen", "Export/Konfig", "Drift-Report"]:
             f = ttk.Frame(nb, padding=8)
             nb.add(f, text=n)
             self.tabs[n] = f
+        # BRAINSTEM_GUI_LAZY_TAB_REFRESH_FIX_V1: react to tab switches so a
+        # newly-visible "Datenbank"/"Fakten/Relationen" tab gets an
+        # immediate one-off refresh instead of waiting up to 2s for the
+        # next periodic tick, while still not refreshing it every 2s while
+        # NOT visible (see _refresh() for the actual skip logic).
+        nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self._chat_tab()
         self._import_tab()
         self._search_tab()
@@ -323,6 +305,14 @@ class App(tk.Tk):
         self._facts_tab()
         self._export_tab()
         self._drift_tab()
+    def _on_tab_changed(self, event=None):
+        try:
+            self._current_tab_name = self.nb.tab(self.nb.select(), "text")
+        except Exception:
+            pass
+        # Immediate one-off refresh so switching to a lazily-updated tab
+        # doesn't feel stale/broken while waiting for the next 2s tick.
+        self.refresh()
     def _chat_tab(self):
         f = self.tabs["Chat"]
         self.chat_out = tk.Text(f, wrap=tk.WORD)
@@ -602,14 +592,8 @@ class App(tk.Tk):
         lines = ["=== Autonomer Zyklus %d / Schritt %d ===" % (n, step)]
         try:
             # BRAINSTEM_MEMORY_TIMEOUT_FIX_V1: this separate diagnostic
-            # connection previously used only timeout=5 (SQLite's default
-            # busy-wait if unspecified is also effectively very short).
-            # Raised to 60s to match the main Memory connection's own fix
-            # (see memory.py) and every other module's own resolve_db()
-            # fallback convention throughout this codebase, reducing the
-            # chance that this read-only diagnostic query itself contends
-            # with, or is blocked by, a concurrent long-running write from
-            # the real learning cycle at large database sizes.
+            # connection previously used only timeout=5. Raised to 60s to
+            # match the main Memory connection's own fix.
             con = sqlite3.connect("ki_memory.sqlite3", timeout=60)
             try:
                 vals, regimes = read_all_neuromods(con)
@@ -641,10 +625,6 @@ class App(tk.Tk):
                 lines.append("Regime -> Orexin: %s | BDNF: %s | Cortisol: %s | Histamin: %s" % (
                     regimes.get("orexin", "n/a"), regimes.get("bdnf", "n/a"),
                     regimes.get("cortisol", "n/a"), regimes.get("histamine", "n/a")))
-                # BRAINSTEM_GUI_DUAL_SLEEP_AUTHORITY_FIX_V1: surface both
-                # sleep authorities explicitly in the per-cycle diagnostic
-                # text, so it is fully transparent which one (if any) is
-                # currently asleep, instead of only the combined GUI mood.
                 lines.append("Schlaf -> Kooperativ: %s (Score %s) | Phase7a: %s | Aktiv: %s (%s)" % (
                     regimes.get("cooperative_mode", "n/a"), regimes.get("sleep_score", "n/a"),
                     regimes.get("phase7a_mode", "n/a"),
@@ -669,8 +649,7 @@ class App(tk.Tk):
         con = None
         covered = 0; total = 0; hypo = 0
         try:
-            # BRAINSTEM_MEMORY_TIMEOUT_FIX_V1: raised from timeout=5, see
-            # _cycle_diag_text() above for the full rationale.
+            # BRAINSTEM_MEMORY_TIMEOUT_FIX_V1: raised from timeout=5.
             con = sqlite3.connect("ki_memory.sqlite3", timeout=60)
             r = con.execute("SELECT COUNT(*) FROM chunks").fetchone()
             total = r[0] if r else 0
@@ -698,10 +677,6 @@ class App(tk.Tk):
         if t:
             r = self.dialogue.respond(t)
             note = ""
-            # BRAINSTEM_GUI_PERSIST_NOTE_FIX_V1: the admin GUI's Memory is
-            # writable, so r.skip_reason should normally be None here; but if
-            # persistence genuinely fails for any reason it is now surfaced
-            # instead of being silently discarded (see dialogue.py fix).
             if not r.persisted and r.skip_reason and r.skip_reason != "memory_readonly":
                 note = "\n[Hinweis: Konversation wurde NICHT gespeichert - " + r.skip_reason + "]"
             self.chat_out.insert(tk.END, "Du: " + t + "\n\nAntwort:\n" + r.response + note + "\n\n")
@@ -733,46 +708,13 @@ class App(tk.Tk):
         self._gui_enqueue(_apply)        
     def _get_worker_memory(self):
         # BRAINSTEM_SHARED_CONNECTION_THREAD_SAFETY_FIX_V1
-        #
-        # Root-cause finding (09 September 2026, second occurrence): the
-        # previous fix (raising sqlite3 busy-timeouts from 5s to 60s) did
-        # NOT resolve "database is locked" -- the error recurred even
-        # EARLIER (cycle 14 vs. previously cycle 22). This is strong
-        # evidence that the error is NOT primarily SQLITE_BUSY (cross-
-        # connection file-lock contention, which busy-timeout retries DO
-        # help with), but SQLITE_LOCKED (a conflict caused by concurrent,
-        # unsynchronized statement execution on the SAME sqlite3.Connection
-        # object from multiple threads at once). SQLite's busy-handler/
-        # busy-timeout mechanism explicitly does NOT retry SQLITE_LOCKED
-        # errors, so no timeout value, however large, can fix this specific
-        # failure mode.
-        #
-        # The actual root cause: self.mem (and therefore self.mem.db, a
-        # single sqlite3.Connection) was shared between the GUI's own
-        # periodic self.after(2000, self._refresh) timer (running on the
-        # main/GUI thread, calling self.mem.rows()/self.mem.stats(), which
-        # DOES go through self.mem.lock) and the "brainstem-auto" background
-        # thread (running AutonomousLoop(self.mem).cycle(), where most
-        # v8_phase*.py modules call resolve_db(self) and then execute SQL
-        # DIRECTLY on the raw connection, completely bypassing self.mem.lock
-        # entirely). Two threads therefore issued SQL statements on the
-        # exact same Connection handle concurrently and without a shared
-        # mutex protecting every access path -- a well-documented Python/
-        # sqlite3 pitfall. The official, standard-practice fix (per Python's
-        # own sqlite3 documentation) is: give each thread its own dedicated
-        # connection instead of sharing one across threads.
-        #
-        # This method lazily creates ONE dedicated Memory instance (with its
-        # own separate sqlite3.Connection, same 60s busy-timeout as the
-        # main connection) reserved exclusively for the autonomous-learning
-        # background thread (and the drift/sensory-deprivation thread, which
-        # has the identical sharing problem via AutonomousLoop(self.mem)).
-        # The GUI's own self.mem connection continues to be used only by the
-        # main/GUI thread (chat, facts/documents browser, corpus stats,
-        # neuromodulator dashboard), so the two connections are now each
-        # confined to a single thread, eliminating the unsynchronized
-        # concurrent-access pattern at its root instead of only masking one
-        # symptom of it.
+        # Root-cause finding (09 September 2026): self.mem (a single
+        # sqlite3.Connection) was shared between the GUI's own periodic
+        # self.after(2000, self._refresh) timer and the "brainstem-auto"
+        # background thread, causing unsynchronized concurrent statement
+        # execution on the same Connection handle from multiple threads.
+        # This method lazily creates ONE dedicated Memory instance reserved
+        # exclusively for background worker threads.
         if getattr(self, "_worker_mem", None) is None:
             self._worker_mem = Memory("ki_memory.sqlite3")
         return self._worker_mem
@@ -796,10 +738,8 @@ class App(tk.Tk):
     def _auto_worker(self):
         # BEGIN BRAINSTEM MERGED HISTORICAL FIVE-EVALUATION WORKER V1
         # BEGIN BRAINSTEM LATE RUNTIME REPATCH V1.2
-        # Re-apply after all later phase autoloads have replaced AutonomousLoop.cycle.
         import importlib as _brainstem_late_importlib
         _brainstem_late_runtime = _brainstem_late_importlib.import_module("ki_system.v8_non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1")
-        # The class marker can be stale when a later phase replaces AutonomousLoop.cycle.
         from ki_system.autonomous import AutonomousLoop as _brainstem_late_loop
         _brainstem_patch_marker = "_brainstem_per_cycle_runtime_provenance_fix_v1"
         _brainstem_current_cycle = getattr(_brainstem_late_loop, "cycle", None)
@@ -809,10 +749,6 @@ class App(tk.Tk):
         # END BRAINSTEM LATE RUNTIME REPATCH V1.2
         n = 0
         self.mode = "learn"
-        # BRAINSTEM_SHARED_CONNECTION_THREAD_SAFETY_FIX_V1: use a dedicated
-        # connection for this background thread instead of sharing self.mem
-        # with the GUI thread. See _get_worker_memory() for the full
-        # root-cause explanation.
         worker_mem = self._get_worker_memory()
         try:
             while not self.auto_stop:
@@ -823,27 +759,6 @@ class App(tk.Tk):
                 for step in range(5):
                     if self.auto_stop:
                         break
-                    # BRAINSTEM_AUTO_WORKER_CYCLE_CRASH_CONTAINMENT_FIX_V1:
-                    # self.auto_loop.cycle() previously had no exception
-                    # handling at all. A production crash at 167,661-chunk
-                    # scale showed that an uncaught sqlite3.OperationalError
-                    # ("database is locked"), originating deep inside a
-                    # non-productive audit-log write, could propagate all
-                    # the way up through the entire wrapped cycle() chain
-                    # and silently kill this background thread: the GUI
-                    # only ever showed the generic "Autonomes Dauerlernen
-                    # gestoppt." from the outer finally: block below, while
-                    # the actual exception and traceback were only visible
-                    # as an unhandled "Exception in thread brainstem-auto"
-                    # in the console -- never in the GUI itself. That
-                    # specific audit-write crash is now separately fixed at
-                    # its source (see v8_non_productive_recheck_canonical_
-                    # autoload_shadow_runtime_integration_v1.py), but this
-                    # call is now also defensively guarded so that ANY
-                    # future unexpected exception from a real cycle is
-                    # caught, fully logged to the visible GUI log with its
-                    # exact type and message, and autonomous learning stops
-                    # cleanly and visibly instead of dying silently.
                     try:
                         cycle_result = self.auto_loop.cycle()
                     except Exception as cycle_exc:
@@ -852,14 +767,6 @@ class App(tk.Tk):
                         self.auto_stop = True
                         break
                     backend_step = (n - 1) * 5 + step + 1
-                    # BRAINSTEM_GUI_DIAGNOSTICS_SURFACE_FIX_V1: previously the
-                    # GUI only ever displayed database state read back after
-                    # the fact (via _cycle_diag_text) and had no way to know
-                    # whether the cycle that just ran actually completed its
-                    # core phases without error -- a failed core phase (e.g.
-                    # Phase 6a) could be nested deep inside cycle_result and
-                    # would look identical to a healthy cycle in the GUI. The
-                    # recursive summarizer now makes this explicit.
                     try:
                         summary = _cycle_diagnostics.summarize_cycle_result(cycle_result)
                         if summary["cycle_status"] == "failed":
@@ -870,34 +777,11 @@ class App(tk.Tk):
                             self.println("(i) Zyklus degradiert: %d nicht-kernkritische Warnung(en)" % len(summary["warnings"]))
                     except Exception as diag_exc:
                         self.println("(Diagnose-Zusammenfassung fehlgeschlagen: " + str(diag_exc) + ")")
-                    # GUI_FIVE_EVALUATION_CONTRACT_FIX_V1: diagnose every real subcycle
                     self.println(self._cycle_diag_text(n, step + 1))
-                    # GUI_FIVE_EVALUATION_CONTRACT_FIX_V1: render every real subcycle
                     self._set_cycle_bar(step + 1, 5)
                     self.refresh()
                 self.auto_loop = None
-                # BRAINSTEM_WAL_CHECKPOINT_MAINTENANCE_WIRING_V1: explicitly
-                # authorized fix for the (previously unconfirmed) WAL-growth
-                # hypothesis raised after a real 167,661-chunk production
-                # run showed increasing GUI sluggishness followed by a
-                # "database is locked" failure. No module anywhere in this
-                # codebase ever explicitly checkpoints the WAL journal, and
-                # this admin GUI's own periodic self.after(2000,self._refresh)
-                # read loop is exactly the kind of long-lived reader that can
-                # prevent SQLite's automatic passive checkpointing from ever
-                # fully shrinking the on-disk -wal file during a long
-                # autonomous-learning session. A checkpoint is now run once
-                # after every completed outer ("Autonomer Dauerlern-Zyklus")
-                # GUI cycle -- i.e. every 5 real cycles -- which keeps the
-                # WAL file consistently small rather than letting it grow
-                # for hundreds of cycles before ever being reclaimed. This
-                # call is fully guarded and can never raise or interrupt
-                # autonomous learning; a failure here is only ever logged.
                 try:
-                    # BRAINSTEM_SHARED_CONNECTION_THREAD_SAFETY_FIX_V1: use
-                    # worker_mem's own connection (this thread's dedicated
-                    # connection) rather than self.mem.db, so the checkpoint
-                    # call never touches the GUI thread's connection object.
                     db_for_checkpoint = getattr(worker_mem, "db", None)
                     if db_for_checkpoint is not None:
                         wal_result = _wal_maintenance.checkpoint_now(db_for_checkpoint, mode="TRUNCATE")
@@ -946,9 +830,6 @@ class App(tk.Tk):
                     pass
         core_line = " | ".join("%s %.2f" % (NEURO_LABELS[k], vals.get(k, 0.0)) for k in NEURO_CORE)
         self.neuro_text.configure(text="Neuromodulatoren: " + core_line)
-        # BRAINSTEM_GUI_DUAL_SLEEP_AUTHORITY_FIX_V1: surface both sleep
-        # authorities in the Regime line too, so the user can see at a
-        # glance which one (if either) reports sleep, not just the emoji.
         self.behavior_text.configure(text="Regime: Orexin %s (%.2f) | BDNF %s (%.2f) | Cortisol %s (%.2f) | Schlaf: koop=%s/phase7a=%s" % (
             regimes.get("orexin", "n/a"), vals.get("orexin", 0.0),
             regimes.get("bdnf", "n/a"), vals.get("bdnf", 0.0),
@@ -1027,14 +908,6 @@ class App(tk.Tk):
             self._drift_finish()
             return
         con = sqlite3.connect(str(root / "ki_memory.sqlite3"), timeout=60.0)
-        # BRAINSTEM_SHARED_CONNECTION_THREAD_SAFETY_FIX_V1: this background
-        # thread previously shared self.mem (and thus self.mem.db) with the
-        # GUI thread's own periodic reads, the identical root cause as the
-        # autonomous-learning worker (see _get_worker_memory() for the full
-        # explanation). drift_start() already refuses to run concurrently
-        # with autonomous learning, but the GUI's own self.after(2000,
-        # self._refresh) timer keeps running regardless of mode, so this
-        # thread still needs its own dedicated connection.
         loop = AutonomousLoop(self._get_worker_memory())
         limit_on = bool(self.drift_limit_on.get())
         cycles = int(self.drift_cycles.get()) if limit_on else None
@@ -1140,11 +1013,41 @@ class App(tk.Tk):
                     self._update_neuro_dashboard()
                 except Exception as exc:
                     self.neuro_text.configure(text="Neuromodulatoren: nicht verfuegbar: " + str(exc))
-            if hasattr(self, "docs"):
+            # BRAINSTEM_GUI_LAZY_TAB_REFRESH_FIX_V1
+            #
+            # Root cause (confirmed 10 September 2026 via Process Explorer
+            # thread-stack inspection of a real, live "Not Responding" GUI
+            # after 2871 real cycles / 327,637 hypotheses / 9.2 GB database):
+            # this method previously repopulated BOTH the "Datenbank" and
+            # "Fakten/Relationen" Treeviews unconditionally on every single
+            # 2-second tick, regardless of which tab (if any) the user was
+            # actually looking at. Each repopulation deletes all existing
+            # Treeview rows and re-inserts up to 2000 fresh rows from an
+            # ORDER BY created_at DESC query. The GUI main thread's stack
+            # was found stuck deep inside sqlite3_step, busy (not blocked),
+            # with over 6 hours of accumulated CPU time on that single
+            # thread -- consistent with this exact per-tick cost growing
+            # over a very long run until the main thread could no longer
+            # keep up with its own 2-second schedule, making Windows report
+            # "Not Responding" even though the process (and the separate
+            # autonomous-learning worker thread) remained fully healthy.
+            #
+            # Fix: only repopulate whichever of these two specific tabs is
+            # CURRENTLY the visible tab (tracked via _on_tab_changed(), which
+            # also triggers one immediate refresh on switching to either tab
+            # so the data never looks stale to the user). All other tabs
+            # (Chat, Import & Jobs, neuromodulator dashboard, etc.) continue
+            # to update every 2 seconds exactly as before -- this fix is
+            # scoped exclusively to the two specific, expensive, rarely-
+            # viewed Treeview populations that scale with total database
+            # size. Combined with the companion index fix in memory.py
+            # (idx_documents_created_at, idx_facts_created_at), even the
+            # occasional refresh when a tab IS visible remains fast.
+            if hasattr(self, "docs") and self._current_tab_name == "Datenbank":
                 self.docs.delete(*self.docs.get_children())
                 for d in self.mem.rows("SELECT * FROM documents ORDER BY created_at DESC LIMIT 2000"):
                     self.docs.insert("", tk.END, values=(d["id"], d["title"], d["kind"], d["path"]))
-            if hasattr(self, "facts"):
+            if hasattr(self, "facts") and self._current_tab_name == "Fakten/Relationen":
                 self.facts.delete(*self.facts.get_children())
                 for f in self.mem.rows("SELECT * FROM facts ORDER BY created_at DESC LIMIT 2000"):
                     self.facts.insert("", tk.END, values=(f["subject"], f["relation"], f["value"], round(f["confidence"], 2)))
