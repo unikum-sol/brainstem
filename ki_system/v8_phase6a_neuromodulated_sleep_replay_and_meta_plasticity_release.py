@@ -1,10 +1,7 @@
-
 # V8 Phase6a - Neuromodulated Sleep Replay and Meta-Plasticity Release
 # Project compass: no blacklist/filter system, no facts/relations/questions writes.
 # This module adds an offline-style replay/consolidation layer after the active learning loop.
-
 from __future__ import annotations
-
 import json
 import os
 import sqlite3
@@ -12,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from ki_system import v8_phase6a_replay_control_shadow_release as replay_control_shadow
+
+
 def _canonical_outcome_observation_count(con):
     try:
         if not _table_exists(con, "phase5g_experiment_outcomes"):
@@ -20,8 +19,10 @@ def _canonical_outcome_observation_count(con):
     except Exception:
         return 0
 
+
 def _canonical_outcome_observation_available(con):
     return 1 if _canonical_outcome_observation_count(con) > 0 else 0
+
 
 def _canonical_phase6a_evidence_state(con, candidate_count, replay_events):
     population = int(candidate_count or 0) > 0 or int(replay_events or 0) > 0
@@ -30,6 +31,7 @@ def _canonical_phase6a_evidence_state(con, candidate_count, replay_events):
     if not _canonical_outcome_observation_available(con):
         return "population_without_outcome_observation"
     return "outcome_observed_insufficient_comparison"
+
 
 def _canonical_phase6a_evidence_reason(con, candidate_count, replay_events):
     state = _canonical_phase6a_evidence_state(con, candidate_count, replay_events)
@@ -70,7 +72,6 @@ def _has_execute(obj: Any) -> bool:
 
 def resolve_db(obj: Any = None) -> sqlite3.Connection:
     """Resolve sqlite connection from AutonomousLoop/Memory/Connection or fallback path.
-
     This intentionally avoids assumptions about the Memory class used by the project.
     """
     if isinstance(obj, sqlite3.Connection):
@@ -144,9 +145,7 @@ def kv_set(db: sqlite3.Connection, table: str, key: str, value: Any, now: Option
 
 def ensure_phase6a_schema(db: sqlite3.Connection) -> Dict[str, Any]:
     changes: List[str] = []
-
     db.execute('\n    CREATE TABLE IF NOT EXISTS phase6a_sleep_replay_cycles(\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        replay_mode TEXT,\n        candidate_count INTEGER DEFAULT 0,\n        replay_events INTEGER DEFAULT 0,\n        avg_outcome_score REAL DEFAULT 0,\n        avg_closure_delta REAL DEFAULT 0,\n        avg_overlap_score REAL DEFAULT 0,\n        persistent_gap_pressure REAL DEFAULT 0,\n        plasticity_level REAL DEFAULT 0,\n        exploration_bias REAL DEFAULT 0,\n        consolidation_bias REAL DEFAULT 0,\n        inhibition_bias REAL DEFAULT 0,\n        revision_bias REAL DEFAULT 0,\n        safety_ok INTEGER DEFAULT 1,\n        details TEXT,\n        created_at INTEGER,\n        population_available INTEGER DEFAULT 0,\n        outcome_observation_available INTEGER DEFAULT 0,\n        outcome_observation_count INTEGER DEFAULT 0,\n        evidence_state TEXT,\n        evidence_reason TEXT\n    )')
-
     db.execute("""
     CREATE TABLE IF NOT EXISTS phase6a_sleep_replay_events(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -168,7 +167,6 @@ def ensure_phase6a_schema(db: sqlite3.Connection) -> Dict[str, Any]:
         details TEXT,
         created_at INTEGER
     )""")
-
     db.execute("""
     CREATE TABLE IF NOT EXISTS phase6a_replay_candidates(
         candidate_key TEXT PRIMARY KEY,
@@ -189,21 +187,18 @@ def ensure_phase6a_schema(db: sqlite3.Connection) -> Dict[str, Any]:
         created_at INTEGER,
         updated_at INTEGER
     )""")
-
     db.execute("""
     CREATE TABLE IF NOT EXISTS phase6a_meta_plasticity_state(
         key TEXT PRIMARY KEY,
         value TEXT,
         updated_at INTEGER
     )""")
-
     db.execute("""
     CREATE TABLE IF NOT EXISTS phase6a_neuromodulated_sleep_state(
         key TEXT PRIMARY KEY,
         value TEXT,
         updated_at INTEGER
     )""")
-
     db.execute("""
     CREATE TABLE IF NOT EXISTS phase6a_replay_memory(
         memory_key TEXT PRIMARY KEY,
@@ -221,7 +216,6 @@ def ensure_phase6a_schema(db: sqlite3.Connection) -> Dict[str, Any]:
         created_at INTEGER,
         updated_at INTEGER
     )""")
-
     db.execute("""
     CREATE TABLE IF NOT EXISTS phase6a_plasticity_adjustments(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -240,7 +234,6 @@ def ensure_phase6a_schema(db: sqlite3.Connection) -> Dict[str, Any]:
         details TEXT,
         created_at INTEGER
     )""")
-
     # Future-tolerant columns in existing tables frequently touched by later phases.
     extensions = {
         "internal_learning_gaps": [
@@ -304,7 +297,6 @@ def ensure_phase6a_schema(db: sqlite3.Connection) -> Dict[str, Any]:
     for table, columns in extensions.items():
         for column, decl in columns:
             add_col(db, table, column, decl, changes)
-
     # Required indexes. Non-destructive if duplicates exist.
     safe_unique_index(db, "phase6a_replay_candidates", "candidate_key", "idx_phase6a_replay_candidates_candidate_key_unique", changes)
     safe_unique_index(db, "phase6a_meta_plasticity_state", "key", "idx_phase6a_meta_plasticity_state_key_unique", changes)
@@ -317,7 +309,6 @@ def ensure_phase6a_schema(db: sqlite3.Connection) -> Dict[str, Any]:
         ("phase5g_experiment_outcomes", "outcome_key", "idx_phase6a_phase5g_experiment_outcomes_outcome_key_unique"),
     ]:
         safe_unique_index(db, table, col, idx, changes)
-
     now = _now()
     for t in ("phase6a_meta_plasticity_state", "phase6a_neuromodulated_sleep_state"):
         kv_set(db, t, "phase", PHASE, now)
@@ -327,7 +318,6 @@ def ensure_phase6a_schema(db: sqlite3.Connection) -> Dict[str, Any]:
         kv_set(db, t, "direct_fact_writes", "disabled", now)
         kv_set(db, t, "direct_relation_writes", "disabled", now)
         kv_set(db, t, "question_generation", "internal_learning_questions_only", now)
-
     return {"status": "ok", "phase": PHASE, "changes": changes, "no_word_blacklists": True, "fact_promotion": "disabled"}
 
 
@@ -341,6 +331,7 @@ def _count(db: sqlite3.Connection, table: str) -> int:
 
 
 _AVG_CACHE = {}
+
 
 def _avg(db: sqlite3.Connection, table: str, column: str, default: float = 0.0) -> float:
     _ck = (id(db), table, column)
@@ -358,6 +349,108 @@ def _avg(db: sqlite3.Connection, table: str, column: str, default: float = 0.0) 
     return _res
 
 
+# BRAINSTEM_PHASE6A_STALE_GLOBAL_AVERAGE_FIX_V1 (10 September 2026)
+#
+# Root cause, confirmed by direct measurement against a real 5,269-cycle
+# production database (via diagnose_sleep_authority.py, run twice: at
+# cycle 14 and again at cycle 5016) and by a controlled synthetic
+# reproduction against the unmodified baseline of this exact file: the
+# original _avg() computes a lifetime, whole-table-history average of
+# phase5g_experiment_outcomes.overlap_score / no_candidate_rate. This
+# single, slow-moving value was being reused, IDENTICALLY, for every
+# single replay candidate sourced from internal_learning_gaps and from
+# context_hypotheses (the dominant candidate source at real production
+# scale, since productive internal_learning_gaps writes remain closed by
+# design). Because every candidate received the exact same value, the
+# subsequent per-cycle "avg_overlap"/"avg_no_candidate" (computed by
+# averaging over all candidates) collapsed mathematically to just a copy
+# of this one global, whole-history number -- completely disconnected
+# from anything about the current cycle's actual candidate population or
+# recent system behavior.
+#
+# This directly explains the empirically observed finding: inhibition_bias
+# (which is a direct linear function of avg_no_candidate and avg_overlap)
+# and, downstream of it, both the "inhibition" term (25% weight) AND the
+# GABA drive (which itself is a direct linear function of inhibition_bias,
+# feeding into 55% of the cooperative sleep authority's
+# inhibitory_readiness component) were found completely frozen (identical
+# to 4 decimal places) across a span of over 5,000 real learning cycles,
+# spanning both the active-reading phase and the post-100%-corpus
+# consolidation-only phase.
+#
+# Controlled reproduction (against the UNMODIFIED baseline of this file,
+# before this fix was applied): inserting 5,000 rows with
+# overlap_score=no_candidate_rate=0.9, then inserting 200 further rows
+# with the OPPOSITE value (0.05) -- simulating a real, substantial recent
+# behavior change -- moved inhibition_bias by less than 0.007. The signal
+# was demonstrated to be numerically deaf to recent activity once the
+# table has accumulated a large row count, exactly matching the frozen
+# real-world observation.
+#
+# This is also an internal architectural inconsistency, not just a
+# numerical quirk: this exact codebase ALREADY has an established,
+# correct convention for this precise situation elsewhere --
+# _read_recent_l2m()/_read_recent_effectiveness() in
+# v8_phase6c_bias_persistence_and_self_regulating_meta_release.py, and
+# _read_recent() in v8_phase7cort_stability_watch_release.py -- both of
+# which explicitly read only the most recent N rows (ordered by id/rowid
+# DESC LIMIT n) rather than a lifetime average, specifically to keep a
+# regulatory signal responsive to recent system behavior. This fix aligns
+# Phase 6a with that same, already-vetted convention.
+#
+# Fix scope, deliberately minimal and conservative:
+#   - _avg() itself is left COMPLETELY UNCHANGED. No other call site of
+#     _avg() exists anywhere in this file (verified: the only 4 call
+#     sites of _avg() in the entire module are the two overlap_score /
+#     no_candidate_rate lookups in the internal_learning_gaps branch and
+#     the two in the context_hypotheses branch of
+#     _select_replay_candidates() below -- all four, and only those four,
+#     are switched to _avg_recent()).
+#   - No schema change: overlap_score / no_candidate_rate are pre-existing
+#     columns on phase5g_experiment_outcomes (declared in db_bootstrap.py's
+#     central SCHEMA_TABLES); this fix only changes a SELECT query's scope,
+#     nothing is added, removed, or altered at the schema level.
+#   - No change to any formula weight/constant (0.35, 0.12, 0.60, etc.) --
+#     only the INPUT signal's staleness is fixed, not the regulatory
+#     formulas that consume it.
+#   - No change to any productive write path, no change to
+#     facts/relations/questions, no change to fact promotion.
+#   - Uses the exact same _AVG_CACHE dict as _avg(), but with a distinct,
+#     non-colliding cache-key shape (5-tuple including "recent" and the
+#     window size, vs. _avg()'s 3-tuple), so both functions can safely
+#     coexist and be called in the same cycle without cross-contaminating
+#     each other's cached values. _AVG_CACHE.clear() at the top of
+#     _select_replay_candidates() already resets both every cycle.
+PHASE6A_RECENT_WINDOW_ROWS = 200
+
+
+def _avg_recent(db: sqlite3.Connection, table: str, column: str, limit: int = PHASE6A_RECENT_WINDOW_ROWS, default: float = 0.0) -> float:
+    """Like _avg(), but averages only the most recent `limit` rows (by
+    id/rowid, newest first) instead of the table's entire lifetime
+    history. See BRAINSTEM_PHASE6A_STALE_GLOBAL_AVERAGE_FIX_V1 above for
+    the full root-cause explanation. Read-only; no schema or write-path
+    change of any kind."""
+    _ck = (id(db), table, column, "recent", int(limit))
+    if _ck in _AVG_CACHE:
+        return _AVG_CACHE[_ck]
+    if not table_exists(db, table) or column not in cols(db, table):
+        _AVG_CACHE[_ck] = default
+        return default
+    table_cols = cols(db, table)
+    idc = "id" if "id" in table_cols else "rowid"
+    try:
+        row = db.execute(
+            f"SELECT AVG(v) FROM (SELECT COALESCE({column},0) AS v FROM {table} "
+            f"ORDER BY {idc} DESC LIMIT ?)",
+            (int(limit),),
+        ).fetchone()
+        _res = float(row[0]) if row and row[0] is not None else default
+    except Exception:
+        _res = default
+    _AVG_CACHE[_ck] = _res
+    return _res
+
+
 def _safety(db: sqlite3.Connection) -> Dict[str, int]:
     return {"facts": _count(db, "facts"), "relations": _count(db, "relations"), "questions": _count(db, "questions")}
 
@@ -366,7 +459,6 @@ def _select_replay_candidates(db: sqlite3.Connection, limit: int = 180) -> List[
     out: List[Dict[str, Any]] = []
     now = _now()
     _AVG_CACHE.clear()  # PERF1B: fresh averages per cycle, cached within cycle
-
     if table_exists(db, "internal_learning_gaps"):
         columns = cols(db, "internal_learning_gaps")
         priority_expr = "COALESCE(phase5i_diversification_pressure, phase5e_expected_gain, priority, severity, 0)" if "phase5i_diversification_pressure" in columns else "COALESCE(priority, severity, 0)"
@@ -387,10 +479,9 @@ def _select_replay_candidates(db: sqlite3.Connection, limit: int = 180) -> List[
                 "priority": pr,
                 "outcome": _clamp(float(resolution or 0)),
                 "closure": _clamp(float(resolution or 0)),
-                "overlap": _avg(db, "phase5g_experiment_outcomes", "overlap_score", 0.0),
-                "no_candidate": _avg(db, "phase5g_experiment_outcomes", "no_candidate_rate", 0.0),
+                "overlap": _avg_recent(db, "phase5g_experiment_outcomes", "overlap_score"),
+                "no_candidate": _avg_recent(db, "phase5g_experiment_outcomes", "no_candidate_rate"),
             })
-
     if table_exists(db, "phase5g_experiment_outcomes"):
         c = cols(db, "phase5g_experiment_outcomes")
         outcome_col = "outcome_score" if "outcome_score" in c else "effectiveness_score" if "effectiveness_score" in c else "0"
@@ -417,7 +508,6 @@ def _select_replay_candidates(db: sqlite3.Connection, limit: int = 180) -> List[
                 "overlap": _clamp(float(overlap or 0)),
                 "no_candidate": _clamp(float(no_candidate or 0)),
             })
-
     if table_exists(db, "context_hypotheses"):
         c = cols(db, "context_hypotheses")
         unc = "uncertainty" if "uncertainty" in c else "0"
@@ -440,10 +530,9 @@ def _select_replay_candidates(db: sqlite3.Connection, limit: int = 180) -> List[
                 "priority": uncertainty,
                 "outcome": confidence,
                 "closure": max(0.0, confidence - (1.0 - uncertainty)),
-                "overlap": _avg(db, "phase5g_experiment_outcomes", "overlap_score", 0.0),
-                "no_candidate": _avg(db, "phase5g_experiment_outcomes", "no_candidate_rate", 0.0),
+                "overlap": _avg_recent(db, "phase5g_experiment_outcomes", "overlap_score"),
+                "no_candidate": _avg_recent(db, "phase5g_experiment_outcomes", "no_candidate_rate"),
             })
-
     # Stable deterministic order.
     out.sort(key=lambda x: (float(x.get("priority", 0)), float(x.get("overlap", 0))), reverse=True)
     return out[:limit]
@@ -453,24 +542,20 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
     db = resolve_db(db_or_obj)
     ensure_phase6a_schema(db)
     now = _now()
-
     candidates = _select_replay_candidates(db, replay_limit)
     if not candidates:
         candidates = []
-
     n = max(1, len(candidates))
     avg_outcome = sum(float(c.get("outcome", 0)) for c in candidates) / n
     avg_closure = sum(float(c.get("closure", 0)) for c in candidates) / n
     avg_overlap = sum(float(c.get("overlap", 0)) for c in candidates) / n
     avg_no_candidate = sum(float(c.get("no_candidate", 0)) for c in candidates) / n
     persistent_pressure = _clamp(1.0 - avg_closure + avg_overlap * 0.35 + (1.0 - avg_outcome) * 0.25)
-
     plasticity = _clamp(0.28 + persistent_pressure * 0.35 + avg_overlap * 0.18 + (1.0 - avg_outcome) * 0.15)
     exploration_bias = _clamp(0.30 + avg_overlap * 0.35 + (1.0 - avg_outcome) * 0.20 + avg_no_candidate * 0.10)
     consolidation_bias = _clamp(0.25 + avg_closure * 0.45 + avg_outcome * 0.25 - persistent_pressure * 0.18)
     inhibition_bias = _clamp(0.20 + avg_no_candidate * 0.35 + avg_overlap * 0.12)
     revision_bias = _clamp(0.25 + persistent_pressure * 0.40 + (1.0 - avg_outcome) * 0.20)
-
     dopamine = _clamp(0.25 + avg_outcome * 0.45 + avg_closure * 0.25)
     serotonin = _clamp(0.25 + consolidation_bias * 0.55)
     glutamate = _clamp(0.30 + exploration_bias * 0.55)
@@ -486,7 +571,6 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
         "acetylcholine": round(acetylcholine, 6),
     }
     # BRAINSTEM_EI_DRIVE_STATE_SPLIT_V1: Phase6a emits drive, not persistent E/I state.
-
     replayed = 0
     for c in candidates:
         src = c["source_table"]
@@ -538,7 +622,6 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
                 (priority, replay_weight, plasticity, now, decision, PHASE, sid),
             )
         replayed += 1
-
     # Update global memories.
     for memory_key, memory_type in (
         ("global_sleep_replay_memory", "global"),
@@ -554,12 +637,10 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
             "ON CONFLICT(memory_key) DO UPDATE SET observations=excluded.observations, avg_replay_weight=excluded.avg_replay_weight, avg_outcome_score=excluded.avg_outcome_score, avg_closure_delta=excluded.avg_closure_delta, avg_overlap_score=excluded.avg_overlap_score, avg_no_candidate_rate=excluded.avg_no_candidate_rate, avg_plasticity_level=excluded.avg_plasticity_level, recommendation=excluded.recommendation, neuromodulator_profile=excluded.neuromodulator_profile, details=excluded.details, updated_at=excluded.updated_at",
             (memory_key, memory_type, obs, plasticity, avg_outcome, avg_closure, avg_overlap, avg_no_candidate, plasticity, recommendation, _j(nm), _j({"persistent_gap_pressure": persistent_pressure}), now, now),
         )
-
     db.execute(
         "INSERT INTO phase6a_sleep_replay_cycles(replay_mode,candidate_count,replay_events,avg_outcome_score,avg_closure_delta,avg_overlap_score,persistent_gap_pressure,plasticity_level,exploration_bias,consolidation_bias,inhibition_bias,revision_bias,safety_ok,details,created_at,population_available,outcome_observation_available,outcome_observation_count,evidence_state,evidence_reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        ("offline_replay_after_wake_cycle", len(candidates), replayed, avg_outcome, avg_closure, avg_overlap, persistent_pressure, plasticity, exploration_bias, consolidation_bias, inhibition_bias, revision_bias, 1 if _safety(db) == {"facts": 0, "relations": 0, "questions": 0} else 0, _j({"neuromodulators": nm, "no_word_blacklists": True}), now, (1 if (int(len(candidates) or 0)>0 or int(replayed or 0)>0) else 0), _canonical_outcome_observation_available(db), _canonical_outcome_observation_count(db), _canonical_phase6a_evidence_state(db, len(candidates), replayed), _canonical_phase6a_evidence_reason(db, len(candidates), replayed))
+        ("offline_replay_after_wake_cycle", len(candidates), replayed, avg_outcome, avg_closure, avg_overlap, persistent_pressure, plasticity, exploration_bias, consolidation_bias, inhibition_bias, revision_bias, 1 if _safety(db) == {"facts": 0, "relations": 0, "questions": 0} else 0, _j({"neuromodulators": nm, "no_word_blacklists": True}), now, (1 if (int(len(candidates) or 0) > 0 or int(replayed or 0) > 0) else 0), _canonical_outcome_observation_available(db), _canonical_outcome_observation_count(db), _canonical_phase6a_evidence_state(db, len(candidates), replayed), _canonical_phase6a_evidence_reason(db, len(candidates), replayed))
     )
-
     # State tables.
     state_vals = {
         "last_replay_at": now,
@@ -587,7 +668,6 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
         kv_set(db, "phase6a_meta_plasticity_state", k, v, now)
     for k, v in {**state_vals, **nm}.items():
         kv_set(db, "phase6a_neuromodulated_sleep_state", k, v, now)
-
     db.commit()
     return {
         "status": "phase6a_sleep_replay_meta_plasticity_complete",
