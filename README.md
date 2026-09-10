@@ -7,23 +7,6 @@ Update 09.09.26
 [![Backend: SQLite](https://img.shields.io/badge/backend-SQLite-lightgrey)](#database-initialization)
 [![Roadmap: Stage A historical validation passed, current build revalidation pending](https://img.shields.io/badge/roadmap-revalidation%20pending-yellow)](#current-development-and-testing-status)
 
-> [!NOTE]
-> 09 September 2026: Real production evidence from a 167,661-chunk live
-> database (800+ real cycles) surfaced three real, confirmed defects, all
-> now fixed: (1) db_bootstrap.ensure_database_exists() -- the only place
-> creating the full central schema -- was never actually called by the
-> real main.py/gui_app.py entrypoint, so two schema-dependent shadow
-> modules failed on every cycle even on a correctly freshly-bootstrapped
-> database; both the entrypoint and the two affected modules are now
-> fixed. (2) An uncaught "database is locked" exception inside a
-> non-productive audit-log write could silently kill autonomous learning
-> with no GUI-visible explanation; now contained. (3) Unbounded WAL
-> growth (no module anywhere ever explicitly checkpointed the WAL journal)
-> plausibly explained increasing GUI sluggishness and the reported lock;
-> a periodic, safe WAL checkpoint is now wired into the autonomous-learning
-> loop. Full details, root-cause chains, and verification evidence:
-> `Detailed_Project_Status_2026-09-09_LIVE_INCIDENT_FIX.txt`.
-
 
 BrainStem is a biologically inspired, Real Neuro-Symbolic (RNS-AI) cognitive architecture for lifelong learning. It is designed to learn models of the structures and dynamics of language and text through context hypotheses, uncertainty, contradiction, revision, neuromodulation, replay, and consolidation rather than by merely storing isolated facts.
 
