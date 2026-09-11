@@ -1,12 +1,16 @@
 # BrainStem
 
-Update 10.09.26
+Update 11.09.26
 
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
 [![Backend: SQLite](https://img.shields.io/badge/backend-SQLite-lightgrey)](#database-initialization)
 [![Roadmap: Stage A historical validation passed, current build revalidation pending](https://img.shields.io/badge/roadmap-revalidation%20pending-yellow)](#current-development-and-testing-status)
 
+[![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
+[![Backend: SQLite](https://img.shields.io/badge/backend-SQLite-lightgrey)](#database-initialization)
+[![Roadmap: Stage B active](https://img.shields.io/badge/roadmap-Stage%20B%20active-brightgreen)](#current-development-and-testing-status)
 
 BrainStem is a biologically inspired, Real Neuro-Symbolic (RNS-AI) cognitive architecture for lifelong learning. It is designed to learn models of the structures and dynamics of language and text through context hypotheses, uncertainty, contradiction, revision, neuromodulation, replay, and consolidation rather than by merely storing isolated facts.
 
@@ -54,7 +58,7 @@ YouTube - AI conversation about BrainStem Project
 
 The system has completed a full read-through of its current two-source
 corpus (German Wikipedia *Physics* and *Computer* categories, 167,661
-chunks, 100%) and has since run well beyond 10,000 real learning cycles
+chunks, 100%) and has since run well beyond 11,500 real learning cycles
 in both active-learning and replay/consolidation-only modes without
 data loss, corruption, or GUI failure.
 
@@ -64,6 +68,32 @@ result of **"konvergiert"**: all 20 evaluated signals were classified
 either `stabil` or `konvergiert`, with zero signals flagged as
 divergent. This drift run supersedes the historical 1,344-cycle
 baseline, which applied only to a much earlier architectural state.
+
+**Cortisol Stage 2 is active and functionally verified.** `stage=2` is
+set in the production database (not observer-only Stage 1). Under real
+production conditions it has never yet been triggered (`allostatic_load`
+never exceeded 0.2483 against a 0.6 threshold over 11,500+ cycles — a
+sign of a consistently calm system, not a defect). Because it was never
+exercised live, the actual, unmodified `_apply_stage2_nudges()` function
+was run directly against an isolated synthetic database with artificially
+elevated stress (injected negative `effectiveness_score` values):
+confirmed correct behavior — intervention only above threshold, per-value
+cap (0.01) and per-cycle budget (0.03) strictly respected, cooldown (3
+cycles) correctly honored, 0 rollbacks across 15 real interventions, and
+a clean error path for a missing target table.
+
+**Hypothesis graduation (`uncertain_hypothesis` → `stable_hypothesis`) is
+active and has already graduated 36 hypotheses**, starting at cycle 112
+through cycle 1,641, with none since (see Roadmap and GUI State below for
+the full explanation — this is expected queue-size behavior, not a
+defect). All 36 graduations passed exclusively through the consolidation
+criterion (≥3 confirmed, reinforced Phase-7d survival cycles); the
+`_critic_gate` itself has so far always returned `"no_critic_snapshot"`
+(no independent critic evaluation took place), because a critic snapshot
+can only be created once `phase5g_experiment_outcomes` contains data —
+the same, already-known Stage-B safety boundary responsible for the
+frozen `effectiveness`/`exploration_bias`/`plasticity_level` values
+described further below.
 
 ### Current Architecture
 
@@ -110,14 +140,15 @@ The effective runtime architecture includes:
 Current corpus baseline (two ZIM sources: German Wikipedia *Physics* and
 *Computer* categories, ~664 MB combined):
 - 167,661 of 167,661 imported chunks read (100%)
-- over 1.6 million context hypotheses recorded and growing
+- over 1.59 million active `uncertain_hypothesis` entries, plus 36
+  already-graduated `stable_hypothesis` entries, and growing
 - observed throughput: on the order of 100,000–125,000 chunks processed
   per 24-hour period of active autonomous learning (single CPU core, no
   GPU, as per project design)
 
 Corpus completion does not stop autonomous learning. Replay,
 consolidation, hypothesis evaluation, neuromodulator regulation,
-sleep/wake transitions, and guarded Stage-B preparation continue after
+sleep/wake transitions, and guarded Stage-B graduation continue after
 all imported chunks have been read.
 
 Replay activity alone does not prove replay-caused semantic improvement.
@@ -147,6 +178,8 @@ code and runtime state and connected to the GUI. Adenosine and histamine
 show clear, reciprocal, bounded oscillation consistent with the Phase-7a
 sleep/wake cycle. Endocannabinoids remain at 0.000 at the current corpus
 scale (the postsynaptic-overload trigger mechanism has not yet fired).
+Cortisol remains low throughout (regime consistently "calm"), consistent
+with Stage 2 never yet needing to intervene under real load.
 
 ### Cooperative and Phase-7a Sleep/Wake Authority
 
@@ -177,6 +210,15 @@ confirmed correct via real production data. Phase 7d accepts either the
 Phase-7a homeostat or the cooperative sleep/wake state as a valid
 sleep-entry authority, recording which one authorized entry per cycle.
 
+Phase 7d's candidate pool is composed of three tracks: established
+anchors, reactivated survivors, and novel hypotheses. Reactivation of
+survivors (hypotheses with 1 or 2, but not yet 3, confirmed reinforced
+consolidation cycles) uses a persistent, fair, rotating cursor per
+survival level — a deliberate mechanism directly analogous to synaptic
+priming/reconsolidation, not a random re-draw from the entire hypothesis
+population and not an efficiency optimization. This is now directly
+observable in the GUI (see GUI State below).
+
 ### Efraimidis-Spirakis Sampling / Sigmoid Soft Clipping / E/I Balance
 
 Both mechanisms are intact. The guarded kernel-comparison path used for
@@ -188,8 +230,7 @@ this path, including at neuromodulator boundary values near 0.05/0.95.
 
 Real production data confirms histamine oscillating cleanly with correct
 regime transitions; orexin and BDNF growing slowly and monotonically in
-step with reading progress; cortisol remaining low ("calm") throughout,
-consistent with Stage-2 warm-up not yet being reached.
+step with reading progress; cortisol remaining low ("calm") throughout.
 
 ### GUI State
 
@@ -200,6 +241,16 @@ updates when the underlying value has not changed beyond display
 precision (±0.005) — updating on every real learning cycle regardless of
 which tab is currently visible.
 
+The "Import & Jobs" tab now also displays the internal state of Phase
+7d's survivor-reactivation queue: current queue size at each survival
+level (1 or 2 confirmed cycles), the current rotating cursor position
+per level, and a rough estimate (in real cycles) of how long a full pass
+through the current queue would take at the last observed reactivation
+rate and sleep-cycle fraction. This is a purely observational,
+read-only addition — it mirrors Phase 7d's own candidate-selection query
+exactly but does not alter, gate, or write to Phase 7d's state in any
+way.
+
 The "Datenbank" and "Fakten/Relationen" tabs — whose Treeview
 repopulation queries scale with total database size — only refresh
 while actually visible, with an immediate one-off refresh on tab switch.
@@ -207,35 +258,56 @@ while actually visible, with an immediate one-off refresh on tab switch.
 The mood/mission-control indicator reflects both sleep authorities (see
 above). Per-cycle diagnostics and periodic corpus/database statistics
 are cached rather than re-queried on every tick, keeping the GUI
-responsive at large database sizes (confirmed stable at 13.6+ GB).
+responsive at large database sizes (confirmed stable at 13.6+ GB after
+a targeted fix to an unconditionally-run, uncached statistics query that
+had become expensive once the `chunks` table reached its final size at
+100% corpus completion).
 
 One visible autonomous GUI cycle contains five real backend cycles, each
 with its own diagnostic evaluation and progress reporting.
 
 ### Stage-B Functional State
 
-Not yet activated: guarded Cortisol Stage 2 regulation remains in
-observer mode, the three-survived-consolidation graduation gate,
-`_critic_gate`, warm-up damping, and the one-graduation-per-cycle budget
-all remain in place with Facts promotion disabled. The cooperative
-neuromodulator/sleep-wake phase remains positioned after Cortisol and
-before guarded Stage-B graduation in the wrapper chain.
+**Active:** guarded Cortisol Stage 2 regulation (moved from observer to
+applied mode; verified functionally correct under simulated stress, see
+Current Validation Status above) and guarded hypothesis graduation (36
+hypotheses graduated to date). Both remain within their existing
+warm-up/budget/cooldown/critic gates. Facts, Relations, and Questions
+writes remain fully disabled regardless.
 
 Because Phase-5g experiments remain productively closed (a deliberate
 Stage-B safety boundary, not a defect), `effectiveness`,
 `exploration_bias`, and `plasticity_level` remain at their initial
-values — this has been directly confirmed, cycle by cycle, against the
-real database, and is expected, correct behavior until Phase-5g
-experiments are deliberately opened as a separate, later step.
+values, and the `_critic_gate` has so far always operated in its
+fallback "no snapshot available" mode rather than performing an
+independent evaluation — this has been directly confirmed, cycle by
+cycle, against the real database, and is expected, correct behavior
+until Phase-5g experiments are deliberately opened as a separate, later
+step. All 36 graduations to date were therefore gated solely by the
+consolidation-survival criterion, not additionally cross-checked by the
+critic.
+
+The near-complete halt in new graduations since cycle 1,641 (0 further
+graduations across ~9,900 subsequent cycles, despite the underlying
+Phase-7d consolidation-survivor pipeline continuing to feed new
+single-confirmation entries throughout) is explained by queue size, not
+a blockage: at 1,721 currently-queued single-confirmation hypotheses and
+a small, fixed per-sleep-cycle reactivation capacity, it simply takes
+many hundreds of real cycles for the fair, rotating reactivation queue
+(see Adenosine and Slow-Wave Sleep above) to give every waiting
+hypothesis its next chance at a second confirmation — patience, not a
+defect. This is now directly observable via the new GUI queue display.
 
 ### Current Safety Boundary
 
 Re-confirmed intact throughout the entire real production run
 (facts/relations/questions counts observed at `[0, 0, 0]` at every
-logged checkpoint): all productive writes (Facts, Relations, Questions,
-Attention, Phase-5f/5g/5i experiments, Fact promotion) remain closed. The
-cooperative authority writes only the six canonical neuromodulator
-values, cooperative sleep/wake state, and bounded cycle provenance.
+logged checkpoint): direct Facts, Relations, and Questions writes remain
+closed, as does Fact promotion outside consolidation. Cortisol Stage 2
+and hypothesis graduation write only within their own already-guarded,
+already-verified scope (six canonical neuromodulator nudges bounded by
+cap/budget/cooldown; a single `role` field update per graduated
+hypothesis) — neither opens any of the three core write locks.
 
 A vector database remains explicitly deferred (see Roadmap below).
 
@@ -253,17 +325,23 @@ Key/value reads continue to follow the repository contract:
 
 Proven via real, large-scale production operation: multi-day autonomous
 learning stability at full corpus scale (100% of a 167,661-chunk corpus,
-1.6M+ hypotheses, 10,000+ real cycles, no data loss or corruption), a
-clean 1,500-cycle formal drift validation with zero divergent signals,
-correct independent operation of both sleep authorities, correct E/I
-regulation at neuromodulator boundary values, and sustained GUI
-responsiveness at 13.6+ GB database scale.
+1.59M+ active hypotheses, 11,500+ real cycles, no data loss or
+corruption), a clean 1,500-cycle formal drift validation with zero
+divergent signals, correct independent operation of both sleep
+authorities, correct E/I regulation at neuromodulator boundary values,
+sustained GUI responsiveness at 13.6+ GB database scale, functionally
+verified Cortisol Stage 2 behavior under simulated stress, and 36 real,
+consolidation-gated hypothesis graduations.
 
 Still not proven:
 - natural cooperative-authority Sleep entries under real conditions (the
   cooperative score has not yet been observed crossing its own
   threshold; whether it ever should, or whether the threshold/weighting
   needs revisiting, remains an open, deliberately low-priority question)
+- Cortisol Stage 2 intervention under genuine (not simulated) production
+  stress (allostatic_load has never yet reached the 0.6 threshold live)
+- critic-gated (as opposed to consolidation-only-gated) hypothesis
+  graduation, pending Phase-5g opening
 - semantic learning effectiveness / real-user dialogue usefulness
 - behavior at corpus/database scales significantly beyond the current
   ~13.6 GB (see Roadmap: full German Wikipedia scaling)
@@ -271,24 +349,34 @@ Still not proven:
 
 ## Next Major Step
 
-1. Only now that Stage-A corpus completion and a clean formal drift
-   validation are both done: revisit whether to begin activating guarded
-   Cortisol Stage 2 (moving it from observer to applied mode) as the
-   first real Stage-B step.
-2. Optionally, extend drift validation runs further (well beyond 1,500
-   cycles) to build additional long-duration confidence before Stage-B
-   activation.
+1. Continue observing the hypothesis-graduation reactivation queue (now
+   visible in the GUI) over further real cycles, to confirm that
+   graduations resume at a rate consistent with the queue-size
+   explanation once enough cycles accumulate — no code change is
+   planned or needed unless this observation contradicts the current
+   understanding.
+2. Begin structured evaluation of whether and how to open
+   `phase5g_experiment_outcomes` (at minimum in shadow/observed-only
+   mode first, per the project's established activation discipline),
+   since this is the single dependency currently keeping both the
+   critic-gate and `effectiveness`/`exploration_bias`/
+   `plasticity_level` in their fallback states. This is a distinct,
+   separately gated decision from opening any of the Facts/Relations/
+   Questions write locks and does not imply or require opening those.
+3. Only after (1) and, if pursued, (2) are further along: revisit the
+   Facts/Relations/Questions write-lock roadmap below.
 
 ## Roadmap
 
 | Stage | Status | Gating condition to proceed |
 |---|---|---|
-| **Stage A — Core stability** | Validated: 100% corpus completion, 10,000+ real cycles, clean 1,500-cycle formal drift run ("konvergiert", zero divergent signals) | Complete — ready to proceed to Stage B |
-| **Stage B — Guarded graduation** | Prepared, not yet activated (Cortisol Stage 2 remains observer-only) | Cortisol Stage 2 promoted from observer to applied mode first, under its existing warm-up/budget/cooldown gates |
-| **Hypothesis graduation (`uncertain_hypothesis` → `stable_hypothesis`)** | Not yet started | Cortisol Stage 2 applied and stable; at least three survived Phase-7d consolidations per candidate; `_critic_gate` and warm-up damping active; initial budget of one graduation per cycle |
-| **Opening the productive write locks (Facts / Relations / Questions / Fact promotion)** | Deliberately closed; not evaluated | Must remain closed until: hypothesis graduation itself has run stably over a real multi-cycle window; a dedicated validation pass confirms graduated facts carry a complete, correct provenance chain back to source chunks; and an explicit, separate decision is made to open each write path one at a time (Facts before Relations before Questions), never all at once. No timeline is set — this is the project's core "no black box, no unearned answers" safety guarantee and is not to be relaxed by schedule pressure |
+| **Stage A — Core stability** | Complete: 100% corpus completion, 11,500+ real cycles, clean 1,500-cycle formal drift run ("konvergiert", zero divergent signals) | Complete |
+| **Stage B — Guarded graduation** | Active: Cortisol Stage 2 applied (functionally verified under simulated stress, not yet triggered live) and hypothesis graduation active (36 hypotheses graduated) | Ongoing observation; no further gating condition to proceed further within Stage B itself |
+| **Hypothesis graduation (`uncertain_hypothesis` → `stable_hypothesis`)** | Active, consolidation-gated: 36 graduated to date, further graduations expected to resume as the reactivation queue (currently 1,721 single-confirmation hypotheses) cycles through | Currently gated only by the ≥3-confirmed-consolidation criterion; critic-gate cross-check pending Phase-5g opening (see below) |
+| **Opening `phase5g_experiment_outcomes` (shadow/observed-only first)** | Not yet started | Needed to enable genuine critic-gate evaluation and to unfreeze `effectiveness`/`exploration_bias`/`plasticity_level`. Distinct from, and does not require, opening any Facts/Relations/Questions write lock |
+| **Opening the productive write locks (Facts / Relations / Questions / Fact promotion)** | Deliberately closed; not evaluated | Must remain closed until: hypothesis graduation itself has run stably over a real multi-cycle window (in progress); a dedicated validation pass confirms graduated facts carry a complete, correct provenance chain back to source chunks; and an explicit, separate decision is made to open each write path one at a time (Facts before Relations before Questions), never all at once. No timeline is set — this is the project's core "no black box, no unearned answers" safety guarantee and is not to be relaxed by schedule pressure |
 | **Full corpus scaling (complete German Wikipedia)** | Deliberately deferred | Rough estimate from current throughput: ~13.5 GB of text-only content, ~3.4M chunks, ~33M hypotheses, ~0.9 TB resulting database, ~27–28 days of continuous processing at observed throughput — order-of-magnitude only, not a commitment |
-| **Vector database evaluation** | Deliberately deferred per project's own architecture-checkpoint rule | Only once stable hypothesis identities exist (post-graduation), a concrete semantic-retrieval use case is identified, requirements are measurable, and a read-only/shadow comparison against the SQLite baseline is performed. Must never replace the canonical relational source or open productive gates — the project's provenance-first, no-black-box guarantee takes priority over retrieval convenience |
+| **Vector database evaluation** | Deliberately deferred per project's own architecture-checkpoint rule | Only once stable hypothesis identities exist (post-graduation, in progress), a concrete semantic-retrieval use case is identified, requirements are measurable, and a read-only/shadow comparison against the SQLite baseline is performed. Must never replace the canonical relational source or open productive gates — the project's provenance-first, no-black-box guarantee takes priority over retrieval convenience |
 | **Symbolic reasoning plugin (deterministic, non-LLM rule engine)** | Concept documented, not scheduled | See `docs/symbolic_reasoning_plugin_concept.md`. Gated behind Stage-B graduation and the write-lock roadmap above; a validated symbolic rule becoming productive is itself a new class of productive write and must be gated at least as strictly as Fact promotion |
 | **Multi-core / multi-process learning** | Explicitly out of scope for now | Acknowledged as a real, non-trivial architectural undertaking (Python's GIL requires `multiprocessing`, not `threading`, for genuine parallel compute; SQLite's single-writer model would require careful cross-process coordination). Not currently planned; current single-core throughput is considered acceptable |
 
