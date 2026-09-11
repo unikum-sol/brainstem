@@ -1,0 +1,28 @@
+# ============================================================
+# DRIFT-REPORT  (Zyklen: 1500)
+# ============================================================
+# Signal                  first     last    delta     span  Urteil
+# dopamine               0.2782   0.2787   0.0005   0.0026  stabil
+# serotonin              0.3244   0.3253   0.0009   0.0044  stabil
+# glutamate              0.5241   0.5258   0.0017   0.0082  stabil
+# gaba                   0.3871   0.3848  -0.0022   0.0112  stabil
+# noradrenaline          0.6845   0.6876   0.0031   0.0136  stabil
+# acetylcholine          0.7453   0.7487   0.0034   0.0099  stabil
+# histamine              0.5725   0.6478   0.0753   0.2285  konvergiert
+# orexin                 0.2565   0.2693   0.0128   0.0325  stabil
+# bdnf                   0.6925   0.7110   0.0185   0.0736  stabil
+# adenosine              0.2683   0.1648  -0.1035   0.5949  konvergiert
+# endocannabinoid_2ag    0.0000   0.0000   0.0000   0.0000  stabil
+# cortisol               0.0290   0.0038  -0.0252   0.1224  stabil
+# exploration_bias       0.5000   0.5000   0.0000   0.0000  stabil
+# plasticity_level       0.7800   0.7800   0.0000   0.0000  stabil
+# adaptive_threshold     0.5399   0.5442   0.0043   0.1772  stabil
+# survivors             21.0000  21.0000   0.0000  13.0000  konvergiert
+# participated          86.0000  88.0000   2.0000  25.0000  stabil
+# weakened              65.0000  67.0000   2.0000  31.0000  stabil
+# effectiveness          0.0000   0.0000   0.0000   0.0000  stabil
+# reciprocal_gate        0.8042   0.9830   0.1788   0.7632  konvergiert
+# allostatic_load        0.0000   0.0000   0.0000   0.1834  stabil
+# ------------------------------------------------------------
+# GESAMT: konvergiert
+# ============================================================
