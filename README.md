@@ -50,77 +50,34 @@ YouTube - AI conversation about BrainStem Project
 
 ## Current State
 
-> [!NOTE]
-> Update (10 September 2026): Following the 08 September 2026 static/synthetic
-> audit (14 defects found and fixed), the system underwent its first real,
-> large-scale, multi-day production run (two ZIM sources, ~664 MB combined,
-> 167,661 chunks) and surfaced a further set of real defects that only
-> appear under genuine long-duration load — none of which were reachable by
-> short synthetic testing alone:
-> - `db_bootstrap.ensure_database_exists()` was never actually invoked by the
->   real `main.py`/`gui_app.py` entrypoint (only by `systemtest.py`), causing
->   two schema-dependent shadow modules to fail on every cycle even on a
->   correctly bootstrapped database. Fixed both at the entrypoint (automatic
->   bootstrap call in `main.py`) and at the two affected modules themselves
->   (now self-healing via their own `ensure_schema()`).
-> - An uncaught `sqlite3.OperationalError: database is locked` inside a
->   non-productive audit-log write could silently kill the autonomous-
->   learning background thread with no GUI-visible explanation. Contained
->   at the source and given defense-in-depth exception handling around the
->   cycle call itself.
-> - No module anywhere ever explicitly checkpointed the WAL journal, while
->   the GUI's own periodic reads could prevent automatic passive
->   checkpointing from ever fully shrinking the on-disk `-wal` file. A
->   guarded, non-blocking `PRAGMA wal_checkpoint(TRUNCATE)` now runs once
->   per outer GUI cycle.
-> - The GUI itself froze ("Not Responding") at large scale (2,871 cycles /
->   327,637 hypotheses / 9.2 GB) while the backend kept learning correctly
->   the entire time (confirmed via Process Explorer thread-stack
->   inspection: the GUI main thread was busy, not blocked, deep inside
->   Tk canvas/font-metric calls and unindexed `ORDER BY` Treeview queries).
->   Fixed via lazy tab-aware refresh for the two expensive Treeview tabs,
->   added indexes on `documents(created_at)`/`facts(created_at)`, and a
->   full rewrite of the neuromodulator dashboard to reuse existing Tk
->   canvas items (`coords()`/`itemconfig()`) instead of repeated
->   `delete()` + full recreation on every tick — the latter is the most
->   likely explanation for why a simple GUI restart (with the identical,
->   unchanged database) always restored full responsiveness immediately.
-> - The GUI mood/sleep indicator relied exclusively on the cooperative
->   six-core sleep authority, which — measured over a real 467-cycle
->   window — never once crossed its 0.62 combined threshold (peak 0.5403
->   at cycle 8, then oscillating 0.31–0.54, i.e. not a data-maturity
->   effect). The independent, older Phase-7a adenosine homeostat was
->   confirmed working correctly the entire time (290 of 467 cycles
->   asleep, 58 real transitions) but was never reflected in the GUI. Fixed
->   by mirroring the same "either authority" OR-pattern already used
->   internally by Phase 7d/7e for real slow-wave admission.
->
-> All fixes were independently verified: full `compileall` across the
-> package, targeted reproduction tests for each defect (including real
-> multi-thread lock-contention simulation and mock-canvas item-count
-> verification across 1,000 simulated cycles), and confirmed in the live
-> production run itself, which reached 93.0% corpus completion
-> (155,861 / 167,661 chunks) without a recurrence of the freeze.
->
-> The 08 September 2026 findings (schema-column gaps, facts/relations/
-> ontology naming conflict, E/I kernel-guard crash at neuromodulator
-> boundary values, dialogue/read-only persistence conflict, silent
-> diagnostic blindness, swallowed phase-registry load failures, an
-> untested `systemtest.py`, an unused `--gui` flag, duplicate index
-> definitions) remain fixed and were re-confirmed present in this build.
+### Current Validation Status
+
+The system has completed a full read-through of its current two-source
+corpus (German Wikipedia *Physics* and *Computer* categories, 167,661
+chunks, 100%) and has since run well beyond 10,000 real learning cycles
+in both active-learning and replay/consolidation-only modes without
+data loss, corruption, or GUI failure.
+
+A dedicated 1,500-cycle Etappe-A drift validation (sensory-deprivation
+mode, input disabled, inner dynamics only) completed with an overall
+result of **"konvergiert"**: all 20 evaluated signals were classified
+either `stabil` or `konvergiert`, with zero signals flagged as
+divergent. This drift run supersedes the historical 1,344-cycle
+baseline, which applied only to a much earlier architectural state.
 
 ### Current Architecture
 
 - BrainStem remains a phase-based, hypothesis-centered language and text understanding system.
 - The Python package remains `ki_system`.
 - `autonomous.py` remains the minimal autonomous loop kernel.
-- `phase_registry.py` remains the central installer and ordering authority for the runtime phase chain; a real load failure now also sets an explicit `report["fatal"]` flag instead of being silently absorbed.
-- SQLite remains the canonical relational source. All connections (main GUI, dedicated background-worker, diagnostic) now use a consistent 60-second busy-timeout instead of SQLite's 5-second default.
+- `phase_registry.py` is the central installer and ordering authority for the runtime phase chain; a required-module load failure sets an explicit `report["fatal"]` flag rather than being silently absorbed.
+- SQLite remains the canonical relational source. All connections (main GUI, dedicated background worker, diagnostics) use a consistent 60-second busy timeout.
 - The learning mode remains `context_hypotheses_with_neuromodulators`.
 - The Modern Gap Candidate Bridge remains checkpoint-based, bounded to at most 512 hypotheses per cycle, `observed_only`, shadow-only, and non-productive.
 - Stage-B gap flow continues to distinguish real shadow-observed candidates from measured zero-source intervals without opening productive downstream writes.
 - No unvalidated replacement of the canonical runtime kernel or relational data source is authorized.
-- The admin GUI's autonomous-learning and drift/sensory-deprivation background threads now use their own dedicated `Memory`/SQLite connection, separate from the GUI's own connection, eliminating unsynchronized concurrent access to a single shared connection object across threads.
+- The admin GUI's autonomous-learning and drift/sensory-deprivation background threads each use their own dedicated `Memory`/SQLite connection, separate from the GUI's own connection.
+- The GUI performs a periodic, guarded, non-blocking `PRAGMA wal_checkpoint(TRUNCATE)` once per outer cycle, and caches its own periodic corpus/database-stat queries instead of re-querying on every tick.
 
 ### Runtime Phase Structure
 
@@ -150,24 +107,18 @@ The effective runtime architecture includes:
 
 ### Corpus and Learning State
 
-The current, live production baseline (two ZIM sources: German Wikipedia
-*Physics* and *Computer* categories, ~664 MB combined) as of the latest
-observed run:
-- 155,861 of 167,661 imported chunks read (93.0%)
-- over 1.4 million context hypotheses recorded (last confirmed count:
-  1,396,802 at 87.8% progress; growing continuously)
-- observed throughput: on the order of 100,000–125,000 chunks processed per
-  24-hour period of active autonomous learning (single CPU core, no GPU, as
-  per project design)
+Current corpus baseline (two ZIM sources: German Wikipedia *Physics* and
+*Computer* categories, ~664 MB combined):
+- 167,661 of 167,661 imported chunks read (100%)
+- over 1.6 million context hypotheses recorded and growing
+- observed throughput: on the order of 100,000–125,000 chunks processed
+  per 24-hour period of active autonomous learning (single CPU core, no
+  GPU, as per project design)
 
-These are live, observed values from an active run, not a frozen baseline —
-they are expected to change (and the corpus percentage to reach 100%) as
-autonomous learning continues.
-
-Corpus completion does not stop autonomous learning. Replay, consolidation,
-hypothesis evaluation, neuromodulator regulation, sleep/wake transitions,
-and guarded Stage-B preparation continue after all imported chunks have
-been read.
+Corpus completion does not stop autonomous learning. Replay,
+consolidation, hypothesis evaluation, neuromodulator regulation,
+sleep/wake transitions, and guarded Stage-B preparation continue after
+all imported chunks have been read.
 
 Replay activity alone does not prove replay-caused semantic improvement.
 Independent outcome evidence and real-user dialogue measurements remain
@@ -176,197 +127,169 @@ necessary for semantic-effectiveness claims.
 ### Six-Core Neuromodulator State
 
 The six core neuromodulators (dopamine, serotonin, glutamate, GABA,
-noradrenaline, acetylcholine) continue to be governed by the common
-canonical runtime authority in
-`v8_cooperative_core_neuromodulator_sleep_authority_release.py`, writing to
-`phase6a_neuromodulated_sleep_state` (the canonical source also read by the
-GUI), with bounded smoothing (`new = old + 0.18 * (target - old)`) and
-values constrained to `[0.05, 0.95]`.
+noradrenaline, acetylcholine) are governed by the common canonical
+runtime authority in
+`v8_cooperative_core_neuromodulator_sleep_authority_release.py`, writing
+to `phase6a_neuromodulated_sleep_state` (the canonical source also read
+by the GUI), with bounded smoothing (`new = old + 0.18 * (target - old)`)
+and values constrained to `[0.05, 0.95]`.
 
-Real production data (467-cycle window) confirms the regulator behaves as
-designed: dopamine and serotonin remained essentially flat over hundreds of
-consecutive cycles under stable input conditions, while adenosine showed a
-clear, repeating sawtooth pattern consistent with the Phase-7a decay
-formula (`new = old * 0.85`), verified to match observed values to within
-three decimal places across nine consecutive cycles.
+The 1,500-cycle drift validation confirms all six core values remain
+tightly stable under stable input conditions (span ≤ 0.014 for every
+core neuromodulator), consistent with correct, bounded regulator
+behavior rather than uncontrolled drift.
 
 #### Extended Neuromodulator State
 
 All twelve neuromodulator/regulatory systems (six core + adenosine,
-endocannabinoids, cortisol, histamine, orexin, BDNF) remain represented in
-code and runtime state and connected to the GUI. Endocannabinoids were
-observed to remain at exactly 0.000 throughout the current run (plausible
-at this corpus stage — the postsynaptic-overload trigger mechanism has
-apparently not yet fired — but worth monitoring at larger scale).
+endocannabinoids, cortisol, histamine, orexin, BDNF) are represented in
+code and runtime state and connected to the GUI. Adenosine and histamine
+show clear, reciprocal, bounded oscillation consistent with the Phase-7a
+sleep/wake cycle. Endocannabinoids remain at 0.000 at the current corpus
+scale (the postsynaptic-overload trigger mechanism has not yet fired).
 
-### Cooperative Sleep/Wake Authority — Dual-Authority Finding
+### Cooperative and Phase-7a Sleep/Wake Authority
 
-> [!IMPORTANT]
-> Real production measurement (10 September 2026, `diagnose_sleep_authority.py`
-> against a live 467-cycle database) found that the cooperative sleep score
-> **never crossed its 0.62 entry threshold** over the observed window (peak
-> 0.5403 at cycle 8, then oscillating 0.31–0.54 with no upward trend). The
-> independent, older Phase-7a adenosine homeostat, however, was confirmed
-> working correctly and extensively the entire time (290 of 467 cycles in
-> `sleep` mode, 58 real transitions, full event history). The two
-> authorities structurally interfere: Phase-7a enters sleep and begins
-> discharging adenosine at its own 0.65 single-signal threshold, before the
-> cooperative authority's own, later, five-signal combined threshold can
-> ever be reached from the same adenosine input.
->
-> This is not a new defect in the cooperative scoring formula itself — it is
-> an interaction between two independently valid, previously-uncoordinated
-> sleep authorities. The GUI now surfaces both authorities explicitly
-> (mood label distinguishes "Schläft" [cooperative] from "Konsolidiert
-> (Phase7a)"), mirroring the same "either authority" OR-pattern Phase 7d/7e
-> already use internally for real slow-wave admission — so real
-> consolidation was occurring the entire time even when the GUI previously
-> showed no sleep state at all.
+BrainStem runs two independent, valid sleep-entry authorities:
 
-The cooperative sleep score formula itself is unchanged: 35% adenosine
-pressure, 25% arousal release, 20% inhibitory readiness, 12% consolidation
-readiness, 8% absence of cortisol-related stress blocking, with
-sleep-entry threshold 0.62, wake-entry threshold 0.42, and minimum dwell
-time 3 cycles for hysteresis. State remains stored in
-`cooperative_sleep_wake_state` / `cooperative_sleep_wake_cycles`.
+- **Phase-7a adenosine homeostat**: a single-signal homeostat
+  (threshold 0.65) confirmed to enter and exit sleep extensively and
+  correctly under real, large-scale operation (thousands of real
+  sleep/wake transitions observed).
+- **Cooperative six-core authority**: a combined, five-signal score
+  (35% adenosine pressure, 25% arousal release, 20% inhibitory
+  readiness, 12% consolidation readiness, 8% absence of cortisol-related
+  stress blocking), with sleep-entry threshold 0.62, wake-entry
+  threshold 0.42, and a minimum dwell time of 3 cycles for hysteresis.
+
+Both authorities are independently valid; they are not required to enter
+sleep simultaneously. The GUI mood/mission-control indicator reflects
+both authorities explicitly (distinguishing "Schläft" for the
+cooperative authority from "Konsolidiert (Phase7a)" for the adenosine
+homeostat), and Phase 7d/7e admit real slow-wave consolidation whenever
+*either* authority reports sleep — mirroring the same "either authority"
+pattern used internally throughout the sleep/consolidation pipeline.
 
 ### Adenosine and Slow-Wave Sleep
 
 The Phase-7a adenosine homeostat remains active and independently
-confirmed correct via real production data (see above). Phase 7d continues
-to accept either the Phase-7a homeostat or the cooperative sleep/wake
-state as a valid sleep-entry authority, recording which one authorized
-entry per cycle.
+confirmed correct via real production data. Phase 7d accepts either the
+Phase-7a homeostat or the cooperative sleep/wake state as a valid
+sleep-entry authority, recording which one authorized entry per cycle.
 
 ### Efraimidis-Spirakis Sampling / Sigmoid Soft Clipping / E/I Balance
 
-Both mechanisms remain intact and unchanged. The previously-found E/I
-kernel-guard crash (an unconditional shadow-kernel comparison that raised
-`database is locked`-unrelated `RuntimeError`s at neuromodulator boundary
-values near 0.05/0.95) is fixed: the guard now only enforces (and only
-raises) when explicitly running in opt-in `kernel_guarded` mode; default
-production cycles never crash from this path. Verified with 25 real
-cycles including two rounds of deliberately forced boundary values.
+Both mechanisms are intact. The guarded kernel-comparison path used for
+E/I balance only enforces (and only raises) when explicitly running in
+opt-in `kernel_guarded` mode; default production cycles never crash from
+this path, including at neuromodulator boundary values near 0.05/0.95.
 
 ### Histamine, Orexin, BDNF, and Cortisol
 
-Unchanged in mechanism. Real production data shows histamine oscillating
-cleanly between 0.50–0.68 with correct regime transitions at ~0.6; orexin
-and BDNF growing slowly and monotonically in step with reading progress;
-cortisol remaining low ("calm") throughout, consistent with Stage-2
-warm-up not yet being reached.
+Real production data confirms histamine oscillating cleanly with correct
+regime transitions; orexin and BDNF growing slowly and monotonically in
+step with reading progress; cortisol remaining low ("calm") throughout,
+consistent with Stage-2 warm-up not yet being reached.
 
 ### GUI State
 
-The GUI displays all twelve neuromodulators via a dashboard that now
-reuses its Tk canvas items across the entire run instead of deleting and
-recreating them on every tick (see Validation Status above) — verified to
-create zero additional canvas items and zero `delete()` calls even after
-1,000 simulated update cycles. Per-neuromodulator canvas updates are
-additionally skipped when the value has not changed beyond display
-precision (±0.005), without any dependency on which tab is currently
-visible (the dashboard is expected to update on every real learning cycle
-regardless of tab).
+The GUI displays all twelve neuromodulators via a dashboard that reuses
+its Tk canvas items across the entire run instead of deleting and
+recreating them on every tick, and skips per-neuromodulator canvas
+updates when the underlying value has not changed beyond display
+precision (±0.005) — updating on every real learning cycle regardless of
+which tab is currently visible.
 
 The "Datenbank" and "Fakten/Relationen" tabs — whose Treeview
-repopulation queries scale with total database size — now only refresh
-while actually visible, with an immediate one-off refresh on tab switch
-so the data never appears stale.
+repopulation queries scale with total database size — only refresh
+while actually visible, with an immediate one-off refresh on tab switch.
 
-The mood/mission-control indicator now reflects both sleep authorities
-(cooperative and Phase-7a) rather than only the cooperative one (see Dual-
-Authority Finding above). The per-cycle diagnostic log line now reuses the
-existing 10-second corpus-stats cache instead of running a redundant,
-increasingly expensive `COUNT(*)` against `context_hypotheses` on every
-single real cycle (measured 92% reduction in query overhead for this
-specific path at 200,000-row scale).
+The mood/mission-control indicator reflects both sleep authorities (see
+above). Per-cycle diagnostics and periodic corpus/database statistics
+are cached rather than re-queried on every tick, keeping the GUI
+responsive at large database sizes (confirmed stable at 13.6+ GB).
 
-One visible autonomous GUI cycle still contains five real backend cycles,
-each with its own diagnostic evaluation and progress reporting.
+One visible autonomous GUI cycle contains five real backend cycles, each
+with its own diagnostic evaluation and progress reporting.
 
 ### Stage-B Functional State
 
-Unchanged and not yet activated: guarded Cortisol Stage 2 regulation
-remains in observer mode, the three-survived-consolidation graduation
-gate, `_critic_gate`, warm-up damping, and the one-graduation-per-cycle
-budget all remain in place with Facts promotion disabled. The cooperative
+Not yet activated: guarded Cortisol Stage 2 regulation remains in
+observer mode, the three-survived-consolidation graduation gate,
+`_critic_gate`, warm-up damping, and the one-graduation-per-cycle budget
+all remain in place with Facts promotion disabled. The cooperative
 neuromodulator/sleep-wake phase remains positioned after Cortisol and
 before guarded Stage-B graduation in the wrapper chain.
 
+Because Phase-5g experiments remain productively closed (a deliberate
+Stage-B safety boundary, not a defect), `effectiveness`,
+`exploration_bias`, and `plasticity_level` remain at their initial
+values — this has been directly confirmed, cycle by cycle, against the
+real database, and is expected, correct behavior until Phase-5g
+experiments are deliberately opened as a separate, later step.
+
 ### Current Safety Boundary
 
-Unchanged and re-confirmed intact throughout the entire real production
-run (facts/relations/questions counts observed at `[0, 0, 0]` at every
+Re-confirmed intact throughout the entire real production run
+(facts/relations/questions counts observed at `[0, 0, 0]` at every
 logged checkpoint): all productive writes (Facts, Relations, Questions,
 Attention, Phase-5f/5g/5i experiments, Fact promotion) remain closed. The
-cooperative authority continues to write only the six canonical
-neuromodulator values, cooperative sleep/wake state, and bounded cycle
-provenance.
+cooperative authority writes only the six canonical neuromodulator
+values, cooperative sleep/wake state, and bounded cycle provenance.
 
 A vector database remains explicitly deferred (see Roadmap below).
 
 ### Schema and Bootstrap Discipline
 
-All schema-related fixes from the live-incident findings above are
-additive only (`CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ADD COLUMN`),
-verified safe to apply directly against an existing, populated production
-database with no risk to already-recorded chunks or hypotheses. The
-central bootstrap (`db_bootstrap.ensure_database_exists()`) is now
-guaranteed to run automatically on every real program start
-(`main.py --gui` / `--user-gui`), in addition to two previously-vulnerable
-shadow modules now being self-healing regardless of how or whether the
-database was bootstrapped beforehand.
+The central bootstrap (`db_bootstrap.ensure_database_exists()`) runs
+automatically on every real program start (`main.py --gui` /
+`--user-gui`). All schema-dependent modules are self-healing regardless
+of how or whether the database was bootstrapped beforehand.
 
 Key/value reads continue to follow the repository contract:
 `return dict(con.execute("SELECT key,value FROM " + table).fetchall())`
 
 ### Current Evidence Boundary
 
-Proven via the real production run described above: multi-day autonomous
-learning stability at real scale (93% of a 167,661-chunk corpus, 1.4M+
-hypotheses, no data loss or corruption across two crash-recovery events),
-correct independent operation of the Phase-7a sleep authority, correct
-E/I regulation at neuromodulator boundary values, and full GUI
-responsiveness recovery after the tab-refresh and canvas-reuse fixes.
+Proven via real, large-scale production operation: multi-day autonomous
+learning stability at full corpus scale (100% of a 167,661-chunk corpus,
+1.6M+ hypotheses, 10,000+ real cycles, no data loss or corruption), a
+clean 1,500-cycle formal drift validation with zero divergent signals,
+correct independent operation of both sleep authorities, correct E/I
+regulation at neuromodulator boundary values, and sustained GUI
+responsiveness at 13.6+ GB database scale.
 
 Still not proven:
-- a full, formal drift validation of the *current* build (the historical
-  1,344-cycle result applies only to a much earlier architectural state)
 - natural cooperative-authority Sleep entries under real conditions (the
-  cooperative score has not yet been observed crossing its own threshold;
-  whether it ever should, or whether the threshold/weighting needs
-  revisiting, remains an open, deliberately low-priority question)
+  cooperative score has not yet been observed crossing its own
+  threshold; whether it ever should, or whether the threshold/weighting
+  needs revisiting, remains an open, deliberately low-priority question)
 - semantic learning effectiveness / real-user dialogue usefulness
 - behavior at corpus/database scales significantly beyond the current
-  ~9+ GB (see Roadmap: full German Wikipedia scaling)
+  ~13.6 GB (see Roadmap: full German Wikipedia scaling)
 - readiness for productive Fact promotion
 
 ## Next Major Step
 
-1. **Reach 100% completion of the current two-source corpus** (German
-   Wikipedia *Physics* + *Computer* categories, 167,661 chunks; currently
-   at 93.0%) under the fixed build, to confirm continued stability through
-   full corpus completion and into the subsequent replay/consolidation-only
-   regime.
-2. **Etappe-A long-duration stress validation**: run autonomous learning
-   substantially beyond the highest cycle count reached so far, using the
-   built-in Drift-Report / sensory-deprivation tab, to obtain a new,
-   current-build drift baseline (the historical 1,344-cycle result is
-   explicitly superseded by all changes since).
-3. Only after (1) and (2) are complete and clean: revisit whether to begin
-   activating guarded Cortisol Stage 2 (moving it from observer to applied
-   mode) as the first real Stage-B step.
+1. Only now that Stage-A corpus completion and a clean formal drift
+   validation are both done: revisit whether to begin activating guarded
+   Cortisol Stage 2 (moving it from observer to applied mode) as the
+   first real Stage-B step.
+2. Optionally, extend drift validation runs further (well beyond 1,500
+   cycles) to build additional long-duration confidence before Stage-B
+   activation.
 
 ## Roadmap
 
 | Stage | Status | Gating condition to proceed |
 |---|---|---|
-| **Stage A — Core stability** | Substantially re-validated via real multi-day production use (93% corpus, 1.4M+ hypotheses, multiple real-world defects found and fixed under genuine load) | Formal long-duration drift run on the current build (see Next Major Step) |
-| **Stage B — Guarded graduation** | Prepared, not yet activated (Cortisol Stage 2 remains observer-only) | Stage-A drift validation clean; Cortisol Stage 2 promoted from observer to applied mode first, under its existing warm-up/budget/cooldown gates |
+| **Stage A — Core stability** | Validated: 100% corpus completion, 10,000+ real cycles, clean 1,500-cycle formal drift run ("konvergiert", zero divergent signals) | Complete — ready to proceed to Stage B |
+| **Stage B — Guarded graduation** | Prepared, not yet activated (Cortisol Stage 2 remains observer-only) | Cortisol Stage 2 promoted from observer to applied mode first, under its existing warm-up/budget/cooldown gates |
 | **Hypothesis graduation (`uncertain_hypothesis` → `stable_hypothesis`)** | Not yet started | Cortisol Stage 2 applied and stable; at least three survived Phase-7d consolidations per candidate; `_critic_gate` and warm-up damping active; initial budget of one graduation per cycle |
 | **Opening the productive write locks (Facts / Relations / Questions / Fact promotion)** | Deliberately closed; not evaluated | Must remain closed until: hypothesis graduation itself has run stably over a real multi-cycle window; a dedicated validation pass confirms graduated facts carry a complete, correct provenance chain back to source chunks; and an explicit, separate decision is made to open each write path one at a time (Facts before Relations before Questions), never all at once. No timeline is set — this is the project's core "no black box, no unearned answers" safety guarantee and is not to be relaxed by schedule pressure |
-| **Full corpus scaling (complete German Wikipedia)** | Deliberately deferred | Current two-source corpus reaches 100% and Stage-A validation is clean. Rough estimate from current throughput: ~13.5 GB of text-only content, ~3.4M chunks, ~33M hypotheses, ~0.9 TB resulting database, ~27–28 days of continuous processing at observed throughput — order-of-magnitude only, not a commitment |
+| **Full corpus scaling (complete German Wikipedia)** | Deliberately deferred | Rough estimate from current throughput: ~13.5 GB of text-only content, ~3.4M chunks, ~33M hypotheses, ~0.9 TB resulting database, ~27–28 days of continuous processing at observed throughput — order-of-magnitude only, not a commitment |
 | **Vector database evaluation** | Deliberately deferred per project's own architecture-checkpoint rule | Only once stable hypothesis identities exist (post-graduation), a concrete semantic-retrieval use case is identified, requirements are measurable, and a read-only/shadow comparison against the SQLite baseline is performed. Must never replace the canonical relational source or open productive gates — the project's provenance-first, no-black-box guarantee takes priority over retrieval convenience |
+| **Symbolic reasoning plugin (deterministic, non-LLM rule engine)** | Concept documented, not scheduled | See `docs/symbolic_reasoning_plugin_concept.md`. Gated behind Stage-B graduation and the write-lock roadmap above; a validated symbolic rule becoming productive is itself a new class of productive write and must be gated at least as strictly as Fact promotion |
 | **Multi-core / multi-process learning** | Explicitly out of scope for now | Acknowledged as a real, non-trivial architectural undertaking (Python's GIL requires `multiprocessing`, not `threading`, for genuine parallel compute; SQLite's single-writer model would require careful cross-process coordination). Not currently planned; current single-core throughput is considered acceptable |
 
 ## Core Philosophy
