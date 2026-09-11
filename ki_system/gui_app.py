@@ -118,7 +118,6 @@ def read_all_neuromods(con):
     cooperative = _kv(con, "cooperative_sleep_wake_state")
     cooperative_mode = str(cooperative.get("state", "")).strip().lower()
     cooperative_asleep = (cooperative_mode == "sleep")
-    # BRAINSTEM_GUI_DUAL_SLEEP_AUTHORITY_FIX_V1 (09 September 2026)
     phase7a_state = _kv(con, "phase7a_adenosine_state")
     phase7a_mode = str(phase7a_state.get("homeostat_mode", "wake")).strip().lower()
     phase7a_asleep = (phase7a_mode == "sleep")
@@ -284,12 +283,8 @@ class App(tk.Tk):
         self.mode = "idle"
         self._cov_cache = None
         self._cov_ts = 0.0
-        # BRAINSTEM_GUI_STATS_CACHE_FIX_V1 (11 September 2026): see _cached_stats()
-        # below for the full explanation.
         self._stats_cache = None
         self._stats_ts = 0.0
-        # BRAINSTEM_GRADUATION_QUEUE_DISPLAY_V1 (11 September 2026): see
-        # _graduation_queue_snapshot() below for the full explanation.
         self._grad_queue_cache = None
         self._grad_queue_ts = 0.0
         self._current_tab_name = "Chat"
@@ -364,24 +359,23 @@ class App(tk.Tk):
         legend = ("Legende: DA=Dopamin  5-HT=Serotonin  GLU=Glutamat  GABA=GABA  NA=Noradrenalin  ACh=Acetylcholin\n"
                   "ADE=Adenosin  ECB=Endocannabinoide  CORT=Cortisol  HIS=Histamin  ORX=Orexin  BDNF=Wachstumsfaktor")
         ttk.Label(left, text=legend, font=("Arial", 8), foreground="#555555", justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 4))
-        # BRAINSTEM_GRADUATION_QUEUE_DISPLAY_V1 (11 September 2026)
+        # BRAINSTEM_GRADUATION_QUEUE_DISPLAY_V2_FIX (11 September 2026)
         #
-        # Purpose: surface the internal state of Phase 7d's survivor-
-        # reactivation queue (v8_phase7d_slow_wave_sleep_substructure_
-        # release.py:_build_candidate_pool()) -- the mechanism that gives
-        # a hypothesis with 1 or 2 (but not yet 3) confirmed, reinforced
-        # consolidation survivals a fair, rotating chance to be re-selected
-        # as a candidate again in a later cycle, biologically analogous to
-        # synaptic priming/reconsolidation rather than a pure-random
-        # re-draw from the entire hypothesis population. This was added
-        # after a joint investigation into why hypothesis graduation
-        # (uncertain_hypothesis -> stable_hypothesis) slowed sharply after
-        # the corpus and hypothesis population grew large: the mechanism
-        # itself was found to already be correctly implemented (a rotating
-        # cursor-based queue, not blind random sampling), so this display
-        # exists purely for transparency/observation of that existing,
-        # already-correct queue -- it does not add, change, or gate any
-        # new behavior in the underlying phase itself.
+        # V1 of this display (added earlier the same day) read the
+        # reactivation cursor/capacity state from the wrong table
+        # (phase6b_state instead of phase7d_state), which is why the user
+        # observed "Geschaetzte Wartezeit: noch nicht genug Daten" despite
+        # Phase 7d having run thousands of real cycles. Root cause found
+        # and fixed by obtaining and directly inspecting the real
+        # v8_phase7d_slow_wave_sleep_substructure_release.py source: all
+        # cursor/capacity/selected-count keys are written to and read from
+        # "phase7d_state" by the real _build_candidate_pool(); only the
+        # single cross-phase checkpoint key
+        # (phase7d_survivor_anchor_checkpoint_id) actually lives in
+        # phase6b_state. This version also explicitly surfaces whether that
+        # checkpoint has ever been set at all -- if it has not, the real
+        # code structurally skips reactivation entirely for that cycle,
+        # which V1 never made visible to the user.
         ttk.Separator(left).pack(fill=tk.X, pady=(8, 4))
         ttk.Label(left, text="Hypothesen-Graduierung: Reaktivierungs-Warteschlange (Phase 7d)",
                   font=("Arial", 10, "bold")).pack(anchor=tk.W)
@@ -694,7 +688,6 @@ class App(tk.Tk):
         self._cov_cache = (covered, total, hypo)
         self._cov_ts = now
         return self._cov_cache
-    # BRAINSTEM_GUI_STATS_CACHE_FIX_V1 (11 September 2026)
     def _cached_stats(self):
         now = time.time()
         if self._stats_cache is not None and (now - self._stats_ts) < 10.0:
@@ -706,40 +699,21 @@ class App(tk.Tk):
         self._stats_cache = st
         self._stats_ts = now
         return st
-    # BRAINSTEM_GRADUATION_QUEUE_DISPLAY_V1 (11 September 2026)
+    # BRAINSTEM_GRADUATION_QUEUE_DISPLAY_V2_FIX (11 September 2026)
     #
-    # Background: a joint investigation into why hypothesis graduation
-    # (context_hypotheses.role: uncertain_hypothesis -> stable_hypothesis,
-    # see v8_stageb_guarded_hypothesis_graduation_release.py) slowed
-    # sharply as the corpus/hypothesis population grew (34 graduations in
-    # the first 1,000 real cycles, then only 2 more, then none across the
-    # next ~9,500 cycles at 1.59 million active uncertain_hypothesis rows)
-    # led to inspecting v8_phase7d_slow_wave_sleep_substructure_release.py.
-    # That inspection found the reactivation mechanism is NOT a blind
-    # random re-draw from the entire hypothesis population (which, at this
-    # scale, would make a second confirmation of the same hypothesis
-    # statistically very rare) -- it is a deliberate, rotating "three-track"
-    # candidate pool (anchors / reactivated survivors / novel) with a
-    # persistent, fair cursor per survival level (1 or 2 confirmed cycles),
-    # biologically analogous to synaptic priming/reconsolidation rather
-    # than an efficiency optimization. This method and the three labels it
-    # feeds exist purely to make that ALREADY-CORRECT, ALREADY-EXISTING
-    # mechanism observable in the GUI -- they add no new behavior, no new
-    # write path, and no change whatsoever to Phase 7d's own logic.
+    # See the comment above the three new labels in _import_tab() for the
+    # full explanation of the two bugs found and fixed in this version
+    # relative to the same-day V1: (1) cursor/capacity state is read from
+    # "phase7d_state", not "phase6b_state" -- only the cross-phase
+    # checkpoint itself lives in phase6b_state; (2) whether that checkpoint
+    # has ever actually been set is now explicitly surfaced
+    # (checkpoint_set), since the real _build_candidate_pool() structurally
+    # skips reactivation entirely for a cycle if it has not.
     #
     # Read-only: opens its own short-lived connection, executes only
-    # SELECT statements, never writes anything. Mirrors the exact
-    # WHERE/HAVING clauses used by the real
-    # _build_candidate_pool()/_run_slow_wave_sleep() functions in Phase 7d,
-    # so the displayed queue counts and cursor positions accurately
-    # reflect what that phase itself would compute on its next real
-    # invocation -- but this method itself never calls into Phase 7d code
-    # and never mutates phase7d_state, phase6b_state, or any other table.
-    #
-    # Cached for 30 seconds (longer than the other 10-second GUI caches)
-    # since this query is heavier (a GROUP BY/HAVING over
-    # phase7d_consolidation_survivors) and a human-readable ETA estimate
-    # does not benefit from sub-30-second freshness.
+    # SELECT statements, mirrors the real _build_candidate_pool()'s own
+    # WHERE/HAVING clauses exactly, and never mutates phase7d_state,
+    # phase6b_state, or any other table. Cached for 30 seconds.
     def _graduation_queue_snapshot(self):
         now = time.time()
         if self._grad_queue_cache is not None and (now - self._grad_queue_ts) < 30.0:
@@ -749,6 +723,7 @@ class App(tk.Tk):
             "level1_ahead": 0, "level2_ahead": 0,
             "cursor_n1": 0, "cursor_n2": 0,
             "last_capacity": 0, "last_reactivated": 0,
+            "checkpoint": 0, "checkpoint_set": False,
             "sleep_fraction": 0.0, "estimated_cycles": None,
             "error": None,
         }
@@ -773,6 +748,11 @@ class App(tk.Tk):
                 self._grad_queue_ts = now
                 return result
 
+            # BRAINSTEM_GRADUATION_QUEUE_DISPLAY_V2_FIX: cursor/capacity
+            # state lives in phase7d_state (the module's OWN state table),
+            # not in phase6b_state. Only the checkpoint itself is
+            # cross-phase state written by Phase 6b, matching the real
+            # _build_candidate_pool() exactly.
             state = dict(con.execute("SELECT key,value FROM phase7d_state").fetchall())
             phase6b_state = {}
             if _tbl("phase6b_state"):
@@ -784,6 +764,9 @@ class App(tk.Tk):
             cursor_n2 = _i(state.get("survivor_reactivation_cursor_n2"), 0)
             last_capacity = _i(state.get("reactivation_capacity"), 0)
             last_reactivated = _i(state.get("reactivation_selected"), 0)
+
+            result["checkpoint"] = checkpoint
+            result["checkpoint_set"] = checkpoint > 0
 
             active_anchor_sources = set()
             if _tbl("phase6b_anchor_pool"):
@@ -836,7 +819,7 @@ class App(tk.Tk):
 
             queue_total = result["level1_total"] + result["level2_total"]
             throughput = last_reactivated if last_reactivated > 0 else last_capacity
-            if queue_total > 0 and throughput > 0 and sleep_fraction > 1e-6:
+            if queue_total > 0 and throughput > 0 and sleep_fraction > 1e-6 and checkpoint > 0:
                 est_sleep_cycles = queue_total / float(throughput)
                 est_real_cycles = est_sleep_cycles / sleep_fraction
                 result["estimated_cycles"] = int(round(est_real_cycles))
@@ -868,10 +851,16 @@ class App(tk.Tk):
                 snap["level2_total"], snap["level1_total"]))
         self.grad_cursor_text.configure(
             text="Cursor: Level 2 bei Hypothese-ID %d (%d/%d in dieser Runde noch offen) | "
-                 "Level 1 bei Hypothese-ID %d (%d/%d offen)" % (
+                 "Level 1 bei Hypothese-ID %d (%d/%d offen) | Checkpoint gesetzt: %s" % (
                 snap["cursor_n2"], snap["level2_ahead"], snap["level2_total"],
-                snap["cursor_n1"], snap["level1_ahead"], snap["level1_total"]))
-        if snap["estimated_cycles"] is not None:
+                snap["cursor_n1"], snap["level1_ahead"], snap["level1_total"],
+                "ja" if snap["checkpoint_set"] else "NEIN"))
+        if not snap["checkpoint_set"]:
+            self.grad_eta_text.configure(
+                text="Geschaetzte Wartezeit: nicht verfuegbar -- der Reaktivierungs-Checkpoint "
+                     "(phase6b_state.phase7d_survivor_anchor_checkpoint_id) wurde noch nie gesetzt. "
+                     "Solange das so ist, ueberspringt Phase 7d die Reaktivierung strukturell.")
+        elif snap["estimated_cycles"] is not None:
             self.grad_eta_text.configure(
                 text="Geschaetzte Wartezeit bis vollstaendiger Durchlauf der aktuellen Warteschlange: "
                      "~%d Realzyklen (letzte Reaktivierung: %d von Kapazitaet %d pro Schlafzyklus, "
