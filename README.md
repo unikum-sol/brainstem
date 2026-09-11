@@ -31,6 +31,7 @@ YouTube - AI conversation about BrainStem Project
 
 * [Core Philosophy](#core-philosophy)
 * [What is BrainStem really](#what-is-brainstem-really)
+* [Roadmap](#Roadmap)
 * [Architecture](#architecture)
 * [Running the System](#running-the-system)
 * [ZIM Import](#zim-import)
