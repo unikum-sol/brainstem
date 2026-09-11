@@ -40,13 +40,13 @@ YouTube - AI conversation about BrainStem Project
     
 ---
 
-## Current State
-
 ### Project-Structure
 
 <a href="assets/Project-Structure.png" target="_blank">
   <img src="assets/Project-Structure.png" alt="Project-Structure" width="250" />
 </a>
+
+---
 
 ## Current State
 
