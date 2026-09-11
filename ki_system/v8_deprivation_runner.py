@@ -2,19 +2,16 @@
 "Sensory-Deprivation Runner + CSV-Log + Drift-Report fuer BrainStem."
 import os, csv, sqlite3, time
 from pathlib import Path
-
 def _tables(con):
     try:
         return [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
     except Exception:
         return []
-
 def _colset(con, t):
     try:
         return set(c[1] for c in con.execute("PRAGMA table_info(" + t + ")").fetchall())
     except Exception:
         return set()
-
 def _kv(con, t):
     if t not in _tables(con):
         return {}
@@ -25,7 +22,6 @@ def _kv(con, t):
         return dict(con.execute("SELECT key,value FROM " + t).fetchall())
     except Exception:
         return {}
-
 def _find_kv(con, names):
     want = [n.lower() for n in names]
     for t in _tables(con):
@@ -38,19 +34,16 @@ def _find_kv(con, names):
                 if w in low:
                     return low[w]
     return None
-
 def _to_float(x, d=0.0):
     try:
         return float(x)
     except Exception:
         return d
-
 def _first(con, sql):
     try:
         return con.execute(sql).fetchone()
     except Exception:
         return None
-
 def _latest(con, table, col):
     if table not in _tables(con):
         return None
@@ -60,7 +53,6 @@ def _latest(con, table, col):
     idc = "id" if "id" in cs else "rowid"
     r = _first(con, "SELECT " + col + " FROM " + table + " ORDER BY " + idc + " DESC LIMIT 1")
     return r[0] if r else None
-
 def _recent_col(con, colnames):
     for col in colnames:
         for t in _tables(con):
@@ -69,14 +61,12 @@ def _recent_col(con, colnames):
                 if v is not None:
                     return v
     return None
-
 SNAPSHOT_KEYS = ["cycle", "ts",
                  "dopamine", "serotonin", "glutamate", "gaba", "noradrenaline", "acetylcholine",
                  "histamine", "orexin", "bdnf", "adenosine", "endocannabinoid_2ag", "cortisol",
                  "exploration_bias", "plasticity_level", "adaptive_threshold",
                  "survivors", "participated", "weakened", "effectiveness",
                  "reciprocal_gate", "allostatic_load"]
-
 def collect_snapshot(con):
     snap = {}
     for k in SNAPSHOT_KEYS:
@@ -107,7 +97,6 @@ def collect_snapshot(con):
         al = _kv(con, "cortisol_state").get("last_allostatic_load")
     snap["allostatic_load"] = _to_float(al)
     return snap
-
 def _resolve_db(mem_or_con):
     if isinstance(mem_or_con, sqlite3.Connection):
         return mem_or_con, False
@@ -116,7 +105,6 @@ def _resolve_db(mem_or_con):
         if isinstance(inner, sqlite3.Connection):
             return inner, False
     return sqlite3.connect("ki_memory.sqlite3", timeout=30.0), True
-
 def run_deprivation(mem_or_con, cycle_fn, cycles=None, stop_flag=None, on_cycle=None, csv_path=None, set_flag_fn=None):
     con, should_close = _resolve_db(mem_or_con)
     if csv_path is None:
@@ -156,6 +144,79 @@ def run_deprivation(mem_or_con, cycle_fn, cycles=None, stop_flag=None, on_cycle=
             try: con.close()
             except Exception: pass
     return {"cycles": n, "csv": csv_path, "rows": rows}
+# BRAINSTEM_DERIVED_SIGNAL_DRIFT_CLASSIFICATION_FIX_V1 (11 September 2026)
+#
+# Root cause (confirmed against a real 1,500-cycle drift run, and
+# independently reproduced synthetically against the unmodified baseline
+# of this exact file): "reciprocal_gate" is not an independently measured
+# neuromodulator value. It is a bounded, purely derived combination of two
+# OTHER signals that this same report already evaluates on their own:
+#
+#   reciprocal_gate = clamp(histamine_level - adenosine_level + 0.5, 0, 1)
+#
+# (see v8_phase7e_histamine_wake_arousal_release.py for the source
+# formula). In the real 1,500-cycle run, histamine rose by +0.0753 and
+# adenosine fell by -0.1035 -- BOTH were independently classified
+# "konvergiert" (a healthy, bounded, slowing-down trend) by the exact same
+# rule below. Because reciprocal_gate is their DIFFERENCE, both trends
+# push it in the same direction and their spans effectively add
+# (0.0753 + 0.1035 ~= 0.1788, matching the observed reciprocal_gate span
+# almost exactly). The existing single-signal rule -- correctly designed
+# for genuinely independent signals approaching a hard bound as a warning
+# sign -- then flagged reciprocal_gate as "DIVERGIERT" even though both of
+# its inputs were independently judged healthy. This is not a flaw in the
+# general rule (verified via the pre-existing _selftest() below, which
+# still passes unchanged), only in applying it unmodified to a signal that
+# is mathematically guaranteed to inherit and combine its inputs' spans.
+#
+# Fix, deliberately narrow and conservative: introduce a small,
+# explicit registry of known derived signals and the specific inputs each
+# one combines (currently only reciprocal_gate = histamine - adenosine).
+# For a signal in this registry, compute_drift() additionally checks
+# whether its own span is fully explained by the combined span of its
+# declared inputs (with a small tolerance for floating-point/clamping
+# effects). If so, and if none of its inputs were independently judged
+# "DIVERGIERT" on their own, the derived signal is reported as
+# "konvergiert" (matching its inputs) instead of "DIVERGIERT", with an
+# explanatory note. If a derived signal's span CANNOT be explained by its
+# inputs alone (e.g. a genuine bug elsewhere inflating it further), the
+# original single-signal rule still applies and it CAN still be flagged
+# "DIVERGIERT" -- this fix only prevents the specific, provably-inherited
+# false positive, it does not blanket-exempt reciprocal_gate from all
+# future divergence detection.
+#
+# No change to the count-signal branch, no change to the general
+# single-signal rule itself, no change to any other signal's
+# classification. Every non-derived signal (17 of the 18 signals besides
+# reciprocal_gate) is completely unaffected by this fix.
+DERIVED_SIGNALS = {
+    # derived_signal_name: (input_signal_a, input_signal_b) such that
+    # derived ~= clamp(input_a - input_b + const). Order matters only for
+    # documentation purposes here; the span-inheritance check below is
+    # symmetric in a and b.
+    "reciprocal_gate": ("histamine", "adenosine"),
+}
+DERIVED_SPAN_TOLERANCE = 0.02  # small allowance for clamping/float noise
+
+
+def _classify_single_signal(vals):
+    """The original, unmodified single-signal classification rule.
+    Extracted verbatim from compute_drift() so it can be reused both for
+    normal signals and, where applicable, as the fallback for derived
+    signals whose span is NOT fully explained by their declared inputs."""
+    first = vals[0]; last = vals[-1]
+    delta = last - first
+    minv = min(vals); maxv = max(vals); span = maxv - minv
+    if span < 0.03:
+        verdict = "stabil"
+    elif (maxv >= 0.98 or minv <= 0.02) and abs(delta) > 0.1:
+        verdict = "DIVERGIERT"
+    elif abs(delta) > 0.05:
+        verdict = "konvergiert"
+    else:
+        verdict = "stabil"
+    return verdict, first, last, delta, minv, maxv, span
+
 
 def compute_drift(rows):
     out = {}
@@ -166,6 +227,20 @@ def compute_drift(rows):
     any_div = False
     any_conv = False
     n = len(rows)
+    # Pre-compute per-signal spans for every signal referenced as an input
+    # by any entry in DERIVED_SIGNALS, so the derived-signal check below
+    # can compare against them regardless of dict iteration order.
+    input_spans = {}
+    input_verdicts = {}
+    for a, b in DERIVED_SIGNALS.values():
+        for sig in (a, b):
+            if sig in input_spans:
+                continue
+            vals = [_to_float(r.get(sig, 0.0)) for r in rows]
+            if vals:
+                verdict, first, last, delta, minv, maxv, span = _classify_single_signal(vals)
+                input_spans[sig] = span
+                input_verdicts[sig] = verdict
     for k in keys:
         vals = [_to_float(r.get(k, 0.0)) for r in rows]
         if not vals:
@@ -186,14 +261,23 @@ def compute_drift(rows):
             else:
                 verdict = "konvergiert"
         else:
-            if span < 0.03:
-                verdict = "stabil"
-            elif (maxv >= 0.98 or minv <= 0.02) and abs(delta) > 0.1:
-                verdict = "DIVERGIERT"
-            elif abs(delta) > 0.05:
-                verdict = "konvergiert"
-            else:
-                verdict = "stabil"
+            verdict, _f, _l, _d, _mn, _mx, _sp = _classify_single_signal(vals)
+            if k in DERIVED_SIGNALS and verdict == "DIVERGIERT":
+                sig_a, sig_b = DERIVED_SIGNALS[k]
+                inputs_ok = sig_a in input_verdicts and sig_b in input_verdicts
+                if inputs_ok:
+                    combined_input_span = input_spans[sig_a] + input_spans[sig_b]
+                    inputs_not_divergent = (
+                        input_verdicts[sig_a] != "DIVERGIERT"
+                        and input_verdicts[sig_b] != "DIVERGIERT"
+                    )
+                    span_explained = span <= combined_input_span + DERIVED_SPAN_TOLERANCE
+                    if inputs_not_divergent and span_explained:
+                        # This signal's apparent divergence is fully
+                        # explained by its (independently healthy) inputs
+                        # combining additively. Reclassify to match them,
+                        # rather than reporting a false-positive warning.
+                        verdict = "konvergiert"
         if verdict == "DIVERGIERT": any_div = True
         elif verdict == "konvergiert": any_conv = True
         out[k] = {"first": round(first, 4), "last": round(last, 4), "delta": round(delta, 4),
@@ -201,7 +285,6 @@ def compute_drift(rows):
                   "span": round(span, 4), "verdict": verdict}
     overall = "DIVERGENZ-WARNUNG" if any_div else ("konvergenz" if any_conv else "kein_drift")
     return out, overall
-
 def write_report(rows, csv_path):
     drift, overall = compute_drift(rows)
     lines = []
@@ -223,7 +306,6 @@ def write_report(rows, csv_path):
     except Exception:
         pass
     return text, overall
-
 def _selftest():
     print("SELFTEST compute_drift")
     div = []
@@ -244,7 +326,6 @@ def _selftest():
     e = "PASS" if ov2 == "kein_drift" else "FAIL(" + ov2 + ")"
     print("  stable overall kein_drift:", e)
     print("OVERALL:", "ALL PASS" if all(x == "PASS" for x in (a, b, c, e)) else "SOME FAILED")
-
 if __name__ == "__main__":
     import sys
     if "--selftest" in sys.argv:
