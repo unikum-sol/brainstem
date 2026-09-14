@@ -127,7 +127,16 @@ class Memory:
                 cid=cur.lastrowid; d=self.db.execute('SELECT title,path FROM documents WHERE id=?',(doc_id,)).fetchone(); self.db.execute('INSERT INTO chunks_fts(rowid,text,title,path) VALUES(?,?,?,?)',(cid,text,d['title'],d['path']))
             self.db.commit(); return cur.lastrowid if cur.rowcount else None
     def iter_chunks(self): return self.rows('SELECT chunks.*,documents.title,documents.path,documents.kind,documents.source_score FROM chunks JOIN documents ON documents.id=chunks.document_id')
-    def fts_search(self,q,limit=20): return self.rows('SELECT rowid,text,title,path,bm25(chunks_fts) AS score FROM chunks_fts WHERE chunks_fts MATCH ? ORDER BY score LIMIT ?',(q,limit))
+    def fts_search(self,q,limit=20):
+        return self.rows(
+            'SELECT chunks_fts.rowid AS rowid, chunks.text AS text, documents.title AS title, '
+            'documents.path AS path, bm25(chunks_fts) AS score '
+            'FROM chunks_fts '
+            'JOIN chunks ON chunks.id = chunks_fts.rowid '
+            'JOIN documents ON documents.id = chunks.document_id '
+            'WHERE chunks_fts MATCH ? ORDER BY score LIMIT ?',
+            (q,limit),
+        )
     def add_fact(self,s,r,v,c=.7,chunk_id=None):
         if self.readonly: raise PermissionError('readonly')
         with self.lock:

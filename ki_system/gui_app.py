@@ -118,6 +118,7 @@ def read_all_neuromods(con):
     cooperative = _kv(con, "cooperative_sleep_wake_state")
     cooperative_mode = str(cooperative.get("state", "")).strip().lower()
     cooperative_asleep = (cooperative_mode == "sleep")
+    # BRAINSTEM_GUI_DUAL_SLEEP_AUTHORITY_FIX_V1 (09 September 2026)
     phase7a_state = _kv(con, "phase7a_adenosine_state")
     phase7a_mode = str(phase7a_state.get("homeostat_mode", "wake")).strip().lower()
     phase7a_asleep = (phase7a_mode == "sleep")
@@ -263,11 +264,12 @@ class NeuromodulatorBars(ttk.Frame):
         self.tooltip.hide()
 
 class App(tk.Tk):
-    def __init__(self):
+    def __init__(self, db_path="ki_memory.sqlite3"):
         super().__init__()
         self.title("Brainstem V8 Admin")
         self.geometry("1250x875")
-        self.mem = Memory("ki_memory.sqlite3")
+        self.db_path = str(db_path)
+        self.mem = Memory(self.db_path)
         self.dialogue = DialogueManager(self.mem)
         self.cancel = False
         self.auto_stop = False
@@ -283,10 +285,10 @@ class App(tk.Tk):
         self.mode = "idle"
         self._cov_cache = None
         self._cov_ts = 0.0
+        # BRAINSTEM_GUI_STATS_CACHE_FIX_V1 (11 September 2026): see _cached_stats()
+        # below for the full explanation.
         self._stats_cache = None
         self._stats_ts = 0.0
-        self._grad_queue_cache = None
-        self._grad_queue_ts = 0.0
         self._current_tab_name = "Chat"
         self._ui()
         self._gui_pending = []
@@ -359,32 +361,6 @@ class App(tk.Tk):
         legend = ("Legende: DA=Dopamin  5-HT=Serotonin  GLU=Glutamat  GABA=GABA  NA=Noradrenalin  ACh=Acetylcholin\n"
                   "ADE=Adenosin  ECB=Endocannabinoide  CORT=Cortisol  HIS=Histamin  ORX=Orexin  BDNF=Wachstumsfaktor")
         ttk.Label(left, text=legend, font=("Arial", 8), foreground="#555555", justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 4))
-        # BRAINSTEM_GRADUATION_QUEUE_DISPLAY_V2_FIX (11 September 2026)
-        #
-        # V1 of this display (added earlier the same day) read the
-        # reactivation cursor/capacity state from the wrong table
-        # (phase6b_state instead of phase7d_state), which is why the user
-        # observed "Geschaetzte Wartezeit: noch nicht genug Daten" despite
-        # Phase 7d having run thousands of real cycles. Root cause found
-        # and fixed by obtaining and directly inspecting the real
-        # v8_phase7d_slow_wave_sleep_substructure_release.py source: all
-        # cursor/capacity/selected-count keys are written to and read from
-        # "phase7d_state" by the real _build_candidate_pool(); only the
-        # single cross-phase checkpoint key
-        # (phase7d_survivor_anchor_checkpoint_id) actually lives in
-        # phase6b_state. This version also explicitly surfaces whether that
-        # checkpoint has ever been set at all -- if it has not, the real
-        # code structurally skips reactivation entirely for that cycle,
-        # which V1 never made visible to the user.
-        ttk.Separator(left).pack(fill=tk.X, pady=(8, 4))
-        ttk.Label(left, text="Hypothesen-Graduierung: Reaktivierungs-Warteschlange (Phase 7d)",
-                  font=("Arial", 10, "bold")).pack(anchor=tk.W)
-        self.grad_queue_text = ttk.Label(left, text="Warteschlange: -")
-        self.grad_queue_text.pack(anchor=tk.W)
-        self.grad_cursor_text = ttk.Label(left, text="Cursor: -")
-        self.grad_cursor_text.pack(anchor=tk.W)
-        self.grad_eta_text = ttk.Label(left, text="Geschaetzte Wartezeit: -", wraplength=520, justify=tk.LEFT)
-        self.grad_eta_text.pack(anchor=tk.W)
         self.log = tk.Text(f, wrap=tk.WORD)
         self.log.pack(fill=tk.BOTH, expand=True)
     def _search_tab(self):
@@ -491,6 +467,40 @@ class App(tk.Tk):
                 out.append((name, thread))
         return out
 
+    # BRAINSTEM_MUTUAL_EXCLUSION_FIX_V1
+    #
+    # Root cause: reset_learning_gui() only ever checked self.auto_running
+    # before starting a database-restructuring reset; pick_import() checked
+    # nothing at all before starting a write-heavy import; auto_start() and
+    # drift_start() each only checked a subset of the other three
+    # operations. None of the four database-writing operations (import,
+    # autonomous learning, drift/sensory-deprivation testing, learning
+    # reset) coordinated with all of the others, so e.g. starting a reset
+    # while an import was still running (or starting an import while a
+    # reset was mid-flight) was possible and could corrupt or race against
+    # the same SQLite connection/tables.
+    #
+    # Fix: a single, centralized busy-check reused by all four entry
+    # points, built on the same _shutdown_threads() helper already used for
+    # safe application shutdown. Each entry point still silently no-ops if
+    # the SAME operation it represents is already running (that is normal,
+    # not an error) but now warns and refuses to start if any OTHER of the
+    # three remaining exclusive operations is currently active.
+    def _busy_operation_name(self):
+        """Return a human-readable name of the currently running exclusive
+        database operation (reset, import, autonomous learning, or drift
+        test), or None if none of them is currently active."""
+        live = {name for name, _ in self._shutdown_threads()}
+        if "_reset_thread" in live:
+            return "Lernsystem-Reset"
+        if self.mode == "import" or "_import_thread" in live:
+            return "Import"
+        if self.auto_running or "_auto_thread" in live:
+            return "Autonomes Lernen"
+        if self.drift_running or "_drift_thread" in live:
+            return "Drift-Test"
+        return None
+
     def _poll_shutdown(self):
         live = self._shutdown_threads()
         if live or self.auto_running or self.drift_running or self.mode == "import":
@@ -572,8 +582,9 @@ class App(tk.Tk):
             self.config_status.configure(text="Speichern fehlgeschlagen: " + str(e))
     def reset_learning_gui(self):
         from tkinter import messagebox
-        if self.auto_running:
-            messagebox.showwarning("Reset", "Bitte zuerst 'Autonom stoppen'.")
+        busy = self._busy_operation_name()
+        if busy:
+            messagebox.showwarning("Reset", "Bitte zuerst laufenden Vorgang beenden: " + busy)
             return
         confirm = messagebox.askyesno("Lernsystem zuruecksetzen",
             "Wirklich ALLE gelernten Daten loeschen?\nDer ZIM-Korpus (Chunks) bleibt erhalten.\nEin Backup wird automatisch angelegt.")
@@ -587,7 +598,7 @@ class App(tk.Tk):
                 spec = importlib.util.spec_from_file_location("reset_learning", str(mod_path))
                 rl = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(rl)
-                db = str(root / "ki_memory.sqlite3")
+                db = self.db_path
                 self.println("Lern-Reset gestartet ...")
                 rep = rl.reset_learning(db, dry_run=False)
                 wiped = len(rep.get("deleted", {}))
@@ -619,7 +630,7 @@ class App(tk.Tk):
         import sqlite3
         lines = ["=== Autonomer Zyklus %d / Schritt %d ===" % (n, step)]
         try:
-            con = sqlite3.connect("ki_memory.sqlite3", timeout=60)
+            con = sqlite3.connect(self.db_path, timeout=60)
             try:
                 vals, regimes = read_all_neuromods(con)
                 covered, total, hyp = self._corpus_stats()
@@ -666,7 +677,7 @@ class App(tk.Tk):
         con = None
         covered = 0; total = 0; hypo = 0
         try:
-            con = sqlite3.connect("ki_memory.sqlite3", timeout=60)
+            con = sqlite3.connect(self.db_path, timeout=60)
             r = con.execute("SELECT COUNT(*) FROM chunks").fetchone()
             total = r[0] if r else 0
             try:
@@ -688,6 +699,51 @@ class App(tk.Tk):
         self._cov_cache = (covered, total, hypo)
         self._cov_ts = now
         return self._cov_cache
+    # BRAINSTEM_GUI_STATS_CACHE_FIX_V1 (11 September 2026)
+    #
+    # Root cause (identified by direct code inspection after a second real
+    # GUI slowdown report at cycle 10,039 / 100% corpus completion / 13.6 GB
+    # database, with autonomous learning already stopped by the user and
+    # Process Explorer confirming the GUI main thread stuck inside
+    # sqlite3_step, NOT inside Tk canvas drawing this time -- ruling out
+    # both previously-fixed causes (unindexed Treeview queries, canvas
+    # delete+recreate) and the WAL-growth hypothesis (the -wal file was
+    # confirmed only 1 KB, i.e. checkpointing works correctly):
+    #
+    # self.mem.stats() was being called directly, completely UNCACHED,
+    # inside _refresh() on every single 2-second GUI tick -- unlike every
+    # other database-touching helper in this file (_corpus_stats,
+    # _cycle_diag_text's per-cycle diagnostics), which already use an
+    # established 10-second cache pattern. Memory.stats() issues six
+    # separate "SELECT COUNT(*) AS c FROM {table}" queries, including one
+    # against "chunks" -- the table holding the full text of all 167,661
+    # imported Wikipedia chunks, now at its maximum, final size after
+    # reaching 100% corpus completion (this table was still growing,
+    # smaller, during all earlier GUI-performance testing/fixes on 09-10
+    # September, which is why this specific cost was never previously
+    # observed or flagged). Because "chunks" is an ordinary rowid table
+    # storing chunk text inline (not WITHOUT ROWID, no covering index
+    # smaller than the table itself is guaranteed to be chosen by the
+    # query planner for a bare COUNT(*)), a full-table COUNT(*) against it
+    # can require scanning a substantial fraction of the table's on-disk
+    # data -- now repeated every single 2 seconds, indefinitely, for the
+    # entire lifetime of the GUI process, regardless of whether autonomous
+    # learning is even running.
+    #
+    # This is a defensible, evidence-based root-cause hypothesis, not a
+    # certainty: without running EXPLAIN QUERY PLAN against the user's
+    # actual 13.6 GB production database, it cannot be fully proven that
+    # SQLite's query planner scans the full chunks table rather than a
+    # smaller index for this specific COUNT(*). Regardless of the exact
+    # mechanism, calling mem.stats() five times more often than the
+    # already-established, already-accepted 10-second cache interval used
+    # by _corpus_stats() for the same purpose is unconditionally wasteful
+    # and safe to fix independent of that uncertainty.
+    #
+    # Fix: cache self.mem.stats() with the same 10-second TTL already
+    # established and accepted for _corpus_stats(), using a separate cache
+    # slot (_stats_cache/_stats_ts) so this fix cannot interact with or
+    # break the existing _corpus_stats() caching in any way.
     def _cached_stats(self):
         now = time.time()
         if self._stats_cache is not None and (now - self._stats_ts) < 10.0:
@@ -699,178 +755,6 @@ class App(tk.Tk):
         self._stats_cache = st
         self._stats_ts = now
         return st
-    # BRAINSTEM_GRADUATION_QUEUE_DISPLAY_V2_FIX (11 September 2026)
-    #
-    # See the comment above the three new labels in _import_tab() for the
-    # full explanation of the two bugs found and fixed in this version
-    # relative to the same-day V1: (1) cursor/capacity state is read from
-    # "phase7d_state", not "phase6b_state" -- only the cross-phase
-    # checkpoint itself lives in phase6b_state; (2) whether that checkpoint
-    # has ever actually been set is now explicitly surfaced
-    # (checkpoint_set), since the real _build_candidate_pool() structurally
-    # skips reactivation entirely for a cycle if it has not.
-    #
-    # Read-only: opens its own short-lived connection, executes only
-    # SELECT statements, mirrors the real _build_candidate_pool()'s own
-    # WHERE/HAVING clauses exactly, and never mutates phase7d_state,
-    # phase6b_state, or any other table. Cached for 30 seconds.
-    def _graduation_queue_snapshot(self):
-        now = time.time()
-        if self._grad_queue_cache is not None and (now - self._grad_queue_ts) < 30.0:
-            return self._grad_queue_cache
-        result = {
-            "available": False, "level1_total": 0, "level2_total": 0,
-            "level1_ahead": 0, "level2_ahead": 0,
-            "cursor_n1": 0, "cursor_n2": 0,
-            "last_capacity": 0, "last_reactivated": 0,
-            "checkpoint": 0, "checkpoint_set": False,
-            "sleep_fraction": 0.0, "estimated_cycles": None,
-            "error": None,
-        }
-        con = None
-        try:
-            con = sqlite3.connect("ki_memory.sqlite3", timeout=10)
-
-            def _tbl(t):
-                return con.execute(
-                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (t,)
-                ).fetchone() is not None
-
-            def _i(x, d=0):
-                try:
-                    return int(float(x))
-                except Exception:
-                    return d
-
-            if not _tbl("phase7d_consolidation_survivors") or not _tbl("phase7d_state"):
-                result["error"] = "phase7d_noch_nicht_initialisiert"
-                self._grad_queue_cache = result
-                self._grad_queue_ts = now
-                return result
-
-            # BRAINSTEM_GRADUATION_QUEUE_DISPLAY_V2_FIX: cursor/capacity
-            # state lives in phase7d_state (the module's OWN state table),
-            # not in phase6b_state. Only the checkpoint itself is
-            # cross-phase state written by Phase 6b, matching the real
-            # _build_candidate_pool() exactly.
-            state = dict(con.execute("SELECT key,value FROM phase7d_state").fetchall())
-            phase6b_state = {}
-            if _tbl("phase6b_state"):
-                phase6b_state = dict(con.execute("SELECT key,value FROM phase6b_state").fetchall())
-
-            current_cycle = _i(state.get("cycle_count"), 0) + 1
-            checkpoint = _i(phase6b_state.get("phase7d_survivor_anchor_checkpoint_id"), 0)
-            cursor_n1 = _i(state.get("survivor_reactivation_cursor_n1"), 0)
-            cursor_n2 = _i(state.get("survivor_reactivation_cursor_n2"), 0)
-            last_capacity = _i(state.get("reactivation_capacity"), 0)
-            last_reactivated = _i(state.get("reactivation_selected"), 0)
-
-            result["checkpoint"] = checkpoint
-            result["checkpoint_set"] = checkpoint > 0
-
-            active_anchor_sources = set()
-            if _tbl("phase6b_anchor_pool"):
-                active_anchor_sources = {
-                    _i(row[0]) for row in con.execute(
-                        "SELECT source_id FROM phase6b_anchor_pool "
-                        "WHERE active=1 AND source_table='context_hypotheses'"
-                    ).fetchall()
-                }
-
-            # Mirrors v8_phase7d_slow_wave_sleep_substructure_release.py:
-            # _build_candidate_pool()'s own read query exactly (read-only).
-            rows = con.execute(
-                "SELECT source_id,COUNT(DISTINCT cycle_index) AS survived_cycles,"
-                "MAX(cycle_index) AS last_cycle "
-                "FROM phase7d_consolidation_survivors "
-                "WHERE id>? AND reinforced=1 AND source_table='context_hypotheses' "
-                "GROUP BY source_id "
-                "HAVING COUNT(DISTINCT cycle_index) IN (1,2) AND MAX(cycle_index)<?",
-                (checkpoint, current_cycle),
-            ).fetchall()
-
-            level1_ids, level2_ids = [], []
-            for source_id, survived_cycles, _last_cycle in rows:
-                sid = _i(source_id)
-                if sid in active_anchor_sources:
-                    continue
-                level = _i(survived_cycles)
-                if level == 1:
-                    level1_ids.append(sid)
-                elif level == 2:
-                    level2_ids.append(sid)
-
-            result["level1_total"] = len(level1_ids)
-            result["level2_total"] = len(level2_ids)
-            result["level1_ahead"] = sum(1 for sid in level1_ids if sid > cursor_n1)
-            result["level2_ahead"] = sum(1 for sid in level2_ids if sid > cursor_n2)
-            result["cursor_n1"] = cursor_n1
-            result["cursor_n2"] = cursor_n2
-            result["last_capacity"] = last_capacity
-            result["last_reactivated"] = last_reactivated
-
-            total_phase7d_cycles = _i(state.get("cycle_count"), 0)
-            total_sleep_events = 0
-            if _tbl("phase7d_slow_wave_cycles"):
-                r = con.execute("SELECT COUNT(*) FROM phase7d_slow_wave_cycles").fetchone()
-                total_sleep_events = _i(r[0] if r else 0)
-            sleep_fraction = (total_sleep_events / total_phase7d_cycles) if total_phase7d_cycles > 0 else 0.0
-            result["sleep_fraction"] = sleep_fraction
-
-            queue_total = result["level1_total"] + result["level2_total"]
-            throughput = last_reactivated if last_reactivated > 0 else last_capacity
-            if queue_total > 0 and throughput > 0 and sleep_fraction > 1e-6 and checkpoint > 0:
-                est_sleep_cycles = queue_total / float(throughput)
-                est_real_cycles = est_sleep_cycles / sleep_fraction
-                result["estimated_cycles"] = int(round(est_real_cycles))
-            else:
-                result["estimated_cycles"] = None
-
-            result["available"] = True
-        except Exception as exc:
-            result["error"] = type(exc).__name__ + ":" + str(exc)
-        finally:
-            if con is not None:
-                try:
-                    con.close()
-                except Exception:
-                    pass
-        self._grad_queue_cache = result
-        self._grad_queue_ts = now
-        return result
-    def _update_graduation_queue_display(self):
-        snap = self._graduation_queue_snapshot()
-        if not snap.get("available"):
-            reason = snap.get("error") or "unbekannt"
-            self.grad_queue_text.configure(text="Warteschlange: nicht verfuegbar (%s)" % reason)
-            self.grad_cursor_text.configure(text="Cursor: -")
-            self.grad_eta_text.configure(text="Geschaetzte Wartezeit: -")
-            return
-        self.grad_queue_text.configure(
-            text="Warteschlange: Level 2 (kurz vor Graduierung) %d | Level 1 %d" % (
-                snap["level2_total"], snap["level1_total"]))
-        self.grad_cursor_text.configure(
-            text="Cursor: Level 2 bei Hypothese-ID %d (%d/%d in dieser Runde noch offen) | "
-                 "Level 1 bei Hypothese-ID %d (%d/%d offen) | Checkpoint gesetzt: %s" % (
-                snap["cursor_n2"], snap["level2_ahead"], snap["level2_total"],
-                snap["cursor_n1"], snap["level1_ahead"], snap["level1_total"],
-                "ja" if snap["checkpoint_set"] else "NEIN"))
-        if not snap["checkpoint_set"]:
-            self.grad_eta_text.configure(
-                text="Geschaetzte Wartezeit: nicht verfuegbar -- der Reaktivierungs-Checkpoint "
-                     "(phase6b_state.phase7d_survivor_anchor_checkpoint_id) wurde noch nie gesetzt. "
-                     "Solange das so ist, ueberspringt Phase 7d die Reaktivierung strukturell.")
-        elif snap["estimated_cycles"] is not None:
-            self.grad_eta_text.configure(
-                text="Geschaetzte Wartezeit bis vollstaendiger Durchlauf der aktuellen Warteschlange: "
-                     "~%d Realzyklen (letzte Reaktivierung: %d von Kapazitaet %d pro Schlafzyklus, "
-                     "Schlafanteil %.1f%% der Zyklen)" % (
-                    snap["estimated_cycles"], snap["last_reactivated"], snap["last_capacity"],
-                    snap["sleep_fraction"] * 100.0))
-        else:
-            self.grad_eta_text.configure(
-                text="Geschaetzte Wartezeit: noch nicht genug Daten fuer eine Schaetzung "
-                     "(Warteschlange leer oder noch keine Reaktivierung beobachtet)")
     def chat_send(self):
         t = self.chat_in.get().strip()
         if t:
@@ -881,6 +765,11 @@ class App(tk.Tk):
             self.chat_out.insert(tk.END, "Du: " + t + "\n\nAntwort:\n" + r.response + note + "\n\n")
             self.chat_in.set("")
     def pick_import(self):
+        busy = self._busy_operation_name()
+        if busy and busy != "Import":
+            from tkinter import messagebox
+            messagebox.showwarning("Import", "Bitte zuerst laufenden Vorgang beenden: " + busy)
+            return
         paths = filedialog.askopenfilenames(filetypes=[("Unterstuetzt", "*.txt *.pdf *.zim"), ("Alle", "*.*")])
         self.cancel = False
         if paths:
@@ -907,10 +796,15 @@ class App(tk.Tk):
         self._gui_enqueue(_apply)        
     def _get_worker_memory(self):
         if getattr(self, "_worker_mem", None) is None:
-            self._worker_mem = Memory("ki_memory.sqlite3")
+            self._worker_mem = Memory(self.db_path)
         return self._worker_mem
     def auto_start(self):
         if self.auto_running:
+            return
+        busy = self._busy_operation_name()
+        if busy:
+            from tkinter import messagebox
+            messagebox.showwarning("Autonomes Lernen", "Bitte zuerst laufenden Vorgang beenden: " + busy)
             return
         self.auto_stop = False
         self.auto_running = True
@@ -1005,7 +899,7 @@ class App(tk.Tk):
             c = getattr(self.mem, attr, None)
             if isinstance(c, sqlite3.Connection):
                 return c, False
-        return sqlite3.connect("ki_memory.sqlite3", timeout=60), True
+        return sqlite3.connect(self.db_path, timeout=60), True
     def _update_neuro_dashboard(self):
         con, should_close = self._neuro_con()
         try:
@@ -1070,9 +964,10 @@ class App(tk.Tk):
     def drift_start(self):
         if self.drift_running:
             return
-        if self.auto_running:
+        busy = self._busy_operation_name()
+        if busy:
             from tkinter import messagebox
-            messagebox.showwarning("Drift-Report", "Bitte zuerst 'Autonom stoppen'.")
+            messagebox.showwarning("Drift-Report", "Bitte zuerst laufenden Vorgang beenden: " + busy)
             return
         self.drift_running = True
         self.drift_stop = False
@@ -1095,7 +990,7 @@ class App(tk.Tk):
             self.after(0, lambda: self.drift_status.configure(text="Modul-Fehler: " + str(e)))
             self._drift_finish()
             return
-        con = sqlite3.connect(str(root / "ki_memory.sqlite3"), timeout=60.0)
+        con = sqlite3.connect(self.db_path, timeout=60.0)
         loop = AutonomousLoop(self._get_worker_memory())
         limit_on = bool(self.drift_limit_on.get())
         cycles = int(self.drift_cycles.get()) if limit_on else None
@@ -1185,6 +1080,10 @@ class App(tk.Tk):
         try:
             covered, total, hypo = self._corpus_stats()
             pct = (100.0 * covered / total) if total else 0.0
+            # BRAINSTEM_GUI_STATS_CACHE_FIX_V1 (11 September 2026): use the
+            # new 10-second cache instead of calling self.mem.stats()
+            # unconditionally on every 2-second tick. See _cached_stats()
+            # above for the full root-cause explanation.
             st = self._cached_stats()
             self.status.configure(text="Chunks gelesen %d/%d (%.1f%%) | Fakten %d | Relationen %d | Ontologie %d | Fragen %d | Hypothesen %d" % (
                 covered, total, pct, st.get("facts", 0), st.get("relations", 0), st.get("ontology", 0), st.get("questions", 0), hypo))
@@ -1197,11 +1096,6 @@ class App(tk.Tk):
                     self._update_neuro_dashboard()
                 except Exception as exc:
                     self.neuro_text.configure(text="Neuromodulatoren: nicht verfuegbar: " + str(exc))
-            if hasattr(self, "grad_queue_text"):
-                try:
-                    self._update_graduation_queue_display()
-                except Exception as exc:
-                    self.grad_queue_text.configure(text="Warteschlange: Fehler: " + str(exc))
             if hasattr(self, "docs") and self._current_tab_name == "Datenbank":
                 self.docs.delete(*self.docs.get_children())
                 for d in self.mem.rows("SELECT * FROM documents ORDER BY created_at DESC LIMIT 2000"):
@@ -1239,5 +1133,5 @@ class App(tk.Tk):
         try: self.after(50,self._gui_pump)
         except Exception: self._gui_pump_scheduled=False
 
-def main():
-    App().mainloop()
+def main(db_path="ki_memory.sqlite3"):
+    App(db_path).mainloop()

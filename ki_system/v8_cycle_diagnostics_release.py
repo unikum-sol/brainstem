@@ -41,7 +41,48 @@ FAILURE_STATUS_VALUES = {
     "phase7a_error",
     "phase7b_error",
     "observer_error",
+    # BRAINSTEM_DIAGNOSTICS_ERROR_KEY_COVERAGE_FIX_V1: "phase5g_error" is a
+    # real status value already produced by
+    # v8_phase5g_context_strategy_selection_and_experiment_memory_release.py
+    # (managed_cycle/managed_run) but was missing from this set. It was
+    # previously only caught incidentally because those specific call sites
+    # also happen to include a separate "error" key in the same dict (see
+    # the generic key-based scan below) -- adding it here explicitly closes
+    # that coincidental dependency for any future variant that might set
+    # this status without also including a bare "error" key.
+    "phase5g_error",
 }
+
+# BRAINSTEM_DIAGNOSTICS_ERROR_KEY_COVERAGE_FIX_V1 (continued)
+#
+# Root cause (confirmed by a project-wide grep across all ~68 modules):
+# _walk() previously only checked a fixed pair of generic keys, "error" and
+# "base_cycle_error", for a truthy value. At least two real, existing
+# failure dicts elsewhere in this codebase use neither of those two keys
+# nor a recognized "status" value, and were therefore completely invisible
+# to this diagnostics module:
+#   - v8_phase5f_context_expansion_effectiveness_and_adaptive_windowing_
+#     release.py: except Exception as e: base={'phase5e_error': repr(e)}
+#   - v8_phase5h_strategy_experiment_outcome_learning_release.py:
+#     except Exception as exc: result = {'phase5g_cycle_error': str(exc)}
+# Both dicts carry ONLY their own ad hoc "<phaseName>_error" key, with no
+# "status" field and no "error"/"base_cycle_error" key at all -- so a real,
+# uncaught exception in either of those upstream phases could silently
+# vanish from cycle diagnostics entirely, exactly the failure mode this
+# module exists to prevent.
+#
+# Fix: generalize the generic-key scan from a fixed 2-item tuple to a rule
+# matching the key "error" exactly OR any key ending in the "_error" suffix.
+# This was verified (via a project-wide grep of all dict-literal key names
+# containing "error"/"exception"/"fail") to correctly include every
+# existing ad hoc failure key in this codebase (error, base_cycle_error,
+# phase5e_error, phase5g_cycle_error) while correctly EXCLUDING unrelated
+# data fields that merely contain "error" as a substring, not a "_error"
+# suffix (error_weight, errors, hypothesis_error_events,
+# last_projection_errors, projection_errors) -- none of those describe a
+# cycle failure and must not be misclassified as one.
+def _is_error_key(key: str) -> bool:
+    return key == "error" or key.endswith("_error")
 
 NON_CORE_MARKERS = ("shadow", "non_productive", "workpoint_observer", "recheck", "bridge")
 
@@ -63,8 +104,8 @@ def _walk(node: Any, path: str, findings: List[Dict[str, Any]]) -> None:
                 "error": node.get("error"),
                 "core": not _is_non_core(phase_name if phase_name else path),
             })
-        for key in ("error", "base_cycle_error"):
-            if node.get(key):
+        for key in list(node.keys()):
+            if _is_error_key(key) and node.get(key):
                 findings.append({
                     "path": path + "." + key,
                     "phase": phase_name,

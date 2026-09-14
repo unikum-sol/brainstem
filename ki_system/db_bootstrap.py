@@ -158,6 +158,73 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                             ('pattern_key', 'TEXT'),
                             ('status', "TEXT DEFAULT 'open'"),
                             ('resolution_score', 'REAL DEFAULT 0'),
+                            # BRAINSTEM_GAP_SCHEMA_COMPLETENESS_FIX_V2: same
+                            # class of defect as the severity/hypothesis_id/
+                            # uncertainty/pattern_key fix above --
+                            # resolution_attempts is referenced directly
+                            # (unconditionally, via COALESCE(resolution_
+                            # attempts,0), with no "in columns" existence
+                            # guard) by v8_phase5b_integrated_strategy_
+                            # refinement_release.py's real per-cycle
+                            # persistent-gap-strategy query. This column was
+                            # never declared anywhere, so on a real learning
+                            # cycle -- verified reproducible on every single
+                            # cycle, from cycle 1 onward, on both the
+                            # unmodified original codebase and this fixed
+                            # copy before this addition -- Phase 5b reliably
+                            # failed with "no such column: resolution_
+                            # attempts" as soon as the persistent-gap-
+                            # strategy branch ran (i.e. whenever
+                            # internal_learning_gaps is non-empty). Declaring
+                            # it here (matching the project's own "alle
+                            # Spalten vorab in SCHEMA_TABLES" rule) fixes the
+                            # crash without changing any query logic; the
+                            # unpopulated column simply reads back as 0 via
+                            # the existing COALESCE, which the call site
+                            # already treats as a valid fallback (an
+                            # as-yet-unattempted gap).
+                            ('resolution_attempts', 'INTEGER DEFAULT 0'),
+                            # BRAINSTEM_GAP_SCHEMA_COMPLETENESS_FIX_V3: same
+                            # class of defect as the two fixes above --
+                            # revision_pressure is referenced directly
+                            # (unconditionally, via COALESCE(revision_
+                            # pressure,0) inside an ORDER BY clause, with no
+                            # "in columns" existence guard) by
+                            # v8_phase5e_context_expansion_and_gap_closure_
+                            # release.py's real per-cycle gap-selection
+                            # query. Verified via a project-wide, systematic
+                            # audit of every column referenced via
+                            # COALESCE(...) against internal_learning_gaps
+                            # across all ~68 modules (undertaken after two
+                            # similar missing-column crashes,
+                            # resolution_attempts and, before that,
+                            # severity/hypothesis_id/uncertainty/
+                            # pattern_key, were each independently
+                            # discovered one cycle at a time): every OTHER
+                            # candidate column found by that audit
+                            # (phase5e_expansion_attempts,
+                            # phase5f_experiment_count,
+                            # phase5g_experiment_count,
+                            # phase5i_experiment_count,
+                            # phase6a_sleep_replay_count,
+                            # strategy_refinement_count) was confirmed
+                            # already self-healed by its OWNER module's own
+                            # ensure_schema()/addcol() call, which always
+                            # runs before that module's own query in the
+                            # same function -- and resolution_status was
+                            # confirmed already safely guarded everywhere
+                            # via an explicit "in columns" check before use.
+                            # revision_pressure was the ONLY column in that
+                            # audit genuinely unowned by any module's own
+                            # schema extension, confirmed reproducible on
+                            # every single real cycle once
+                            # resolution_attempts was fixed (both on the
+                            # unmodified original codebase and this fixed
+                            # copy). Declaring it here (matching the
+                            # project's own "alle Spalten vorab in
+                            # SCHEMA_TABLES" rule) fixes the crash without
+                            # changing any query logic.
+                            ('revision_pressure', 'REAL DEFAULT 0'),
                             ('strategy_effectiveness_score', 'REAL DEFAULT 0'),
                             ('evidence_count', 'INTEGER DEFAULT 0'),
                             ('updated_at', 'INTEGER DEFAULT 0'),
