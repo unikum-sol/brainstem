@@ -403,18 +403,90 @@ def _detect_and_react_saturation(con, cycle_index, neuromod):
         driver_bs_val = neuromod.get(driver_bs, 0.5)
 
         if side is not None:
-            new_streak = sat_count + 1 if last_dir != "counter" else max(0, sat_count - 1)
+            # BRAINSTEM_PHASE6D_SATURATION_STREAK_OSCILLATION_FIX_V1
+            #
+            # Root cause: the streak counter previously conflated two
+            # unrelated concepts under the single literal string "counter"
+            # stored in last_direction: (a) "the sliding-threshold action
+            # was just applied this cycle" (an ACTION marker, written
+            # below when new_streak reaches SATURATION_STREAK_THRESHOLD),
+            # and (b) "the parameter's own observed value just moved in
+            # the counter (away-from-boundary) direction" (what the
+            # `last_dir != "counter"` check on the line below was actually
+            # trying to detect, to decide whether to increment or
+            # decrement the streak). Because reaching the threshold WROTE
+            # the literal marker "counter" into last_direction (further
+            # down in this same function), the VERY NEXT cycle's check
+            # here (`last_dir != "counter"`) was always false right after
+            # a successful sliding-threshold application -- causing the
+            # streak to be DECREMENTED (sat_count-1) instead of continuing
+            # to climb, even though the parameter was STILL genuinely
+            # saturated at the same boundary the whole time. This produced
+            # a self-limiting oscillation (3 -> 2 -> 3 -> 2 -> ...) that
+            # could never reach SATURATION_STREAK_THRESHOLD + 1 (4), which
+            # is the exact condition required to ever schedule this
+            # module's own bias-renormalization action (purpose (4) in
+            # this module's docstring: Bazhenov slow-wave downscaling) --
+            # meaning a persistently, chronically saturated bias value
+            # could never actually trigger a corrective reset, no matter
+            # how many consecutive cycles it remained pinned at the
+            # boundary.
+            #
+            # Fix: the streak counter now increments monotonically and
+            # unconditionally every consecutive cycle the parameter
+            # remains at the SAME boundary (side is not None, this whole
+            # branch), matching the plain, intended meaning of a
+            # "saturation streak" -- it is no longer coupled to (and
+            # cannot be silently reset by) the literal action-marker that
+            # used to live in last_direction. last_direction itself now
+            # only ever stores the parameter's actual observed movement
+            # direction (up/down/flat, see below), never a synthetic
+            # action marker, eliminating this entire class of confusion.
+            new_streak = sat_count + 1
             if new_streak >= SATURATION_STREAK_THRESHOLD:
-                new_lr = _clamp(cur_lr * (0.7 + 0.2 * neuromod.get("serotonin", 0.5)),
-                                min_lr, max_lr)
                 target_dir_bias = -0.5 if side == "max" else 0.5
+                # BRAINSTEM_PHASE6D_DIRECTION_BIAS_APPLIED_FIX_V1
+                #
+                # Root cause: dir_bias (read from the previous row just
+                # above) was only ever used to compute its OWN next value
+                # (new_dir_bias below) -- it was written to the database
+                # every saturation cycle but never read anywhere else in
+                # this file, this module, or the rest of the codebase
+                # (confirmed via a project-wide grep), making it a purely
+                # self-referential, cosmetic value with no actual effect
+                # on learning-rate dampening or any other behavior, despite
+                # this module's own docstring purpose (2) explicitly
+                # describing sliding-threshold homeostasis (Lee and
+                # Kirkwood 2019): "if a parameter moved only in one
+                # direction for N cycles, the counter-direction is made
+                # easier next time."
+                #
+                # Fix, scoped entirely within this function (no cross-file
+                # changes to phase6c's shared single-valued learning_rate
+                # column, which cannot itself represent an up/down
+                # asymmetry): dir_bias (the EMA of target_dir_bias across
+                # PAST, possibly non-consecutive saturation episodes) is
+                # compared against target_dir_bias for the CURRENT episode.
+                # "agreement" (their product) is positive when this
+                # parameter keeps saturating on the SAME side episode after
+                # episode (chronic saturation) and negative when it
+                # alternates sides (oscillating). Chronic saturation now
+                # dampens the learning rate MORE aggressively (smaller
+                # chronic_factor); oscillating saturation dampens LESS
+                # (chronic_factor closer to or slightly above 1.0) --
+                # dir_bias now has a real, bounded, well-justified effect
+                # on new_lr instead of being purely self-referential.
+                agreement = dir_bias * target_dir_bias
+                chronic_factor = _clamp(1.0 - 0.3 * agreement, 0.8, 1.2)
+                new_lr = _clamp(cur_lr * (0.7 + 0.2 * neuromod.get("serotonin", 0.5)) * chronic_factor,
+                                min_lr, max_lr)
                 new_dir_bias = _clamp(dir_bias * 0.5 + target_dir_bias * 0.5, -1.0, 1.0)
                 con.execute(
                     "UPDATE phase6d_meta_metaplasticity_state "
                     "SET current_lr=?, direction_bias=?, saturation_count=?, "
                     "    last_direction=?, last_value=?, updated_at=? "
                     "WHERE parameter_key=?",
-                    (new_lr, new_dir_bias, new_streak, "counter",
+                    (new_lr, new_dir_bias, new_streak, cur_dir,
                      float(current), now, pk),
                 )
                 action = "sliding_threshold_applied"

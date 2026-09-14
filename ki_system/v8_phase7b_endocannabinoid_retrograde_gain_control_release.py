@@ -289,6 +289,39 @@ def _apply_anandamide_ltd(con, anandamide_level, cycle_index, neuromod):
     if not st: return {"pulled": 0, "reason": "no_bias_state"}
     pulled = 0; affected = []
     sero = neuromod.get("serotonin", 0.5)
+    # BRAINSTEM_PHASE7B_KERNEL_RESULT_UNBOUND_FIX_V1
+    #
+    # Root cause (newly discovered during real end-to-end multi-cycle
+    # regression testing of unrelated fixes elsewhere in this codebase,
+    # confirmed pre-existing and byte-identical in the original,
+    # unmodified copy of this exact file): _kernel_result was previously
+    # assigned ONLY inside the loop below, and only on iterations where a
+    # given bias key's deviation from its midpoint reaches or exceeds
+    # ext_th (extreme_bias_threshold). The unconditional final return
+    # statement at the end of this function references _kernel_result
+    # regardless of whether the loop ever took that branch. When every
+    # BIAS_KEYS value happens to already be within ext_th of its midpoint
+    # (correctly no anandamide-LTD pull is needed for any of them, pulled
+    # stays 0), the loop never assigns _kernel_result at all, and the
+    # final return line raised
+    # "UnboundLocalError: cannot access local variable '_kernel_result'
+    # where it is not associated with a value" -- crashing this phase's
+    # entire cycle. This was unreachable in the original codebase only
+    # because bias values were effectively never allowed to settle near
+    # their midpoints for long (see the separate phase6c sticky-bias-
+    # bridge fix elsewhere in this session, which now lets bias values
+    # genuinely converge/stabilize over many cycles -- exactly the
+    # condition that surfaces this independent, pre-existing defect).
+    #
+    # Fix: initialize _kernel_result to None before the loop. observe_
+    # adapter() in v8_guarded_core_adapters_canonical_sleep_wake_shadow_
+    # release.py already handles a None kernel_result gracefully (records
+    # a diagnostic observation with valid=False, never raises), and
+    # select_authoritative() defaults to the "old"/authoritative value in
+    # normal (non "kernel_guarded") operation regardless -- so this cannot
+    # change any actually-applied learning behavior, it only prevents the
+    # crash when there is genuinely nothing to shadow-compare.
+    _kernel_result = None
     for k in BIAS_KEYS:
         if k not in st: continue
         mid = BIAS_MIDS.get(k, 0.5)

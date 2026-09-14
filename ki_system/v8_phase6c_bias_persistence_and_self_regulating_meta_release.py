@@ -648,6 +648,34 @@ def run_phase6c_cycle(db_or_obj=None, cycle_index=None):
     con=resolve_db(db_or_obj); ensure_schema(con); missing=_self_check_schema(con)
     if missing: return {"phase":PHASE,"status":"schema_check_failed","missing_columns":missing}
     initialize_meta_parameters(con)
+    # BRAINSTEM_PHASE6C_STICKY_BIAS_BRIDGE_WIRING_FIX_V1
+    #
+    # Root cause: this module's own docstring states its purpose (1) as
+    # "Bias Persistence Bridge: keep phase6b's plasticity adjustments from
+    # being reset by phase6a on the next cycle", and _save_sticky_bias()/
+    # _restore_sticky_bias() were fully implemented (and correctly scoped
+    # to STICKY_KEYS: last_plasticity_level, last_exploration_bias,
+    # last_consolidation_bias, last_inhibition_bias, last_revision_bias) --
+    # but neither function was ever called anywhere in this file or any
+    # other module in the codebase. Phase 6a recomputes all five of these
+    # bias values from scratch every single cycle purely from its own
+    # internal averages (avg_outcome, avg_closure, avg_overlap,
+    # persistent_pressure, etc.), with no awareness of any adjustment made
+    # after it runs -- so whatever phase6b/6c contributed in a given cycle
+    # was silently discarded the moment phase6a ran again next cycle.
+    #
+    # Fix, using phase_registry.LOAD_ORDER's fixed phase sequence (Phase 6a
+    # runs, then Phase 6b, then Phase 6c, all within the SAME managed_cycle()
+    # call, every cycle): restore the previous cycle's saved sticky target
+    # here, at the very start of phase6c's own per-cycle work -- this runs
+    # strictly after phase6a's from-scratch recompute already happened
+    # earlier in this same cycle, so restoring here overwrites phase6a's
+    # blind computation with the durable target from last cycle's save,
+    # exactly implementing the "protect from being reset by phase6a"
+    # bridge this module was built for. The (possibly further phase6c-
+    # regulated) resulting state is saved again as the new target at the
+    # end of this same function, closing the loop for the next cycle.
+    restored_bias = _restore_sticky_bias(con)
     if cycle_index is None: cycle_index=_to_int(_read_kv(con,"phase6c_state").get("cycle_count"),0)+1
     latest=None
     if _table_exists(con,"phase6b_effectiveness_events"):
@@ -660,8 +688,15 @@ def run_phase6c_cycle(db_or_obj=None, cycle_index=None):
         neuromod=_read_neuromodulators(con); cfg=_get_all_meta_params(con); regulated=_regulate_meta_parameters(con,cycle_index,neuromod,cfg,hist)
     else:
         regulated={"regulated":0,"reason":"neutral_evidence_state","evidence_state":state}
-    _kv_set(con,"phase6c_state","cycle_count",cycle_index); _kv_set(con,"phase6c_state","last_cycle_at",_now()); _kv_set(con,"phase6c_state","last_evidence_state",state); _kv_set(con,"phase6c_state","canonical_single_pass",True); _kv_set(con,"phase6c_state","direct_fact_writes","disabled"); _kv_set(con,"phase6c_state","direct_relation_writes","disabled"); _kv_set(con,"phase6c_state","fact_promotion","disabled"); con.commit()
-    return {"phase":PHASE,"cycle_index":cycle_index,"status":"ok","canonical_phase6b_measurement":latest,"meta_regulation":regulated,"history_snapshot":hist,"safety":{"canonical_single_pass":True,"direct_fact_writes":"disabled","direct_relation_writes":"disabled","fact_promotion":"disabled"}}
+    _kv_set(con,"phase6c_state","cycle_count",cycle_index); _kv_set(con,"phase6c_state","last_cycle_at",_now()); _kv_set(con,"phase6c_state","last_evidence_state",state); _kv_set(con,"phase6c_state","canonical_single_pass",True); _kv_set(con,"phase6c_state","direct_fact_writes","disabled"); _kv_set(con,"phase6c_state","direct_relation_writes","disabled"); _kv_set(con,"phase6c_state","fact_promotion","disabled")
+    # BRAINSTEM_PHASE6C_STICKY_BIAS_BRIDGE_WIRING_FIX_V1 (continued): persist
+    # the current bias state (as restored above and/or further shaped by
+    # this cycle's own meta-parameter regulation) as the new sticky target,
+    # so the NEXT cycle's restore (at the top of this same function) has
+    # an up-to-date value to protect against phase6a's next recompute.
+    saved_bias = _save_sticky_bias(con)
+    con.commit()
+    return {"phase":PHASE,"cycle_index":cycle_index,"status":"ok","canonical_phase6b_measurement":latest,"meta_regulation":regulated,"history_snapshot":hist,"bias_bridge":{"restored":restored_bias,"saved":saved_bias},"safety":{"canonical_single_pass":True,"direct_fact_writes":"disabled","direct_relation_writes":"disabled","fact_promotion":"disabled"}}
 
 
 

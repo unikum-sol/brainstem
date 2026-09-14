@@ -81,6 +81,31 @@ def _choose(gt,role,closure,no_cand,overlap,eff):
     if gt=='repeated_uncertainty': return 'wider_context_window','increase_context_depth_for_repeated_uncertainty'
     return 'low_overlap_context_window','default_low_overlap_experiment'
 
+def _chunk_exists(cur, chunk_id):
+    if not _exists(cur, 'chunks'):
+        return False
+    try:
+        return cur.execute('SELECT 1 FROM chunks WHERE id=? LIMIT 1', (int(chunk_id),)).fetchone() is not None
+    except Exception:
+        return False
+
+def _real_chunk_id_near(cur, hint):
+    """Return a real, existing chunks.id at or above the given numeric
+    hint, or the smallest existing chunk id if none is >= hint, or None
+    if the chunks table is empty/unavailable. Used as the fallback when
+    no hypothesis-linked chunk_id can be resolved, so the resulting
+    reading_queue/chunk_attention_scores entry always points at a chunk
+    that genuinely exists rather than an unchecked synthetic number."""
+    if not _exists(cur, 'chunks'):
+        return None
+    try:
+        row = cur.execute('SELECT id FROM chunks WHERE id>=? ORDER BY id LIMIT 1', (max(1, int(hint)),)).fetchone()
+        if row is None:
+            row = cur.execute('SELECT id FROM chunks ORDER BY id LIMIT 1').fetchone()
+        return int(row[0]) if row and row[0] is not None else None
+    except Exception:
+        return None
+
 def _load_window_memory(cur):
     rows=[]
     if not _exists(cur,'phase5f_window_strategy_memory'): return rows
@@ -122,7 +147,25 @@ def apply_context_strategy_selection(mem=None):
         center=None
         if hid and _exists(cur,'context_hypotheses') and 'chunk_id' in _cols(cur,'context_hypotheses'):
             r=cur.execute('SELECT chunk_id FROM context_hypotheses WHERE id=?',(hid,)).fetchone(); center=int(r[0]) if r and r[0] is not None else None
-        if center is None: center=int((gid or 1)%1000)+1
+        if center is not None and not _chunk_exists(cur,center): center=None
+        if center is None:
+            # BRAINSTEM_PHASE5G_SYNTHETIC_CHUNK_ID_FIX_V1: previously fell
+            # back to int((gid or 1)%1000)+1 -- a synthetic number derived
+            # only from the gap's own row id, never checked against the
+            # actual chunks table. That value (plus several strategy-
+            # dependent offsets below) was then written directly into
+            # reading_queue, chunk_attention_scores, and
+            # phase5g_strategy_experiments as if it pointed at a real chunk
+            # to read next, with no existence check anywhere in this path.
+            # Fixed to resolve a REAL, existing chunk id instead (nearest
+            # existing id at or above the same numeric hint, preserving the
+            # original "spread experiments across the corpus" intent as
+            # closely as possible); if the chunks table is empty or
+            # unavailable (e.g. before any corpus has been imported), this
+            # gap's experiment is skipped entirely rather than writing
+            # invalid data.
+            center=_real_chunk_id_near(cur,(gid or 1)%1000+1)
+        if center is None: continue
         if strategy=='contrastive_context_window': offsets=[-2*radius,-radius,radius,2*radius]
         elif strategy=='low_overlap_context_window': offsets=[-radius,radius,-radius-2,radius+2]
         elif strategy=='shift_away_from_no_candidate_context': offsets=[-radius-3,radius+3,-radius-5,radius+5]
@@ -130,6 +173,7 @@ def apply_context_strategy_selection(mem=None):
         for off in offsets:
             target=center+off
             if target<=0: continue
+            if not _chunk_exists(cur,target): continue
             experiments+=1
             cur.execute('INSERT INTO phase5g_strategy_experiments(gap_id,gap_key,gap_type,role,source_strategy,selected_strategy,center_chunk_id,target_chunk_id,window_radius,expected_gain,predicted_effectiveness,observed_closure_delta,no_candidate_rate,overlap_score,exploration_pressure,inhibition_level,learning_rate,error_weight,revision_pressure,decision,outcome,details,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(gid,gkey,gt,role,'phase5f_or_gap_memory',strategy,center,target,radius,round(egain,6),round(pred,6),float(closure or 0),float(nc or 0),float(ov or 0),ep,ih,lr,ew,rp,reason,'pending',_json({'compass':'no_blacklists'}),now,now))
             score=max(0.05,min(0.95,egain+0.10*ep-0.08*ih-0.15*float(nc or 0)))
