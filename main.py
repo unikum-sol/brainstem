@@ -67,8 +67,49 @@ def main():
         from ki_system.user_gui import UserApp
         UserApp(a.memory_db).mainloop()
     else:
+        # BRAINSTEM_FATAL_STARTUP_ABORT_FIX_V1
+        #
+        # Root cause: v8_phase_registry.load_all() already computed an
+        # explicit report["fatal"] flag whenever a required (non-dead_code)
+        # phase module failed to load, and report["self_check"]["ok"]
+        # already reflects the project's own established definition of a
+        # correctly wired phase chain (cycle() resolves to Phase 7d's
+        # managed_cycle, fact_promotion stays disabled, and there are no
+        # load errors). However, nothing anywhere in the actual program
+        # entrypoint ever checked either of these -- the admin GUI started
+        # normally regardless of whether the underlying autonomous-learning
+        # phase chain was fully, partially, or not at all wired up.
+        # autonomous.py's own module-level exception handler additionally
+        # only ever printed a crash from load_all() itself and continued.
+        # The net effect: a genuinely broken phase chain (e.g. from a
+        # missing/renamed module, a real Python error in a phase file, or a
+        # dependency import failure) could silently fall back to whatever
+        # partial AutonomousLoop.cycle chain happened to remain patched in,
+        # and the admin GUI would start up looking completely normal.
+        #
+        # Fix: import gui_app first (its own module-level
+        # "from ki_system.autonomous import AutonomousLoop" already
+        # triggers phase_registry.load_all() exactly once, before this
+        # point), then explicitly check the resulting load report via the
+        # new autonomous.get_load_report() accessor. Only the admin GUI
+        # path is gated here: user_gui.py (see above) never imports
+        # ki_system.autonomous at all, since the read-only dialogue GUI
+        # does not run learning cycles and does not depend on the phase
+        # chain being wired at all -- gating it on this check would be
+        # both unnecessary and would force an otherwise-avoidable import
+        # of the entire phase chain for a mode that never uses it.
         from ki_system.gui_app import main as gm
-        gm()
+        from ki_system.autonomous import get_load_report
+        load_report = get_load_report()
+        if load_report.get('fatal'):
+            print('[BRAINSTEM_FATAL] Ein oder mehrere erforderliche Phasen-Module konnten')
+            print('nicht geladen werden. Die Lern-Phasenkette ist unvollstaendig verdrahtet.')
+            print('Start der Admin-GUI wird verweigert, um einen degradierten, nur teilweise')
+            print('verdrahteten Autonomes-Lernen-Betrieb zu vermeiden.')
+            for failed_label, exc_repr in load_report.get('errors', []):
+                print('   -', failed_label, ':', exc_repr)
+            raise SystemExit(1)
+        gm(a.memory_db)
 
 
 if __name__ == '__main__':
