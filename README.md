@@ -211,7 +211,7 @@ Every promoted fact carries a complete provenance chain, from the final fact thr
 ## Architecture
 
 <a href="assets/Project-Structure.png" target="_blank">
-  <img src="assets/Project-Structure.png" alt="Project-Structure" width="250" />
+  <img src="assets/Project-Structure.png" alt="Project-Structure" width="200" />
 </a>
 
 ---
