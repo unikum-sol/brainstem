@@ -19,6 +19,23 @@ SCHEMA_TABLES={
   ("sleep_score","REAL"),("adenosine_pressure","REAL"),("arousal_release","REAL"),
   ("inhibitory_readiness","REAL"),("consolidation_readiness","REAL"),("stress_block","REAL"),
   ("core_before_json","TEXT"),("core_target_json","TEXT"),("core_after_json","TEXT")],
+ # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1 (23.09.2026): this module used to
+ # write its own alpha=.18 blend of ALL 6 core neuromodulators directly into
+ # phase6a_neuromodulated_sleep_state, racing against Phase 6a's own raw
+ # phasic write and Phase 7c's authoritative glutamate/gaba E/I-balance
+ # write within the SAME real cycle -- a real, user-provided 865-row GUI
+ # log empirically traced repeatable "torn value" spikes to exactly this
+ # dual-writer pattern. Per the approved target architecture, this module
+ # no longer writes phase6a_neuromodulated_sleep_state at all. It instead
+ # PUBLISHES its own homeostatic (tonic) pull target for only the 4
+ # non-EI keys (dopamine/serotonin/noradrenaline/acetylcholine; glutamate/
+ # gaba are removed from this module's target formula entirely -- Phase 7c
+ # remains their sole author) into this new table. Phase 6a itself (see
+ # v8_phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release.py)
+ # is now the single, authoritative writer: it reads this target right
+ # after its own from-scratch phasic computation and performs the one
+ # EMA-style blend using the self-regulating tonic_weight meta-parameter.
+ "cooperative_core_target_state":[("key","TEXT PRIMARY KEY"),("value","TEXT"),("updated_at","INTEGER")],
 }
 
 def _now():return int(time.time())
@@ -82,17 +99,28 @@ def run_cycle(db_or_obj=None):
  consolid=_clamp(.45*consolidation+.30*bdnf+.25*before["serotonin"])
  arousal_release=1.0-arousal;stress_block=cort
  sleep_score=_clamp(.35*pressure+.25*arousal_release+.20*inhibitory+.12*consolid+.08*(1.0-stress_block))
+ # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1 (23.09.2026): see the schema
+ # comment above and the matching note in v8_phase6a_neuromodulated_
+ # sleep_replay_and_meta_plasticity_release.py for the full root-cause and
+ # fix description. glutamate/gaba are REMOVED from this target vector
+ # entirely -- Phase 7c remains the sole author of those two keys in
+ # phase6a_neuromodulated_sleep_state; this module only ever READS them
+ # (ei_glu/ei_gaba above) as an input to its own sleep-score/inhibitory-
+ # readiness computation, exactly as it already did partially before this
+ # fix. For the 4 remaining keys, this module no longer writes
+ # phase6a_neuromodulated_sleep_state directly at all -- it only PUBLISHES
+ # this homeostatic pull target; Phase 6a (the sole remaining writer)
+ # performs the actual EMA-style blend with its own phasic value, using
+ # the self-regulating tonic_weight meta-parameter (see v8_phase6c...
+ # META_PARAMETER_DEFAULTS) instead of this module's previous hardcoded
+ # alpha=.18.
  target={
   "dopamine":_clamp(.20+.34*outcome+.18*exploration+.16*(1.0-persistent)+.12*(1.0-cort)),
   "serotonin":_clamp(.22+.38*consolidation+.20*(1.0-cort)+.12*outcome+.08*inhibitory),
-  "glutamate":_clamp(.18+.40*exploration+.18*orexin+.16*persistent-.18*sleep_score),
-  "gaba":_clamp(.16+.39*inhibition+.23*sleep_score+.14*cort+.08*(1.0-exploration)),
   "noradrenaline":_clamp(.12+.30*persistent+.25*hist+.18*orexin+.15*cort),
   "acetylcholine":_clamp(.18+.33*revision+.22*hist+.17*orexin+.10*exploration),
  }
- alpha=.18
- after={k:round(_clamp(before[k]+alpha*(target[k]-before[k]),.05,.95),6) for k in CORE}
- for k,v in after.items():_set_kv(con,"phase6a_neuromodulated_sleep_state",k,v)
+ for k,v in target.items():_set_kv(con,"cooperative_core_target_state",k,round(v,6))
  coop=_read_kv(con,"cooperative_sleep_wake_state");previous=str(coop.get("state","wake"));cycle=_to_int(coop.get("cycle_count"),0)+1;entered=_to_int(coop.get("state_entered_cycle"),cycle)
  enter=_clamp(coop.get("enter_threshold",.62));exitv=_clamp(coop.get("exit_threshold",.42));min_dwell=max(1,_to_int(coop.get("min_dwell_cycles"),3));dwell=max(0,cycle-entered)
  state=previous;reason="hold"
@@ -101,9 +129,16 @@ def run_cycle(db_or_obj=None):
  transitioned=state!=previous
  if transitioned:entered=cycle
  for k,v in {"state":state,"previous_state":previous,"cycle_count":cycle,"state_entered_cycle":entered,"dwell_cycles":max(0,cycle-entered),"transition_reason":reason,"sleep_score":round(sleep_score,6),"adenosine_pressure":round(pressure,6),"arousal_release":round(arousal_release,6),"inhibitory_readiness":round(inhibitory,6),"consolidation_readiness":round(consolid,6),"stress_block":round(stress_block,6),"enter_threshold":enter,"exit_threshold":exitv,"min_dwell_cycles":min_dwell}.items():_set_kv(con,"cooperative_sleep_wake_state",k,v)
- con.execute("INSERT INTO cooperative_sleep_wake_cycles(created_at,cycle_index,state,previous_state,transitioned,reason,sleep_score,adenosine_pressure,arousal_release,inhibitory_readiness,consolidation_readiness,stress_block,core_before_json,core_target_json,core_after_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(_now(),cycle,state,previous,1 if transitioned else 0,reason,sleep_score,pressure,arousal_release,inhibitory,consolid,stress_block,json.dumps(before,sort_keys=True),json.dumps(target,sort_keys=True),json.dumps(after,sort_keys=True)))
+ # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1: core_after_json is kept
+ # (schema-stable, still non-null) but is now identical to
+ # core_before_json, since this module no longer mutates the shared 6-key
+ # state itself -- it only reads it (before) and publishes a target. The
+ # actual phasic/tonic blend Phase 6a performs next is now fully visible,
+ # per-parameter, in the new audit table
+ # phase6a_neuromodulator_integration_events (see that module).
+ con.execute("INSERT INTO cooperative_sleep_wake_cycles(created_at,cycle_index,state,previous_state,transitioned,reason,sleep_score,adenosine_pressure,arousal_release,inhibitory_readiness,consolidation_readiness,stress_block,core_before_json,core_target_json,core_after_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(_now(),cycle,state,previous,1 if transitioned else 0,reason,sleep_score,pressure,arousal_release,inhibitory,consolid,stress_block,json.dumps(before,sort_keys=True),json.dumps(target,sort_keys=True),json.dumps(before,sort_keys=True)))
  con.commit()
- return {"phase":PHASE,"status":"complete","cycle_index":cycle,"core_before":before,"core_target":target,"core_after":after,"sleep_state":state,"sleep_score":round(sleep_score,6),"transitioned":transitioned,"transition_reason":reason,"productive_writes":{"facts":0,"relations":0,"questions":0}}
+ return {"phase":PHASE,"status":"complete","cycle_index":cycle,"core_before":before,"tonic_target":target,"sleep_state":state,"sleep_score":round(sleep_score,6),"transitioned":transitioned,"transition_reason":reason,"productive_writes":{"facts":0,"relations":0,"questions":0}}
 def managed_cycle(self,progress=None):
  from ki_system import v8_phase7cort_stability_watch_release as downstream
  result=downstream.managed_cycle(self,progress)

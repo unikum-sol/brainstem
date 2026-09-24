@@ -14,6 +14,19 @@ LOAD_ORDER = [{'module': 'v8_context_observation_learning_release',
                  'fact_promotion': 'disabled',
                  'direct_fact_writes': 'disabled',
                  'direct_relation_writes': 'disabled'}},
+ # BRAINSTEM_LEXICAL_LAYER_LOAD_ORDER_V1: registered directly after
+ # context_observation_learning_release so it chains onto (and its own
+ # phase-specific work runs immediately after) the existing sentence-level
+ # observation entry point, matching the exact chaining convention already
+ # used by every phase from PHASE5A onward (module-level _PREV_CYCLE
+ # capture + call-then-extend, see v8_phase0_lexical_boundary_observation_
+ # release.py's own autoload()). Uses 'autoload' (the naming convention
+ # already used by every phase6a+ module) since this module's own function
+ # is named autoload(), not patch_autonomous_loop().
+ {'module': 'v8_phase0_lexical_boundary_observation_release',
+  'how': 'autoload',
+  'target': 'LOOP',
+  'label': 'PHASE0_LEXICAL'},
  {'module': 'v8_phase5a_integrated_self_improving_learning_release',
   'how': 'patch_autonomous_loop',
   'target': 'LOOP',
@@ -30,6 +43,14 @@ LOAD_ORDER = [{'module': 'v8_context_observation_learning_release',
   'how': 'patch_autonomous_loop',
   'target': 'LOOP',
   'label': 'PHASE5D'},
+ # BRAINSTEM_EXPERIMENT_GAP_DETECTION_LOAD_ORDER_V1: registered directly
+ # before PHASE5E (the first already-existing module that reads from
+ # internal_learning_gaps) so gaps this module creates are visible to
+ # downstream consumers within the same real cycle they were created in.
+ {'module': 'v8_stageb_gap_detection_release',
+  'how': 'autoload',
+  'target': 'LOOP',
+  'label': 'STAGEB_GAP_DETECTION'},
  {'module': 'v8_phase5e_context_expansion_and_gap_closure_release',
   'how': 'patch_autonomous_loop',
   'target': 'NONE',
@@ -85,6 +106,34 @@ LOAD_ORDER = [{'module': 'v8_context_observation_learning_release',
  {'module': 'v8_phase7cort_stability_watch_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'PHASE7CORT'},
  {'module': 'v8_cooperative_core_neuromodulator_sleep_authority_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'COOPERATIVE_CORE_SLEEP_AUTHORITY'},
  {'module': 'v8_stageb_guarded_hypothesis_graduation_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_GRADUATION'},
+ # BRAINSTEM_EXPERIMENT_LOAD_ORDER_TIMING_FIX_V1 (22 September 2026): a
+ # real end-to-end test run surfaced a real, if non-critical, timing
+ # issue with the ORIGINAL ordering here (fact promotion registered
+ # BEFORE contradiction detection/revision). Because each module's own
+ # _PREV_CYCLE chaining convention runs the PREVIOUSLY-registered module
+ # FIRST, then does its own work, the original order meant fact promotion
+ # for a given real cycle always ran BEFORE that same cycle's own
+ # contradiction detection and hypothesis revision -- so a fact could only
+ # ever be retracted one full real cycle after the revision that should
+ # have triggered it (confirmed directly: a genuinely stronger,
+ # contradicting hypothesis correctly reversed the weaker hypothesis's
+ # role in the SAME cycle it was detected, but the corresponding fact was
+ # only retracted on the NEXT cycle's fact-promotion pass). Not a
+ # correctness bug (nothing was ever lost or left permanently wrong --
+ # see facts_before/promoted/retracted counters here at
+ # every_cycle in dedicated diagnostics), but the reordering below (gap
+ # detection -> contradiction detection -> hypothesis revision -> fact
+ # promotion, i.e. fact promotion now LAST among the four new modules)
+ # ensures retraction happens within the SAME real cycle as the revision
+ # that causes it, matching this project's own "erst messen, dann
+ # aendern, dann sofort konsistent halten" spirit as closely as possible
+ # within a single-pass-per-cycle chain.
+ {'module': 'v8_stageb_contradiction_detection_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_CONTRADICTION_DETECTION'},
+ {'module': 'v8_stageb_hypothesis_revision_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_HYPOTHESIS_REVISION'},
+ # BRAINSTEM_EXPERIMENT_FACT_PROMOTION_LOAD_ORDER_V1: registered LAST
+ # among the four new Stage-B modules (see timing fix note above) so both
+ # a fresh graduation AND a same-cycle revision are already visible to it.
+ {'module': 'v8_stageb_fact_promotion_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_FACT_PROMOTION'},
  {'module': 'v8_non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1', 'how': 'autoload', 'target': 'LOOP', 'label': 'non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1'},  # CANONICAL_AUTOLOAD_SHADOW_RUNTIME_INTEGRATION_V1
  {'module': 'v8_stageb_gapflow_runtime_contract_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_EF'}]
 

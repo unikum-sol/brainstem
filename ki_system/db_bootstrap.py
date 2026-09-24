@@ -33,7 +33,21 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
            ('value', 'TEXT'),
            ('confidence', 'REAL DEFAULT 0'),
            ('source_chunk_id', 'INTEGER'),
-           ('created_at', 'INTEGER')],
+           ('created_at', 'INTEGER'),
+           # BRAINSTEM_SCHEMA_CENTRALIZATION_GAP_FIX_V1 (23.09.2026): this
+           # column was previously ONLY ever added by memory.py's own
+           # Memory._ensure_core_import_schema()/CORE_IMPORT_SCHEMA, never
+           # mirrored here in the central schema authority -- violating
+           # this project's own rule that every schema change must be
+           # tracked in db_bootstrap.py's SCHEMA_TABLES. On a database
+           # bootstrapped via ensure_database_exists() alone (no Memory()
+           # instantiated first), v8_stageb_fact_promotion_release.py's own
+           # schema self-check correctly detected the missing column and
+           # refused to write, exactly as designed -- but this masked a
+           # real central-schema gap rather than a bug in that module.
+           # Mirrored here now (memory.py's own ALTER TABLE ADD COLUMN
+           # remains additionally idempotent/harmless if it runs first).
+           ('source_hypothesis_id', 'INTEGER')],
  'relations': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
                ('source', 'TEXT'),
                ('relation', 'TEXT'),
@@ -129,7 +143,24 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                         ('phase5g_no_candidate_rate', 'REAL DEFAULT 0'),
                         ('phase5g_overlap_score', 'REAL DEFAULT 0'),
                         ('phase5g_last_selected_at', 'INTEGER DEFAULT 0'),
-                        ('phase5g_reason', 'TEXT')],
+                        ('phase5g_reason', 'TEXT'),
+                        # BRAINSTEM_LEXICAL_LAYER_SCHEMA_V1: additive column
+                        # for the new v8_phase0_lexical_boundary_observation_
+                        # release.py module (autonomous lexical/word-boundary
+                        # discovery, see docs/lexical_emergence_concept.md).
+                        # context_hypotheses is a centrally-declared, shared
+                        # table used by many phases, so per this project's
+                        # own "alle Spalten vorab in SCHEMA_TABLES" rule, any
+                        # new column on it belongs here, not only in the
+                        # owning module's own schema helper. Nullable and
+                        # unused by every existing hypothesis role
+                        # (sentence-level hypotheses simply leave it NULL);
+                        # only rows with role='uncertain_lexical_boundary'
+                        # (or its graduated form 'stable_lexical_boundary')
+                        # populate it, with the character offset (within the
+                        # FIRST-seen chunk's normalized text) of that
+                        # boundary candidate.
+                        ('lexical_offset', 'INTEGER')],
  'internal_learning_gaps': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
                             ('gap_key', 'TEXT'),
                             ('gap_type', 'TEXT'),
@@ -340,6 +371,42 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
     ],
  'phase6a_meta_plasticity_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
  'phase6a_neuromodulated_sleep_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1 (23.09.2026): mirrored here per
+ # project convention (every schema change is tracked in this central
+ # SCHEMA_TABLES alongside its owning module's own ensure_schema()). See
+ # v8_phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release.py
+ # and v8_cooperative_core_neuromodulator_sleep_authority_release.py for
+ # the full architecture note and column-level documentation.
+ 'phase6a_neuromodulator_integration_events': [
+     ('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+     ('created_at', 'INTEGER'),
+     ('parameter', 'TEXT'),
+     ('phasic_value', 'REAL DEFAULT 0'),
+     ('tonic_target', 'REAL DEFAULT 0'),
+     ('tonic_weight', 'REAL DEFAULT 0'),
+     ('phasic_contribution', 'REAL DEFAULT 0'),
+     ('tonic_contribution', 'REAL DEFAULT 0'),
+     ('final_value', 'REAL DEFAULT 0'),
+     ('driver_botenstoff', 'TEXT'),
+     ('driver_botenstoff_value', 'REAL DEFAULT 0'),
+ ],
+ 'cooperative_core_target_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ # BRAINSTEM_SCHEMA_CENTRALIZATION_GAP_FIX_V1 (23.09.2026): this table was
+ # previously ONLY ever created by memory.py's own Memory._init()
+ # executescript(), never mirrored here in the central schema authority --
+ # the same central-schema gap as facts.source_hypothesis_id above (see
+ # that comment). Column list matches memory.py's own CREATE TABLE exactly
+ # (id/subject/relation/value_a/value_b/status/details_json/created_at),
+ # so both remain fully compatible; whichever authority runs first wins,
+ # the other's CREATE TABLE IF NOT EXISTS becomes a no-op.
+ 'contradictions': [('id', 'INTEGER PRIMARY KEY'),
+                    ('subject', 'TEXT'),
+                    ('relation', 'TEXT'),
+                    ('value_a', 'TEXT'),
+                    ('value_b', 'TEXT'),
+                    ('status', 'TEXT'),
+                    ('details_json', 'TEXT'),
+                    ('created_at', 'INTEGER')],
  'attention_queue_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER DEFAULT 0')],
  'chunk_attention_scores': [('chunk_id', 'INTEGER PRIMARY KEY'),
                             ('attention_score', 'REAL DEFAULT 0'),
@@ -827,6 +894,12 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
 BASE_SCHEMA = SCHEMA_TABLES
 
 PHASE_REGISTRY: List[Tuple[str, str]] = [
+    # BRAINSTEM_LEXICAL_LAYER_BOOTSTRAP_REGISTRATION_V1: registered here so
+    # the new module's own tables/columns are ensured explicitly at
+    # database-bootstrap time (visible in the bootstrap report), in
+    # addition to the module's own self-healing ensure_schema() call that
+    # already runs defensively on its own first real cycle regardless.
+    ("v8_phase0_lexical_boundary_observation_release", "phase0_lexical"),
     ("v8_phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release", "phase6a"),
     ("v8_phase6b_sleep_replay_effectiveness_and_plasticity_adjustment_release", "phase6b"),
     ("v8_phase6c_bias_persistence_and_self_regulating_meta_release", "phase6c"),

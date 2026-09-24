@@ -47,6 +47,16 @@ class Memory:
     CORE_IMPORT_SCHEMA = {
         "documents": (("kind", "TEXT"), ("metadata_json", "TEXT"), ("source_score", "REAL DEFAULT 1")),
         "chunks": (("chunk_index", "INTEGER"), ("token_count", "INTEGER"), ("metadata_json", "TEXT"), ("import_key", "TEXT")),
+        # BRAINSTEM_FACT_PROMOTION_SCHEMA_V1: additive, nullable column
+        # linking a fact back to the exact context_hypotheses row it was
+        # promoted from (see v8_stageb_fact_promotion_release.py). This is
+        # the prerequisite for keeping facts correctable rather than
+        # permanently fixed: without a durable link back to the source
+        # hypothesis, there would be no way to find and retract a fact
+        # again if that hypothesis is later reversed by v8_stageb_
+        # hypothesis_revision_release.py. Nullable so it does not affect
+        # any pre-existing facts row.
+        "facts": (("source_hypothesis_id", "INTEGER"),),
     }
     def _core_columns(self, table):
         return {row[1] for row in self.db.execute("PRAGMA table_info(" + table + ")").fetchall()}
@@ -191,13 +201,30 @@ class Memory:
         with open(path,'w',newline='',encoding='utf-8') as f:
             w=csv.writer(f); w.writerow(['subject','relation','value','confidence'])
             for r in self.rows('SELECT subject,relation,value,confidence FROM facts'): w.writerow([r['subject'],r['relation'],r['value'],r['confidence']])
-# BRAINSTEM_PURE_WRITE_GUARD
-# Technische Uebergangssperre: keine Klassifikation, keine Candidate-Umleitung.
-def _brainstem_blocked_write(self, *args, **kwargs):
-    return False
-for _brainstem_name in (
-    "add_fact", "add_relation", "add_relations", "store_relation",
-    "insert_relation", "add_ontology"
-):
-    if hasattr(Memory, _brainstem_name):
-        setattr(Memory, _brainstem_name, _brainstem_blocked_write)
+# BRAINSTEM_PURE_WRITE_GUARD_LIFTED_V1 (22 September 2026)
+#
+# The BRAINSTEM_PURE_WRITE_GUARD that previously stood here unconditionally
+# overrode add_fact/add_relation/add_ontology with a no-op returning False
+# has been deliberately REMOVED as part of a user-requested, explicitly
+# framed experiment (full project backup taken beforehand by the user,
+# with an explicit intent to revert if the outcome is not productive).
+#
+# Context confirmed via a project-wide code audit before this change: no
+# module anywhere in this codebase ever called add_fact/add_relation/
+# add_ontology while the guard was active (0 call sites found via
+# exhaustive grep) -- the guard was a dead-end on an otherwise-unused
+# path. The methods themselves (defined above, unchanged) already
+# contained complete, working SQL implementations the whole time.
+#
+# What now actually calls these methods: v8_stageb_fact_promotion_
+# release.py, a new module that creates a fact from a hypothesis only
+# once it has independently survived this project's existing, unchanged,
+# multi-cycle Stage-B graduation gate (three separate Phase-7d
+# consolidation survival cycles plus the critic gate) -- the graduation
+# threshold itself was not loosened or bypassed in any way to enable
+# this. The same module also RETRACTS (deletes) a fact if the hypothesis
+# it came from is later reversed by the new v8_stageb_hypothesis_
+# revision_release.py (triggered by v8_stageb_contradiction_detection_
+# release.py finding a clear contradiction) -- addressing the explicit
+# requirement that a fact must remain correctable, not permanently fixed,
+# if the hypothesis it was derived from later turns out to be wrong.

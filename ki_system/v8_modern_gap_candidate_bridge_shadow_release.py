@@ -179,6 +179,10 @@ def _state_int(con: sqlite3.Connection, key: str, default: int = 0) -> int:
     except Exception:
         return int(default)
 
+def _state_str(con: sqlite3.Connection, key: str, default: str = "") -> str:
+    row = con.execute("SELECT value FROM modern_gap_candidate_shadow_state WHERE key=?", (key,)).fetchone()
+    return str(row[0]).strip().lower() if row and row[0] is not None else str(default)
+
 def observe_shadow(obj: Any = None, limit: int = BATCH_LIMIT) -> Dict[str, Any]:
     con = _resolve_db(obj)
     ensure_schema(con)
@@ -187,13 +191,45 @@ def observe_shadow(obj: Any = None, limit: int = BATCH_LIMIT) -> Dict[str, Any]:
     before = _protected_counts(con)
     checkpoint_updated = _state_int(con, "checkpoint_updated_at", 0)
     checkpoint_id = _state_int(con, "checkpoint_hypothesis_id", 0)
+    # BRAINSTEM_LEXICAL_LAYER_SHADOW_ISOLATION_V1
+    #
+    # Root cause (found via direct profiling during real end-to-end
+    # multi-cycle testing of the new lexical-boundary layer, see
+    # v8_phase0_lexical_boundary_observation_release.py): this query has no
+    # role filter at all, so it processes EVERY updated-or-created
+    # context_hypotheses row, regardless of role, into
+    # modern_gap_candidate_shadow -- which in turn feeds an entire further
+    # cascade of downstream shadow-observation modules (phase5f shadow
+    # observation, its v2, its history, and the content-fingerprint
+    # classifier), each doing several additional per-row queries/writes.
+    # Before this project's new lexical-boundary hypothesis role existed,
+    # this was a reasonable, bounded per-cycle cost (tens of sentence
+    # hypotheses). With the new role active, hundreds of additional
+    # lexical-boundary rows are created/re-observed per cycle, and were
+    # found (via cProfile on a real, complete cycle through the
+    # unmodified downstream chain) to inflate a single cycle's runtime by
+    # roughly an order of magnitude -- overwhelmingly attributable to this
+    # single query's role-agnostic checkpoint feeding the shadow cascade,
+    # not to any inherent cost of the lexical-boundary observation logic
+    # itself. Matching the exact same "isolate a new hypothesis class from
+    # pre-existing role-agnostic scanners" principle already applied to
+    # Phase 7d's candidate pool, and gated the same way (a state flag,
+    # default "true"/isolated, requiring no explicit DB seeding via
+    # Python-level .get()-style default): lexical-boundary rows are
+    # excluded from this checkpoint by default. This can be lifted
+    # independently of the Phase 7d consolidation-pool isolation flag, via
+    # the same activate_lexical_layer_step4.py convention, once a
+    # dedicated review confirms the shadow-observation cascade should also
+    # process this new hypothesis population.
+    isolate_lexical = _state_str(con, "lexical_boundary_isolated", "true") != "false"
+    role_filter_sql = " AND (h.role IS NULL OR h.role<>'uncertain_lexical_boundary')" if isolate_lexical else ""
     rows = con.execute(
         "SELECT h.id,h.signature,h.chunk_id,h.role,h.status,h.confidence,h.uncertainty,h.evidence_count,"
         "h.dopamine,h.serotonin,h.glutamate,h.gaba,h.noradrenaline,h.acetylcholine,"
         "h.phase6a_replay_weight,h.phase6a_meta_plasticity,h.phase6a_sleep_replay_count,h.phase6a_last_replayed_at,h.created_at,h.updated_at,"
         "s.stability,s.confidence,s.uncertainty,s.feedback_count,s.error_count,s.conflict_count "
         "FROM context_hypotheses h LEFT JOIN hypothesis_stability_scores s ON s.hypothesis_id=h.id "
-        "WHERE (COALESCE(h.updated_at,0)>? OR (COALESCE(h.updated_at,0)=? AND h.id>?)) "
+        "WHERE (COALESCE(h.updated_at,0)>? OR (COALESCE(h.updated_at,0)=? AND h.id>?))" + role_filter_sql + " "
         "ORDER BY COALESCE(h.updated_at,0),h.id LIMIT ?",
         (checkpoint_updated, checkpoint_updated, checkpoint_id, max(1, min(int(limit), BATCH_LIMIT))),
     ).fetchall()

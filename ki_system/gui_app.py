@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 import tkinter as tk
+import csv
 import json
 import threading
 import time
 import sqlite3
+from datetime import datetime
 from tkinter import ttk, filedialog
 from ki_system.memory import Memory
 from ki_system.ingest import import_file
@@ -92,6 +94,35 @@ def _find_kv(con, keynames):
                 if w in low:
                     return low[w]
     return None
+
+def read_integration_transparency(con):
+    """BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1 (23.09.2026): reads the
+    phasic/tonic breakdown Phase 6a now writes for dopamine/serotonin/
+    noradrenaline/acetylcholine (see v8_phase6a_neuromodulated_sleep_
+    replay_and_meta_plasticity_release.py) directly from the same shared
+    state table the rest of this dashboard already reads, so no dedicated
+    audit-table query is required for the live display (the full,
+    per-cycle audit trail with tonic_weight's cortisol driver value is
+    still available in phase6a_neuromodulator_integration_events for
+    deeper analysis). Returns a dict with phasic/tonic_target/tonic_weight
+    per parameter plus phase6a's evidence_state (for the separately known,
+    still-open "frozen Phase 6a signal" monitoring point)."""
+    sleep = _kv(con, "phase6a_neuromodulated_sleep_state")
+    out = {"tonic_weight": _clamp01(sleep.get("tonic_weight", 0.18))}
+    for k in ("dopamine", "serotonin", "noradrenaline", "acetylcholine"):
+        out[k + "_phasic"] = _clamp01(sleep.get(k + "_phasic", sleep.get(k, 0.0)))
+    evidence_state = "n/a"
+    try:
+        if _table_exists(con, "phase6a_sleep_replay_cycles"):
+            row = con.execute(
+                "SELECT evidence_state FROM phase6a_sleep_replay_cycles ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if row and row[0]:
+                evidence_state = str(row[0])
+    except Exception:
+        pass
+    out["phase6a_evidence_state"] = evidence_state
+    return out
 
 def read_all_neuromods(con):
     sleep = _kv(con, "phase6a_neuromodulated_sleep_state")
@@ -283,6 +314,16 @@ class App(tk.Tk):
         self._reset_thread = None
         self.head = None
         self.mode = "idle"
+        # BRAINSTEM_GUI_CSV_LOGGER_V1 (22 September 2026): internal state
+        # for the toggleable CSV logger, see _logger_start()/_logger_stop()/
+        # _logger_write_row_if_enabled() below. gui_logger_enabled itself
+        # (the tk.BooleanVar bound to the checkbox) is created in
+        # _import_tab(), since it must exist as an actual Tk variable tied
+        # to that widget -- these three are the plain-Python bookkeeping
+        # state that variable's callback and the periodic writer use.
+        self._logger_file = None
+        self._logger_writer = None
+        self._logger_path = None
         self._cov_cache = None
         self._cov_ts = 0.0
         # BRAINSTEM_GUI_STATS_CACHE_FIX_V1 (11 September 2026): see _cached_stats()
@@ -356,11 +397,32 @@ class App(tk.Tk):
         self.behavior_text.pack(anchor=tk.W)
         self.trend_text = ttk.Label(left, text="Homeostase: -")
         self.trend_text.pack(anchor=tk.W)
+        # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1 (23.09.2026): transparency
+        # line for the fixed dual-writer architecture -- shows, per
+        # parameter, the phasic (learning-evidence) value Phase 6a computed
+        # this cycle, cooperative_core's tonic (homeostatic) pull, the
+        # current self-regulating tonic_weight, and the resulting final
+        # blended value now stored as the single authoritative value.
+        self.integration_text = ttk.Label(left, text="Integration (phasisch/tonisch): -")
+        self.integration_text.pack(anchor=tk.W)
+        self.evidence_text = ttk.Label(left, text="Phase6a Evidenzstatus: -")
+        self.evidence_text.pack(anchor=tk.W)
         self.neuro_bars = NeuromodulatorBars(left)
         self.neuro_bars.pack(anchor=tk.W)
         legend = ("Legende: DA=Dopamin  5-HT=Serotonin  GLU=Glutamat  GABA=GABA  NA=Noradrenalin  ACh=Acetylcholin\n"
-                  "ADE=Adenosin  ECB=Endocannabinoide  CORT=Cortisol  HIS=Histamin  ORX=Orexin  BDNF=Wachstumsfaktor")
+                  "ADE=Adenosin  ECB=Endocannabinoide  CORT=Cortisol  HIS=Histamin  ORX=Orexin  BDNF=Wachstumsfaktor\n"
+                  "Integrationszeile: phasisch/tonisch = Phase6a-Rohwert / final gemischter Wert (w=tonic_weight, "
+                  "cortisol-gesteuert). GLU/GABA bleiben ausschliesslich von Phase 7c verantwortet.")
         ttk.Label(left, text=legend, font=("Arial", 8), foreground="#555555", justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 4))
+        ttk.Separator(left).pack(fill=tk.X, pady=(8, 4))
+        ttk.Label(left, text="GUI-Wertelogger (fortlaufende CSV)", font=("Arial", 10, "bold")).pack(anchor=tk.W)
+        logger_row = ttk.Frame(left)
+        logger_row.pack(anchor=tk.W, pady=(2, 0))
+        self.gui_logger_enabled = tk.BooleanVar(value=False)
+        ttk.Checkbutton(logger_row, text="Logger aktiv", variable=self.gui_logger_enabled,
+                        command=self._logger_toggle).pack(side=tk.LEFT)
+        self.logger_status = ttk.Label(left, text="Logger inaktiv")
+        self.logger_status.pack(anchor=tk.W, pady=(2, 4))
         self.log = tk.Text(f, wrap=tk.WORD)
         self.log.pack(fill=tk.BOTH, expand=True)
     def _search_tab(self):
@@ -626,6 +688,52 @@ class App(tk.Tk):
             except Exception:
                 pass
         self._gui_enqueue(_do)
+    # BRAINSTEM_EXPERIMENT_GUI_STAGEB_STATS_V1 (22 September 2026)
+    #
+    # Added as part of the user-requested experiment lifting the previous
+    # Facts write lock (see CHANGES.txt / v8_stageb_fact_promotion_
+    # release.py and its three companion modules: gap detection,
+    # contradiction detection, hypothesis revision). Before this addition,
+    # the GUI's per-cycle diagnostic text showed the existing "SAFETY
+    # facts/relations/questions" line (a simple row count, already correct
+    # and unchanged below) but nothing about WHY those counts change --
+    # the reader could see facts appear or disappear cycle to cycle with
+    # no visibility into the new gap-detection/contradiction-detection/
+    # revision/promotion activity actually causing it. This method reads
+    # the four new modules' own already-existing runtime-state tables
+    # (each already maintains its own running totals; no new counting
+    # logic is introduced here) and is deliberately defensive throughout
+    # (every read wrapped so a database from BEFORE this experiment was
+    # applied, or a database where these tables have not been created yet
+    # for any other reason, still displays cleanly instead of raising).
+    def _stageb_experiment_stats_line(self, con):
+        def _kv(table):
+            try:
+                return dict(con.execute("SELECT key,value FROM " + table).fetchall())
+            except Exception:
+                return {}
+        def _count(sql):
+            try:
+                return con.execute(sql).fetchone()[0]
+            except Exception:
+                return "?"
+        gap_state = _kv("stageb_gap_detection_state")
+        contra_state = _kv("stageb_contradiction_detection_state")
+        revision_state = _kv("stageb_revision_state")
+        promo_state = _kv("stageb_fact_promotion_state")
+        open_gaps = _count("SELECT COUNT(*) FROM internal_learning_gaps WHERE status='open'")
+        open_contra = _count("SELECT COUNT(*) FROM contradictions WHERE status IN ('open','resolvable')")
+        facts_now = _count("SELECT COUNT(*) FROM facts")
+        return ("Stage-B Erweiterung -> Gaps offen: %s (gesamt erzeugt: %s) | "
+                "Widersprueche offen: %s (gesamt erkannt: %s) | Revisionen gesamt: %s | "
+                "Facts: %s aktuell (%s erzeugt, %s zurueckgezogen)") % (
+            open_gaps, gap_state.get("gaps_created_total", "0"),
+            open_contra, contra_state.get("contradictions_created_total", "0"),
+            revision_state.get("total_revised", "0"),
+            facts_now, promo_state.get("facts_promoted_total", "0"),
+            promo_state.get("facts_retracted_total", "0"),
+        )
+
     def _cycle_diag_text(self, n, step):
         import sqlite3
         lines = ["=== Autonomer Zyklus %d / Schritt %d ===" % (n, step)]
@@ -661,6 +769,10 @@ class App(tk.Tk):
                     "JA" if regimes.get("_asleep") else "nein", regimes.get("sleep_authority", "none")))
                 lines.append("7d Slow-Wave -> Survivors %s | Participated %s | Weakened %s | Schwelle %.3f" % (surv, part, weak, float(thr)))
                 lines.append("SAFETY facts/relations/questions: %s" % safe)
+                try:
+                    lines.append(self._stageb_experiment_stats_line(con))
+                except Exception as exc:
+                    lines.append("Stage-B Erweiterung: nicht verfuegbar (" + str(exc) + ")")
             finally:
                 con.close()
         except Exception as e:
@@ -900,6 +1012,166 @@ class App(tk.Tk):
             if isinstance(c, sqlite3.Connection):
                 return c, False
         return sqlite3.connect(self.db_path, timeout=60), True
+    # BRAINSTEM_GUI_CSV_LOGGER_V1 (22 September 2026)
+    #
+    # Toggleable, continuous CSV logger requested by the user: when
+    # enabled, writes one row per GUI refresh (roughly every 2 seconds,
+    # matching the existing _refresh() timer already established in this
+    # file) containing every value currently shown anywhere in the GUI --
+    # neuromodulators, regime/sleep state, corpus progress, hypothesis/
+    # fact counts, safety-boundary counts, Phase 7d slow-wave stats, and
+    # the Stage-B experiment stats (gaps/contradictions/revisions/facts)
+    # added earlier in this same experiment. Deliberately implemented as a
+    # single, centralized value-collection method
+    # (_collect_all_gui_values()) that reads directly from the database
+    # rather than from already-rendered Tk widget text -- this makes the
+    # logged values independent of which GUI tab happens to be visible at
+    # the time (several existing tabs, e.g. "Datenbank"/"Fakten/
+    # Relationen", already only refresh their own widgets while visible,
+    # per BRAINSTEM_MEMORY_PERF_INDEX_FIX_V1/its GUI-side companion fix --
+    # this logger must not depend on that and always captures the full,
+    # current set of values regardless of tab visibility).
+    #
+    # Filename convention (per explicit user requirement): the CSV
+    # filename itself contains the current date AND time including
+    # seconds at the moment logging is STARTED, so multiple separate
+    # logging sessions on the same day never collide or silently
+    # overwrite each other -- matching this project's own already-
+    # established convention for other timestamped deliverables (e.g.
+    # ZIP delivery filenames) of always including seconds specifically to
+    # disambiguate same-day artifacts.
+    def _collect_all_gui_values(self):
+        """Read every value currently displayed anywhere in the GUI
+        directly from the database, in one place. Returns an ordered dict
+        (Python 3.7+ dicts preserve insertion order) so the CSV header row
+        and each data row always line up, and so a fresh header is always
+        derivable from a single source of truth instead of being
+        hand-duplicated wherever a row is written."""
+        out = {}
+        out["timestamp_iso"] = datetime.now().isoformat(timespec="seconds")
+        con = None
+        try:
+            con = sqlite3.connect(self.db_path, timeout=60)
+            vals, regimes = read_all_neuromods(con)
+            for k in NEURO_CORE + NEURO_NEW:
+                out[k] = round(vals.get(k, 0.0), 6)
+            # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1 (23.09.2026): log the
+            # same phasic/tonic/tonic_weight transparency now shown on the
+            # "Import & Jobs" tab (see read_integration_transparency()),
+            # matching this logger's own established convention of
+            # capturing every value displayed anywhere in the GUI.
+            integ = read_integration_transparency(con)
+            for k in ("dopamine", "serotonin", "noradrenaline", "acetylcholine"):
+                out[k + "_phasic"] = round(integ.get(k + "_phasic", 0.0), 6)
+            out["tonic_weight"] = round(integ.get("tonic_weight", 0.0), 6)
+            out["phase6a_evidence_state"] = integ.get("phase6a_evidence_state", "n/a")
+            out["regime_orexin"] = regimes.get("orexin", "n/a")
+            out["regime_bdnf"] = regimes.get("bdnf", "n/a")
+            out["regime_cortisol"] = regimes.get("cortisol", "n/a")
+            out["regime_histamine"] = regimes.get("histamine", "n/a")
+            out["sleep_cooperative_mode"] = regimes.get("cooperative_mode", "n/a")
+            out["sleep_cooperative_score"] = regimes.get("sleep_score", "n/a")
+            out["sleep_phase7a_mode"] = regimes.get("phase7a_mode", "n/a")
+            out["sleep_active"] = bool(regimes.get("_asleep"))
+            out["sleep_authority"] = regimes.get("sleep_authority", "none")
+            mood_emoji, mood_name = compute_mood(vals, regimes)
+            out["mood_name"] = mood_name
+
+            covered, total, hypo = self._corpus_stats()
+            out["chunks_covered"] = covered
+            out["chunks_total"] = total
+            out["chunks_pct"] = round((100.0 * covered / total) if total else 0.0, 4)
+            out["hypotheses_total"] = hypo
+
+            st = self._cached_stats()
+            out["documents"] = st.get("documents", 0)
+            out["chunks_stat"] = st.get("chunks", 0)
+            out["facts"] = st.get("facts", 0)
+            out["relations"] = st.get("relations", 0)
+            out["ontology"] = st.get("ontology", 0)
+            out["questions"] = st.get("questions", 0)
+
+            surv = part = weak = 0
+            thr = 0.0
+            try:
+                r = con.execute(
+                    "SELECT candidates_survived,candidates_participated,weakened,adaptive_threshold_avg "
+                    "FROM phase7d_slow_wave_cycles ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+                if r:
+                    surv, part, weak, thr = r[0], r[1], r[2], (r[3] or 0.0)
+            except Exception:
+                pass
+            out["phase7d_survivors"] = surv
+            out["phase7d_participated"] = part
+            out["phase7d_weakened"] = weak
+            out["phase7d_threshold"] = round(float(thr), 6)
+
+            try:
+                out["stageb_experiment_summary"] = self._stageb_experiment_stats_line(con)
+            except Exception as exc:
+                out["stageb_experiment_summary"] = "unavailable: " + str(exc)
+
+            out["mode"] = self.mode
+            out["auto_running"] = bool(self.auto_running)
+        except Exception as exc:
+            out["error"] = str(exc)
+        finally:
+            if con is not None:
+                try:
+                    con.close()
+                except Exception:
+                    pass
+        return out
+
+    def _logger_toggle(self):
+        if self.gui_logger_enabled.get():
+            self._logger_start()
+        else:
+            self._logger_stop()
+
+    def _logger_start(self):
+        # Timestamp taken once, at the moment logging starts -- this is
+        # what ends up in the filename, per the explicit requirement that
+        # the filename itself carry the current date and time (including
+        # seconds).
+        ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        filename = "gui_log_%s.csv" % ts
+        try:
+            self._logger_file = open(filename, "w", newline="", encoding="utf-8")
+            self._logger_writer = None
+            self._logger_path = filename
+            self.logger_status.configure(text="Logger AKTIV -> " + filename)
+        except Exception as exc:
+            self.gui_logger_enabled.set(False)
+            self.logger_status.configure(text="Logger-Fehler: " + str(exc))
+
+    def _logger_stop(self):
+        if getattr(self, "_logger_file", None) is not None:
+            try:
+                self._logger_file.close()
+            except Exception:
+                pass
+        path = getattr(self, "_logger_path", None)
+        self._logger_file = None
+        self._logger_writer = None
+        self.logger_status.configure(text=("Logger gestoppt (zuletzt: %s)" % path) if path else "Logger inaktiv")
+
+    def _logger_write_row_if_enabled(self):
+        if not self.gui_logger_enabled.get():
+            return
+        if getattr(self, "_logger_file", None) is None:
+            return
+        try:
+            values = self._collect_all_gui_values()
+            if self._logger_writer is None:
+                self._logger_writer = csv.DictWriter(self._logger_file, fieldnames=list(values.keys()))
+                self._logger_writer.writeheader()
+            self._logger_writer.writerow(values)
+            self._logger_file.flush()
+        except Exception as exc:
+            self.logger_status.configure(text="Logger-Schreibfehler: " + str(exc))
+
     def _update_neuro_dashboard(self):
         con, should_close = self._neuro_con()
         try:
@@ -919,6 +1191,27 @@ class App(tk.Tk):
             regimes.get("cooperative_mode", "n/a"), regimes.get("phase7a_mode", "n/a")))
         self.trend_text.configure(text="Homeostase: ADE %.2f | ECB %.2f | HIS %.2f" % (
             vals.get("adenosine", 0.0), vals.get("endocannabinoid", 0.0), vals.get("histamine", 0.0)))
+        # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1: re-open the connection is
+        # avoided -- reuse the same con used above (closed only afterwards
+        # via should_close in the caller-managed block), matching this
+        # method's own existing pattern of a single read pass per refresh.
+        con2, should_close2 = self._neuro_con()
+        try:
+            integ = read_integration_transparency(con2)
+        finally:
+            if should_close2:
+                try:
+                    con2.close()
+                except Exception:
+                    pass
+        tw = integ.get("tonic_weight", 0.18)
+        integ_line = "Integration (phasisch/tonisch, w=%.2f): " % tw + " | ".join(
+            "%s %.2f/%.2f" % (NEURO_LABELS[k], integ.get(k + "_phasic", 0.0), vals.get(k, 0.0))
+            for k in ("dopamine", "serotonin", "noradrenaline", "acetylcholine")
+        )
+        self.integration_text.configure(text=integ_line)
+        self.evidence_text.configure(
+            text="Phase6a Evidenzstatus: %s" % integ.get("phase6a_evidence_state", "n/a"))
         emoji, name = compute_mood(vals, regimes)
         if self.mood_emoji is not None:
             self.mood_emoji.configure(text=emoji)
@@ -1096,6 +1389,14 @@ class App(tk.Tk):
                     self._update_neuro_dashboard()
                 except Exception as exc:
                     self.neuro_text.configure(text="Neuromodulatoren: nicht verfuegbar: " + str(exc))
+            # BRAINSTEM_GUI_CSV_LOGGER_V1: writes one row per refresh tick
+            # (this method already runs on the existing 2-second timer,
+            # see self.after(2000, self._refresh) below) whenever the
+            # logger has been enabled via the checkbox. No-ops instantly
+            # and safely if the logger was never enabled (checked first
+            # thing inside _logger_write_row_if_enabled() itself).
+            if hasattr(self, "gui_logger_enabled"):
+                self._logger_write_row_if_enabled()
             if hasattr(self, "docs") and self._current_tab_name == "Datenbank":
                 self.docs.delete(*self.docs.get_children())
                 for d in self.mem.rows("SELECT * FROM documents ORDER BY created_at DESC LIMIT 2000"):
