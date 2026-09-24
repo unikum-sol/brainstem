@@ -218,6 +218,10 @@ Every promoted fact carries a complete provenance chain, from the final fact thr
 
 ## Architecture
 
+<a href="assets/Autonomous_Learning_Architecture_Diagram.png" target="_blank">
+  <img src="assets/Autonomous_Learning_Architecture_Diagram.png" alt="Project-Structure" width="250" />
+</a>
+
 
 BrainStem does not operate as a continuously coupled system of differential equations. Instead, it traverses a cyclic state graph: each phase activates at most 2–3 dominant neuromodulators, while the remainder are kept inactive or passive. This sequential architecture prevents interaction cascades and enables deterministic debugging.
 
