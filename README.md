@@ -49,7 +49,7 @@ The system has completed a full read-through of its current two-source corpus (G
 
 ### Current Project Position — Experimental Write-Path Opening
 
-As of the current project stage, the project owner has deliberately declared an ongoing internal experiment — in which every previously closed productive write path was opened at once — to be the new, valid project position rather than a temporary test. A full project backup was taken beforehand as an explicit fallback point. Concretely, direct Facts, Relations, and Questions writes, Fact promotion, Attention writes, and productive Phase-5f/5g/5i experiments are all currently active, alongside a newly registered four-module Stage-B chain described below.
+Concretely, direct Facts, Relations, and Questions writes, Fact promotion, Attention writes, and productive Phase-5f/5g/5i experiments are all currently active, alongside a newly registered four-module Stage-B chain described below.
 
 ### Autonomous Lexical Emergence Layer
 
