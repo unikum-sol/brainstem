@@ -252,8 +252,19 @@ def _apply_stage2_nudges(con, recommended, allostatic_load):
             if abs(actual) <= 1e-12:
                 continue
             _kv_set(con, table, state_key, round(new_value, 6))
-            if key in ("glutamate", "gaba"):
-                _kv_set(con, "phase6a_neuromodulated_sleep_state", key, round(new_value, 6))
+            # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1 (23.09.2026): this used
+            # to also mirror glutamate/gaba nudges directly into
+            # phase6a_neuromodulated_sleep_state, making this module a
+            # THIRD occasional writer of those two keys alongside Phase 7c
+            # (their actual author) and the old cooperative_core dual-writer
+            # bug. Per the approved architecture ("Phase 7c bleibt alleiniger
+            # Autor dieser beiden Werte"), the mirror write is removed here;
+            # the nudge still lands in phase7c_state (state_key above),
+            # which Phase 7c and cooperative_core already read as an input
+            # (glutamate_state/gaba_state). stage2_applications has been 0
+            # for the entire observed project history (allostatic_load never
+            # reached load_high), so this is a structural correction with no
+            # observed behavioral effect so far.
             changes.append({"key": key, "table": table, "state_key": state_key,
                             "old": round(old, 6), "new": round(new_value, 6),
                             "delta": round(actual, 6)})

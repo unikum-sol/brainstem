@@ -216,6 +216,29 @@ def ensure_phase6a_schema(db: sqlite3.Connection) -> Dict[str, Any]:
         created_at INTEGER,
         updated_at INTEGER
     )""")
+    # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1 (23.09.2026): audit trail for the
+    # single, authoritative phasic/tonic integration this module now performs
+    # for dopamine/serotonin/noradrenaline/acetylcholine (see
+    # sleep_replay_and_meta_plasticity() below and the matching architecture
+    # note in v8_cooperative_core_neuromodulator_sleep_authority_release.py).
+    # One row per parameter per cycle; makes "how much of the final value
+    # came from learning evidence (phasic) vs. homeostasis (tonic)" fully
+    # reconstructable after the fact, replacing cooperative_core's previous
+    # only-internally-visible core_before/core_after bookkeeping.
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS phase6a_neuromodulator_integration_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at INTEGER,
+        parameter TEXT,
+        phasic_value REAL DEFAULT 0,
+        tonic_target REAL DEFAULT 0,
+        tonic_weight REAL DEFAULT 0,
+        phasic_contribution REAL DEFAULT 0,
+        tonic_contribution REAL DEFAULT 0,
+        final_value REAL DEFAULT 0,
+        driver_botenstoff TEXT,
+        driver_botenstoff_value REAL DEFAULT 0
+    )""")
     db.execute("""
     CREATE TABLE IF NOT EXISTS phase6a_plasticity_adjustments(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -302,6 +325,10 @@ def ensure_phase6a_schema(db: sqlite3.Connection) -> Dict[str, Any]:
     safe_unique_index(db, "phase6a_meta_plasticity_state", "key", "idx_phase6a_meta_plasticity_state_key_unique", changes)
     safe_unique_index(db, "phase6a_neuromodulated_sleep_state", "key", "idx_phase6a_neuromodulated_sleep_state_key_unique", changes)
     safe_unique_index(db, "phase6a_replay_memory", "memory_key", "idx_phase6a_replay_memory_memory_key_unique", changes)
+    # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1: plain (non-unique) index, this
+    # is an append-only audit log, not a kv table.
+    if table_exists(db, "phase6a_neuromodulator_integration_events"):
+        db.execute("CREATE INDEX IF NOT EXISTS idx_phase6a_integration_events_created ON phase6a_neuromodulator_integration_events(created_at)")
     for table, col, idx in [
         ("internal_learning_gaps", "gap_key", "idx_phase6a_internal_learning_gaps_gap_key_unique"),
         ("reading_queue", "chunk_id", "idx_phase6a_reading_queue_chunk_id_unique"),
@@ -455,6 +482,105 @@ def _safety(db: sqlite3.Connection) -> Dict[str, int]:
     return {"facts": _count(db, "facts"), "relations": _count(db, "relations"), "questions": _count(db, "questions")}
 
 
+# BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1 (23 September 2026)
+#
+# Root cause, confirmed by a user-provided, real 865-row GUI log
+# (gui_log_2026-09-23_162423.csv) and four successive read-only diagnostic
+# scripts run against the live production database: dopamine, serotonin,
+# noradrenaline and acetylcholine were each being computed and written
+# TWICE per real learning cycle, by two independent modules using two
+# completely different formulas, into the SAME phase6a_neuromodulated_
+# sleep_state keys -- this module's own from-scratch "phasic" computation
+# below, immediately followed (later, within the SAME cycle) by
+# v8_cooperative_core_neuromodulator_sleep_authority_release.py's own
+# alpha=.18 blend of an entirely separate homeostatic target formula. Since
+# only the LAST writer's value survived in the shared table, the actually
+# displayed/consumed value depended on incidental read timing, producing
+# the repeatable "torn value" spikes the log showed. glutamate/gaba had a
+# parallel, structurally identical problem against Phase 7c's authoritative
+# E/I-balance computation (see the matching fix in
+# v8_phase7cort_stability_watch_release.py and the schema note in
+# v8_cooperative_core_neuromodulator_sleep_authority_release.py).
+#
+# Fix, per the reviewed and approved target architecture ("ein einziger
+# autoritativer Schreibpfad pro Neuromodulator, der phasische und tonische
+# Beitraege integriert statt ueberschreibt"): cooperative_core no longer
+# writes phase6a_neuromodulated_sleep_state at all for these 4 keys. It
+# only publishes its own homeostatic (tonic) pull TARGET into the new
+# cooperative_core_target_state table. THIS module -- right here,
+# immediately after computing its own phasic value below, in the SAME
+# place phase6a already used to publish its result -- performs the single,
+# authoritative EMA-style blend between its phasic value and that tonic
+# target, using the new self-regulating tonic_weight meta-parameter (see
+# v8_phase6c_bias_persistence_and_self_regulating_meta_release.py's
+# META_PARAMETER_DEFAULTS; default 0.18 intentionally matches
+# cooperative_core's previous hardcoded alpha exactly, so activating this
+# fix is behaviorally neutral at the moment of the switch). glutamate/gaba
+# are deliberately NOT part of this integration: Phase 7c remains their
+# sole author, unchanged.
+def _read_tonic_weight(db: sqlite3.Connection, default: float = 0.18) -> float:
+    """Self-regulating blend weight (see BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1
+    above). Falls back to the historical hardcoded cooperative_core alpha
+    (0.18) only if Phase 6c has not initialized its meta-parameter defaults
+    yet -- possible on the very first real learning cycle, before Phase 6c's
+    own per-cycle initialize_meta_parameters() has ever run. Read-only."""
+    if not table_exists(db, "phase6c_meta_control_parameters"):
+        return default
+    try:
+        row = db.execute(
+            "SELECT current_value FROM phase6c_meta_control_parameters WHERE parameter_key='tonic_weight'"
+        ).fetchone()
+    except Exception:
+        return default
+    if row is None or row[0] is None:
+        return default
+    try:
+        return _clamp(float(row[0]), 0.0, 1.0)
+    except Exception:
+        return default
+
+
+def _read_cooperative_target(db: sqlite3.Connection) -> Dict[str, float]:
+    """Reads cooperative_core's latest published tonic target for the 4
+    non-EI core neuromodulators (see BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1
+    above). Returns {} if cooperative_core has never run yet (e.g. the very
+    first real learning cycle) -- callers must treat a missing key as
+    "no tonic pull available yet, use the phasic value unchanged", not as
+    an error. Read-only."""
+    if not table_exists(db, "cooperative_core_target_state"):
+        return {}
+    try:
+        rows = db.execute("SELECT key, value FROM cooperative_core_target_state").fetchall()
+    except Exception:
+        return {}
+    out: Dict[str, float] = {}
+    for key, value in rows:
+        if key in ("dopamine", "serotonin", "noradrenaline", "acetylcholine"):
+            try:
+                out[key] = _clamp(float(value))
+            except Exception:
+                continue
+    return out
+
+
+def _read_cortisol_level(db: sqlite3.Connection, default: float = 0.2) -> float:
+    """Read-only lookup used only to annotate the integration audit rows
+    with the neuromodulator that gates tonic_weight (see phase6c's
+    META_PARAMETER_DEFAULTS driver_botenstoff="cortisol")."""
+    if not table_exists(db, "cortisol_state"):
+        return default
+    try:
+        row = db.execute("SELECT value FROM cortisol_state WHERE key='cortisol_level'").fetchone()
+    except Exception:
+        return default
+    if row is None or row[0] is None:
+        return default
+    try:
+        return _clamp(float(row[0]))
+    except Exception:
+        return default
+
+
 def _select_replay_candidates(db: sqlite3.Connection, limit: int = 180) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     now = _now()
@@ -570,6 +696,40 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
         "noradrenaline": round(noradrenaline, 6),
         "acetylcholine": round(acetylcholine, 6),
     }
+    # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1: single authoritative blend for
+    # the 4 non-EI core neuromodulators (see the long note above
+    # _read_tonic_weight()). glutamate/gaba are deliberately excluded --
+    # Phase 7c remains their sole author further down the same real cycle.
+    _phasic = {"dopamine": dopamine, "serotonin": serotonin,
+               "noradrenaline": noradrenaline, "acetylcholine": acetylcholine}
+    _tonic_weight = _read_tonic_weight(db)
+    _tonic_target = _read_cooperative_target(db)
+    _driver_cortisol = _read_cortisol_level(db)
+    _integration_rows = []
+    for _key, _phasic_value in _phasic.items():
+        _target_value = _tonic_target.get(_key, _phasic_value)
+        _final_value = _clamp(_phasic_value + _tonic_weight * (_target_value - _phasic_value))
+        _integration_rows.append({
+            "parameter": _key,
+            "phasic_value": round(_phasic_value, 6),
+            "tonic_target": round(_target_value, 6),
+            "tonic_weight": round(_tonic_weight, 6),
+            "phasic_contribution": round(_phasic_value * (1.0 - _tonic_weight), 6),
+            "tonic_contribution": round(_target_value * _tonic_weight, 6),
+            "final_value": round(_final_value, 6),
+        })
+    _integrated = {row["parameter"]: row["final_value"] for row in _integration_rows}
+    nm.update({
+        "dopamine": _integrated["dopamine"],
+        "serotonin": _integrated["serotonin"],
+        "noradrenaline": _integrated["noradrenaline"],
+        "acetylcholine": _integrated["acetylcholine"],
+        "dopamine_phasic": round(dopamine, 6),
+        "serotonin_phasic": round(serotonin, 6),
+        "noradrenaline_phasic": round(noradrenaline, 6),
+        "acetylcholine_phasic": round(acetylcholine, 6),
+        "tonic_weight": round(_tonic_weight, 6),
+    })
     # BRAINSTEM_EI_DRIVE_STATE_SPLIT_V1: Phase6a emits drive, not persistent E/I state.
     replayed = 0
     for c in candidates:
@@ -622,6 +782,16 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
                 (priority, replay_weight, plasticity, now, decision, PHASE, sid),
             )
         replayed += 1
+    # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1: one audit row per integrated
+    # parameter per cycle (see the integration block above _phasic/...).
+    for _row in _integration_rows:
+        db.execute(
+            "INSERT INTO phase6a_neuromodulator_integration_events(created_at,parameter,phasic_value,tonic_target,tonic_weight,phasic_contribution,tonic_contribution,final_value,driver_botenstoff,driver_botenstoff_value) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (now, _row["parameter"], _row["phasic_value"], _row["tonic_target"], _row["tonic_weight"],
+             _row["phasic_contribution"], _row["tonic_contribution"], _row["final_value"],
+             "cortisol", _driver_cortisol),
+        )
     # Update global memories.
     for memory_key, memory_type in (
         ("global_sleep_replay_memory", "global"),

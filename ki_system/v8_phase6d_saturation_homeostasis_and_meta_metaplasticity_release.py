@@ -134,6 +134,27 @@ META_LR_DEFAULTS = [
     ("critic_snapshot_p_base",    "meta_param", 0.05, 0.01, 0.2,  "6c: critic snapshot p base"),
     ("critic_snapshot_p_range",   "meta_param", 0.05, 0.01, 0.2,  "6c: critic snapshot p range"),
     ("gaba_novel_inhibition",     "meta_param", 0.05, 0.01, 0.2,  "6c: GABA novel inhibition strength"),
+    # BRAINSTEM_PHASE6D_NOVEL_FAIRNESS_RECENTER_STRENGTH_META_LR_V1
+    # (23.09.2026): registering this key here (matching the existing
+    # generic "meta_param" convention used by every other phase6c
+    # parameter above) gives novel_fairness_recenter_strength
+    # meta-metaplasticity (saturation-aware learning-rate adaptation) and
+    # sliding-threshold homeostasis for free, via the fully generic
+    # sweeps already implemented in this file (_detect_and_react_saturation,
+    # _sync_learning_rates_to_phase6c) -- no other code change needed here.
+    ("novel_fairness_recenter_strength", "meta_param", 0.05, 0.01, 0.2,
+     "6c/7d: Phase7d novel-pool fairness recentering strength"),
+    # BRAINSTEM_PHASE6D_TONIC_WEIGHT_META_LR_V1 (23.09.2026): registering
+    # this key here (matching the existing generic "meta_param" convention
+    # used by every other phase6c parameter above) gives tonic_weight
+    # meta-metaplasticity (saturation-aware learning-rate adaptation) and
+    # sliding-threshold homeostasis for free, via the fully generic sweeps
+    # already implemented in this file (_detect_and_react_saturation,
+    # _sync_learning_rates_to_phase6c) -- no other code change needed here.
+    # See v8_phase6c...META_PARAMETER_DEFAULTS for tonic_weight's own
+    # definition and the full BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1 note.
+    ("tonic_weight", "meta_param", 0.05, 0.01, 0.2,
+     "6c/6a/cooperative_core: phasic/tonic neuromodulator integration weight"),
     ("last_plasticity_level",     "bias", 0.08, 0.02, 0.25, "6a: plasticity level"),
     ("last_exploration_bias",     "bias", 0.08, 0.02, 0.25, "6a: exploration bias"),
     ("last_consolidation_bias",   "bias", 0.08, 0.02, 0.25, "6a: consolidation bias"),

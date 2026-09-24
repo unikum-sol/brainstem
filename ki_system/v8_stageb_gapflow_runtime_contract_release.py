@@ -77,16 +77,44 @@ def observe_cycle(obj=None,backend_cycle=None):
     c.commit();return {"phase":PHASE,"version":VERSION,"backend_cycle":cycle,"candidate_flow_state":flow,"results":results,"protected_unchanged":True,"productive_writes":0}
 def mark_backend_stopped(obj=None):
     c=resolve_db(obj);ensure_schema(c);_set(c,"backend_status","stopped");_set(c,"last_backend_at",_now());c.commit();return True
+# BRAINSTEM_EXPERIMENT_CHAIN_BYPASS_FIX_V1 (22 September 2026)
+#
+# Root cause (found via a real end-to-end test of the four new Stage-B
+# modules added as part of the user-requested "lift the write locks"
+# experiment): this function previously hardcoded a DIRECT import of
+# v8_stageb_guarded_hypothesis_graduation_release and called its
+# managed_cycle() explicitly, bypassing this project's own established
+# _PREV_CYCLE chaining convention (used by every other phase module, see
+# e.g. v8_phase5a_integrated_self_improving_learning_release.py's
+# _PREV_CYCLE / v8_stageb_fact_promotion_release.py's own autoload()).
+# Because this module is loaded LAST in phase_registry.py's LOAD_ORDER,
+# this hardcoded import silently skipped ANY module registered between
+# STAGEB_GRADUATION and this one -- confirmed via a real 100-cycle test
+# run: STAGEB_FACT_PROMOTION/STAGEB_CONTRADICTION_DETECTION/
+# STAGEB_HYPOTHESIS_REVISION were all successfully loaded (visible in
+# get_load_report()) and compiled without error, yet their own state
+# tables were never even created, proving their managed_cycle() was never
+# actually invoked by a real cycle. Fixed by capturing whatever
+# AutonomousLoop.cycle already was at THIS module's own autoload() time
+# (below) -- exactly the same pattern already used throughout this
+# codebase -- instead of a fixed, specific downstream module name. This
+# is a pure bugfix restoring the chaining behavior this project's own
+# convention already establishes elsewhere; it does not change what this
+# module itself does (observe_cycle() below is completely unchanged).
 def managed_cycle(self,progress=None):
     downstream=None
     try:
-        from ki_system import v8_stageb_guarded_hypothesis_graduation_release as m;downstream=m.managed_cycle(self,progress)
+        downstream=_PREV_CYCLE(self,progress) if _PREV_CYCLE is not None else {"status":"stageb_gapflow_no_previous_cycle"}
     except Exception as exc:downstream={"status":"downstream_error","error":str(exc)}
     # BRAINSTEM CALLBACK PROPAGATION FIX V1
     try:result=observe_cycle(self, progress)
     except Exception as exc:result={"phase":PHASE,"status":"error","error":type(exc).__name__+":"+str(exc),"productive_writes":0}
     return {"phase":PHASE,"downstream_result":downstream,"stageb_runtime_contract_result":result}
 def managed_run(self,cycles=1,progress=None):return {"phase":PHASE,"results":[managed_cycle(self,progress) for _ in range(max(1,int(cycles or 1)))]}
+_PREV_CYCLE=None
+_PREV_RUN=None
 def autoload(AutonomousLoop):
+    global _PREV_CYCLE,_PREV_RUN
+    _PREV_CYCLE=getattr(AutonomousLoop,"cycle",None);_PREV_RUN=getattr(AutonomousLoop,"run",None)
     AutonomousLoop.cycle=managed_cycle;AutonomousLoop.run=managed_run;AutonomousLoop.stageb_gapflow_runtime_contract=True
     AutonomousLoop.fact_promotion="disabled";AutonomousLoop.direct_fact_writes="disabled";AutonomousLoop.direct_relation_writes="disabled";return AutonomousLoop

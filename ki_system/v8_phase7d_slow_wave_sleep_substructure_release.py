@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 "V8 Phase 7d - Slow-Wave Sleep Substructure (self-regulating down-selection)."
 from __future__ import annotations
-import json, os, random, sqlite3, time
+import json, math, os, random, sqlite3, time
 from pathlib import Path
 
 PHASE = "phase7d_slow_wave_sleep_substructure_release"
@@ -41,6 +41,90 @@ SLOW_WAVE_PARAMS = {
     "min_participation_ratio": 0.4, "activity_threshold_floor": 0.15,
     "selection_pressure_gaba_gain": 0.6, "selection_pressure_glu_gain": 0.4,
     "selection_pressure_base": 0.5,
+    # BRAINSTEM_PHASE7D_CONTEXT_HYPOTHESES_NOVEL_QUOTA_V1 (23.09.2026):
+    # Diagnose (diagnose_phase7d_source_table_distribution.py) belegte
+    # empirisch, dass ueber 13.900 Survivor-Zeilen in
+    # phase7d_consolidation_survivors ausschliesslich source_table=
+    # 'phase5g_experiment_outcomes' sind, 0 mit source_table=
+    # 'context_hypotheses'. Ursache: der Novel-Anteil des Pools wurde in
+    # _build_candidate_pool() zuerst vollstaendig (LIMIT n_novel, ohne
+    # Obergrenze) aus phase5g_experiment_outcomes gefuellt; der
+    # context_hypotheses-Fallback wurde nur bei einem verbleibenden
+    # Rest erreicht -- der bei einer dauerhaft weit groesseren
+    # phase5g_experiment_outcomes-Tabelle (hier 574.683 Zeilen)
+    # strukturell immer 0 war. Dadurch konnte context_hypotheses
+    # (uncertain_hypothesis / uncertain_lexical_boundary) nie
+    # konsolidiert werden, was wiederum die Stage-B-Graduierung (JOIN
+    # auf genau source_table='context_hypotheses') dauerhaft auf 0
+    # Kandidaten hielt, unabhaengig von Warm-up/Budget/Critic-Gate.
+    # Loesungsprinzip uebertragen aus wissenschaftlicher Literatur
+    # (Homeostatic structural plasticity, Butz & van Ooyen 2014;
+    # Sinusoidally-modulated noise as slow-wave-sleep surrogate,
+    # Watkins et al.; Biologically inspired sleep algorithm, Tadros et
+    # al. 2020): eine dominante, hochverfuegbare Quelle darf eine
+    # andere nicht dauerhaft aus der Konsolidierung verdraengen --
+    # jede Quelle braucht eine garantierte Mindest-Quote statt einer
+    # reinen Verfuegbarkeits-Kaskade. Dieser Parameter legt den Anteil
+    # von n_novel fest, der context_hypotheses in jedem Zyklus
+    # mindestens garantiert zur Verfuegung steht, unabhaengig davon,
+    # wie viele Zeilen phase5g_experiment_outcomes liefert. Bewusst
+    # per DB-Parameter (kein Hardcoding, keine Wort-/Inhaltsregel,
+    # reine Pool-Zusammensetzung) -- ueber phase7d_slow_wave_params
+    # zur Laufzeit justierbar.
+    "context_hypotheses_min_novel_ratio": 0.3,
+    # BRAINSTEM_PHASE7D_NOVEL_FAIRNESS_RECENTERING_V1 (23.09.2026):
+    # Eine 40-Zyklen-Simulation NACH dem obigen Pool-Quota-Fix zeigte,
+    # dass trotz garantierter Pool-Praesenz weiterhin 0 context_
+    # hypotheses-Kandidaten reinforced wurden. Ursache isoliert:
+    # phase5g_experiment_outcomes-Kandidaten erhalten base_score=1-score,
+    # wobei score bewusst die niedrigsten Werte der Tabelle sind (ORDER
+    # BY ASC) -- bei grossen Tabellen liegt dieser Score
+    # ordnungsstatistisch nahe 0, der abgeleitete base_score also nahe
+    # 1.0 (gemessen: 0.989 bei n=5000, k=58). context_hypotheses (sowohl
+    # Fallback als auch reaktivierte Kandidaten) erhalten dagegen einen
+    # festen base_score von 0.5. Da alle Kandidaten in derselben
+    # Aktivitaetsschwellen-Konkurrenz gegeneinander antreten, verlieren
+    # context_hypotheses dadurch strukturell fast immer -- unabhaengig
+    # von der Pool-Praesenz. Fix: Gruppenmittelwert des base_score wird
+    # PRO source_table (Anchors ausgenommen, deren +0.12-Bonus bewusst
+    # bleibt) auf einen gemeinsamen Zielwert zentriert -- rein additive
+    # Verschiebung, interne Rangfolge je Quelle bleibt unveraendert, die
+    # fachliche "schwache Experimente zuerst"-Regel von
+    # phase5g_experiment_outcomes bleibt inhaltlich unangetastet.
+    # enabled=0.0 reproduziert das alte (unfaire) Verhalten exakt --
+    # jederzeit per DB-Parameter rueckgaengig machbar, kein Hardcoding.
+    #
+    # BRAINSTEM_PHASE7D_NOVEL_FAIRNESS_ARCHITECTURE_INTEGRATION_V1
+    # (23.09.2026, Nachtrag): die beiden obigen Keys (enabled/target)
+    # waren als isolierter, lokaler An/Aus-Schalter in Phase 7d selbst
+    # implementiert -- funktional korrekt (mehrfach verifiziert), aber
+    # architektonisch NICHT im Einklang mit dem Rest dieses Projekts:
+    # jeder andere selbstregulierende Mechanismus (Lernrate,
+    # Explorations-/Inhibitions-/Revisions-Bias, novel_ratio_*,
+    # gaba_novel_inhibition usw.) lebt zentral in
+    # phase6c_meta_control_parameters, wird dort neuromodulator-gegated
+    # UND anhand eines GEMESSENEN Treibers reguliert (nicht als fixer
+    # Konstantwert), erhaelt automatisch adaptive Min/Max-Grenzen
+    # (phase7c) und eigene Meta-Metaplastizitaet/Saettigungsschutz
+    # (phase6d). Ein isolierter, statischer Bool+Fixwert allein in Phase
+    # 7d haette genau diese drei Eigenschaften NICHT gehabt.
+    #
+    # Die eigentliche Korrekturstaerke wird deshalb jetzt primaer aus dem
+    # neuen, dort registrierten Meta-Parameter
+    # phase6c_meta_control_parameters.novel_fairness_recenter_strength
+    # gelesen (siehe v8_phase6c_..._release.py:
+    # META_PARAMETER_DEFAULTS -- default 0.85, Grenzen [0.0,1.0],
+    # gaba-gegated, reguliert anhand des GEMESSENEN
+    # 'context_fairness_gap', nicht anhand einer Annahme). Die beiden
+    # lokalen Keys hier bleiben NUR als Fallback erhalten (Abwaerts-
+    # kompatibilitaet, falls phase6c aus irgendeinem Grund noch nicht
+    # gelaufen ist / die Tabelle fehlt) -- siehe
+    # _read_novel_fairness_strength() weiter unten. Kein Verhaltens-
+    # Bruch: default 0.85 des neuen Parameters entspricht praktisch
+    # demselben Korrekturgrad wie das zuvor validierte enabled=1.0/
+    # target=0.5, nur jetzt selbstregulierend statt fest.
+    "novel_fairness_recentering_enabled": 1.0,
+    "novel_fairness_recenter_target": 0.5,
 }
 
 def _now(): return int(time.time())
@@ -157,12 +241,98 @@ def _get_adenosine_level(con):
     r = con.execute("SELECT value FROM phase7a_adenosine_state WHERE key='adenosine_level'").fetchone()
     return _to_float(r[0], 0.0) if r else 0.0
 
-def _build_candidate_pool(con, pool_size, anchor_ratio):
+def _read_novel_fairness_strength(con, local_enabled, local_target):
+    # BRAINSTEM_PHASE7D_NOVEL_FAIRNESS_ARCHITECTURE_INTEGRATION_V1:
+    # primary source of truth is the self-regulating meta-parameter in
+    # phase6c (neuromodulator-gated, measured-metric-driven, adaptive
+    # boundaries via phase7c, meta-metaplasticity via phase6d). Falls
+    # back to the local, static phase7d_slow_wave_params keys ONLY if
+    # phase6c's table or this specific row does not exist yet (e.g.
+    # phase6c has not run once, or an older/partial database) -- this
+    # keeps Phase 7d fully functional standalone, matching this
+    # project's "no hard dependency between phase modules" discipline.
+    if _table_exists(con, "phase6c_meta_control_parameters"):
+        row = con.execute(
+            "SELECT current_value FROM phase6c_meta_control_parameters "
+            "WHERE parameter_key='novel_fairness_recenter_strength'"
+        ).fetchone()
+        if row is not None and row[0] is not None:
+            return _clamp(_to_float(row[0], 0.85), 0.0, 1.0), "phase6c_meta_control_parameters"
+    # Fallback matches the exact, previously validated static behavior:
+    # local_enabled=1.0 -> strength=1.0 (full mean-centering, identical
+    # to the first delivered fix), local_enabled=0.0 -> strength=0.0
+    # (original, pre-fix behavior). local_target itself is used
+    # separately as target_mean by the caller, never folded in here.
+    fallback_strength = 1.0 if bool(local_enabled) else 0.0
+    return fallback_strength, "phase7d_local_fallback"
+
+
+def _recenter_novel_fairness(pool_items, target_mean=0.5, strength=0.85):
+    # BRAINSTEM_PHASE7D_NOVEL_FAIRNESS_RECENTERING_V1: neutralize a
+    # purely statistical group-level base_score offset between pool
+    # sources (see SLOW_WAVE_PARAMS comment for the full measured
+    # background) BEFORE candidates enter the shared activity-threshold
+    # competition. Anchors (is_anchor=True) are intentionally excluded:
+    # their +0.12 activity bonus and stability-derived base_score are a
+    # deliberate, already-reviewed preference for consolidated
+    # knowledge, not the asymmetry this fix targets. Recentering is a
+    # pure additive shift per source_table group -- it preserves each
+    # group's own internal ranking (which candidate within that group
+    # is most/least favored) completely unchanged; it only removes the
+    # cross-group mean offset so no single source can structurally
+    # dominate the pool's reinforcement competition purely because of
+    # how its own scoring formula happens to be centered.
+    #
+    # BRAINSTEM_PHASE7D_NOVEL_FAIRNESS_ARCHITECTURE_INTEGRATION_V1
+    # (Nachtrag): `enabled` (bool) wurde durch `strength` (float,
+    # [0.0,1.0]) ersetzt, damit der Grad der Korrektur kontinuierlich
+    # und selbstregulierend statt binaer ist -- strength=0.0 entspricht
+    # exakt dem alten "enabled=False" (kein Shift), strength=1.0 dem
+    # alten "enabled=True" (voller Shift auf target_mean); Werte
+    # dazwischen sind eine PARTIELLE Korrektur, wie sie der neue,
+    # adaptive phase6c-Meta-Parameter novel_fairness_recenter_strength
+    # tatsaechlich liefert.
+    strength = _clamp(_to_float(strength, 0.85), 0.0, 1.0)
+    if strength <= 0.0:
+        return
+    groups = {}
+    for it in pool_items:
+        if it.get("is_anchor"):
+            continue
+        groups.setdefault(it["source_table"], []).append(it)
+    for items in groups.values():
+        if not items:
+            continue
+        vals = [it["base_score"] for it in items]
+        group_mean = sum(vals) / len(vals)
+        shift = (target_mean - group_mean) * strength
+        if abs(shift) < 1e-12:
+            continue
+        for it in items:
+            it["base_score"] = _clamp(it["base_score"] + shift)
+
+
+def _build_candidate_pool(con, pool_size, anchor_ratio, context_hypotheses_min_novel_ratio=0.3,
+                           novel_fairness_recentering_enabled=True, novel_fairness_recenter_target=0.5):
+    # NOTE: novel_fairness_recentering_enabled/_target parameter names
+    # are kept for call-site backward compatibility (see
+    # _run_slow_wave_sleep()); the actual correction STRENGTH used below
+    # is resolved via _read_novel_fairness_strength(), which prefers the
+    # adaptive phase6c meta-parameter over these two legacy arguments.
     # BRAINSTEM_PHASE7D_THREE_TRACK_REACTIVATION_V1
     n_anchor_target = int(pool_size * anchor_ratio)
     n_novel = pool_size - n_anchor_target
     out = []
     used_context_ids = set()
+
+    # BRAINSTEM_PHASE7D_CONTEXT_HYPOTHESES_NOVEL_QUOTA_V1: guarantee a
+    # minimum share of the novel slots for the context_hypotheses
+    # fallback further below, regardless of how many rows
+    # phase5g_experiment_outcomes can supply (see SLOW_WAVE_PARAMS
+    # comment for the full diagnostic background and rationale).
+    ratio = _clamp(_to_float(context_hypotheses_min_novel_ratio, 0.3), 0.0, 1.0)
+    n_context_reserved = min(n_novel, int(math.ceil(n_novel * ratio)))
+    n_novel_phase5g_cap = max(0, n_novel - n_context_reserved)
 
     anchor_rows = []
     if _table_exists(con, "phase6b_anchor_pool"):
@@ -236,7 +406,7 @@ def _build_candidate_pool(con, pool_size, anchor_ratio):
     out.extend(reactivated)
 
     novel = []
-    if n_novel > 0 and _table_exists(con, "phase5g_experiment_outcomes"):
+    if n_novel_phase5g_cap > 0 and _table_exists(con, "phase5g_experiment_outcomes"):
         c = set(_columns(con, "phase5g_experiment_outcomes"))
         sc = "effectiveness_score" if "effectiveness_score" in c else ("outcome_score" if "outcome_score" in c else None)
         idc = "id" if "id" in c else "rowid"
@@ -244,7 +414,7 @@ def _build_candidate_pool(con, pool_size, anchor_ratio):
         if sc:
             sql += "ORDER BY " + sc + " ASC "
         sql += "LIMIT ?"
-        for row in con.execute(sql, (n_novel,)).fetchall():
+        for row in con.execute(sql, (n_novel_phase5g_cap,)).fetchall():
             base = _clamp(1.0 - _to_float(row[1], 0.5)) if sc else 0.5
             novel.append({"source_table": "phase5g_experiment_outcomes",
                           "source_id": _to_int(row[0]),
@@ -263,13 +433,64 @@ def _build_candidate_pool(con, pool_size, anchor_ratio):
 
         max_row = con.execute("SELECT COALESCE(MAX(id),0) FROM context_hypotheses").fetchone()
         max_id = _to_int(max_row[0] if max_row else 0, 0)
+
+        # BRAINSTEM_LEXICAL_LAYER_POOL_ISOLATION_V1
+        #
+        # The new 'uncertain_lexical_boundary' hypothesis role (see
+        # v8_phase0_lexical_boundary_observation_release.py) is written
+        # into this SAME, shared context_hypotheses table. Without an
+        # explicit guard, the rotating novel-fallback scanner below (which
+        # otherwise has no role filter at all) would immediately start
+        # mixing lexical-boundary candidates into the SAME slow-wave
+        # consolidation pool as sentence hypotheses -- violating this
+        # project's own shadow-first activation discipline for a
+        # brand-new hypothesis class. Gated by phase7d_state key
+        # 'lexical_boundary_pool_isolated' (Python-level default "true"
+        # via .get(), matching the exact convention already used elsewhere
+        # in this same function for cross-phase state reads, e.g.
+        # phase6b_state.phase7d_survivor_anchor_checkpoint_id above --
+        # requires no explicit DB seeding). Flip to "false" via
+        # activate_lexical_layer_step4.py only after a dedicated review of
+        # the observe-only data.
+        #
+        # IMPLEMENTATION NOTE (revised after real end-to-end testing): an
+        # earlier version of this fix filtered the already-collected `ids`
+        # list AFTER scanning, leaving the scan's own WHERE clause
+        # untouched. A full, real, multi-cycle baseline-comparison test
+        # (running an identical synthetic corpus through the complete,
+        # unmodified phase chain with and without this module) proved that
+        # approach insufficient: because lexical-boundary rows share the
+        # SAME id-space as sentence hypotheses and vastly outnumber them,
+        # the rotating cursor's FIXED-SIZE per-cycle scan window (bounded
+        # by `remaining`) would mostly land on stretches of now-excluded
+        # lexical ids, taking many extra cycles to complete a full "lap"
+        # back around to genuine sentence-hypothesis ids -- observed
+        # directly as several consecutive "empty_pool" real cycles that do
+        # NOT occur without this module present. The correct fix is to
+        # exclude lexical-boundary rows directly in the scan's own WHERE
+        # clause (below), so the scanner behaves exactly as if only
+        # sentence hypotheses existed in the id-space, regardless of how
+        # many lexical rows are interleaved -- SQLite's existing index on
+        # context_hypotheses.role (see db_bootstrap.py's SCHEMA_INDEXES)
+        # makes this an efficient, ordinary indexed skip, not a full scan.
+        # With this fix, no post-filtering and no special cursor-
+        # persistence casing are needed at all -- the surrounding cursor-
+        # advancement/wrap-around/safety-cap logic and its persistence
+        # (`ids[-1]`) are left completely UNCHANGED from the original,
+        # since `ids` only ever contains genuinely-eligible ids to begin
+        # with. Re-verified: the same baseline-comparison test now shows
+        # IDENTICAL Phase 7d participation/survivor counts, cycle for
+        # cycle, whether Phase 0 is present (isolated) or entirely absent.
+        isolate_lexical = str(state.get("lexical_boundary_pool_isolated", "true")).strip().lower() != "false"
+        role_filter_sql = " AND (role IS NULL OR role<>'uncertain_lexical_boundary')" if isolate_lexical else ""
+
         ids = []
         scan_cursor = cursor
         wrapped = False
         examined = 0
         while len(ids) < remaining and max_id > 0 and examined < max_id:
             row = con.execute(
-                "SELECT id FROM context_hypotheses WHERE id>? ORDER BY id LIMIT 1",
+                "SELECT id FROM context_hypotheses WHERE id>?" + role_filter_sql + " ORDER BY id LIMIT 1",
                 (scan_cursor,),
             ).fetchone()
             if row is None:
@@ -296,6 +517,18 @@ def _build_candidate_pool(con, pool_size, anchor_ratio):
             _kv_set(con, "phase7d_state", "context_fallback_batch_size", len(ids))
 
     out.extend(novel)
+
+    resolved_strength, strength_source = _read_novel_fairness_strength(
+        con, novel_fairness_recentering_enabled, novel_fairness_recenter_target
+    )
+    _recenter_novel_fairness(
+        out,
+        target_mean=_clamp(_to_float(novel_fairness_recenter_target, 0.5)),
+        strength=resolved_strength,
+    )
+    _kv_set(con, "phase7d_state", "novel_fairness_strength_applied", resolved_strength)
+    _kv_set(con, "phase7d_state", "novel_fairness_strength_source", strength_source)
+
     _kv_set(con, "phase7d_state", "three_track_pool", "anchor_survivor_novel_v1")
     _kv_set(con, "phase7d_state", "reactivation_capacity", reactivation_capacity)
     _kv_set(con, "phase7d_state", "reactivation_selected", len(reactivated))
@@ -314,12 +547,16 @@ def _run_slow_wave_sleep(con, cycle_index, neuromod, adenosine_level):
     sp_base = _get_sw(con, "selection_pressure_base", 0.5)
     sp_gaba = _get_sw(con, "selection_pressure_gaba_gain", 0.6)
     sp_glu = _get_sw(con, "selection_pressure_glu_gain", 0.4)
+    ctx_min_novel_ratio = _get_sw(con, "context_hypotheses_min_novel_ratio", 0.3)
+    fairness_enabled = _get_sw(con, "novel_fairness_recentering_enabled", 1.0) != 0.0
+    fairness_target = _get_sw(con, "novel_fairness_recenter_target", 0.5)
     now = _now(); rnd = random.Random(now + cycle_index * 7919)
     glu = neuromod["glutamate"]; gaba = neuromod["gaba"]
     # self-regulating selection pressure from the system's own neuromodulator state
     sel_pressure = _clamp(sp_base + sp_gaba * gaba - sp_glu * glu)
     pool_size = max(size, int(size * pool_factor))
-    pool = _build_candidate_pool(con, pool_size, anchor_ratio)
+    pool = _build_candidate_pool(con, pool_size, anchor_ratio, ctx_min_novel_ratio,
+                                  fairness_enabled, fairness_target)
     if not pool:
         con.execute("INSERT INTO phase7d_slow_wave_cycles(created_at,cycle_index,n_oscillations,adenosine_level,up_state_avg_activity,down_state_scale,candidates_reactivated,candidates_survived,anchors_interleaved,reinforced,weakened,reason,selection_pressure,adaptive_threshold_avg,pool_size,candidates_participated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (now, int(cycle_index), n_osc, float(adenosine_level), 0.0, float(down_scale), 0, 0, 0, 0, 0, "empty_pool", float(sel_pressure), 0.0, pool_size, 0))

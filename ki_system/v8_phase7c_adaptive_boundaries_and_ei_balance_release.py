@@ -92,6 +92,12 @@ HARD_BOUNDARIES = {
     "critic_snapshot_p_base": (0.01, 0.5),
     "critic_snapshot_p_range": (0.05, 0.95),
     "gaba_novel_inhibition": (0.05, 0.98),
+    # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1: caps how far tonic_weight's own
+    # adaptive min/max (see v8_phase6c...META_PARAMETER_DEFAULTS) can ever
+    # expand via this file's generic boundary-expansion sweep below. Never
+    # 0.0 (would fully disable cooperative_core's homeostatic pull) and
+    # never 1.0 (would fully discard Phase 6a's own phasic learning signal).
+    "tonic_weight": (0.02, 0.75),
 }
 
 

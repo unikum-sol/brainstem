@@ -342,16 +342,36 @@ def integrated_control_step(mem: Any = None) -> Dict[str, Any]:
     return {"status": "phase5a_integrated_control_complete", "phase": PHASE, "summary": summary, "no_word_blacklists": True, "fact_promotion": FACT_PROMOTION}
 
 
+# BRAINSTEM_PHASE5A_WRONG_MEMORY_ATTR_FIX_V1 (23.09.2026)
+#
+# Root cause, confirmed against a fresh, bootstrap-only database: all 6
+# call sites in this file previously read getattr(self, "mem", None) to
+# locate the live Memory/connection object. But autonomous.py's
+# AutonomousLoop.__init__ only ever sets self.memory = memory -- it never
+# sets a self.mem attribute anywhere in the codebase (confirmed via a
+# project-wide grep). This meant getattr(self, "mem", None) ALWAYS
+# returned None for every real AutonomousLoop instance, in every real
+# cycle, since this module was written. _connect()/ensure_phase5a_schema/
+# integrated_control_step tolerate a None mem by falling back to their own
+# _db_path() search (Path.cwd()/"ki_memory.sqlite3" or the module's own
+# parent dir) -- but v8_modern_gap_candidate_bridge_shadow_release.py's
+# observe_shadow() has a much narrower fallback (a single hardcoded
+# sqlite3.connect("ki_memory.sqlite3") relative to the current working
+# directory), which only coincidentally matches the real database when
+# the GUI happens to be started from the project root with the default
+# filename -- it silently opens/creates a WRONG, unrelated database (or
+# raises "no such table") for any custom --memory-db path or working
+# directory. Fixed by using the attribute AutonomousLoop actually sets.
 def managed_cycle(self, progress=None):
-    ensure_phase5a_schema(getattr(self, "mem", None))
+    ensure_phase5a_schema(getattr(self, "memory", None))
     result = _PREV_CYCLE(self, progress) if _PREV_CYCLE is not None else {"status": "phase5a_no_previous_cycle"}
     try:
         from ki_system import v8_modern_gap_candidate_bridge_shadow_release as gap_shadow
-        shadow = gap_shadow.observe_shadow(getattr(self, "mem", None))
-        gap_phase5f_shadow_observation.observe_shadow(getattr(self, "mem", None), limit=512)
+        shadow = gap_shadow.observe_shadow(getattr(self, "memory", None))
+        gap_phase5f_shadow_observation.observe_shadow(getattr(self, "memory", None), limit=512)
     except Exception as exc:
         shadow = {"status": "modern_gap_candidate_shadow_error", "error": str(exc), "bridge_mode": "shadow"}
-    summary = integrated_control_step(getattr(self, "mem", None))
+    summary = integrated_control_step(getattr(self, "memory", None))
     summary["modern_gap_candidate_shadow"] = shadow
     if isinstance(result, dict):
         result["phase5a_integrated_release"] = summary
@@ -360,9 +380,9 @@ def managed_cycle(self, progress=None):
 
 
 def managed_run(self, cycles=1, progress=None):
-    ensure_phase5a_schema(getattr(self, "mem", None))
+    ensure_phase5a_schema(getattr(self, "memory", None))
     result = _PREV_RUN(self, cycles, progress) if _PREV_RUN is not None else [managed_cycle(self, progress) for _ in range(cycles or 1)]
-    summary = integrated_control_step(getattr(self, "mem", None))
+    summary = integrated_control_step(getattr(self, "memory", None))
     if isinstance(result, list):
         result.append({"phase5a_integrated_release": summary})
         return result

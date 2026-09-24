@@ -15,6 +15,27 @@ VERSION = "stageb_cd_v1"
 STATE = "stageb_graduation_state"
 EVENTS = "stageb_graduation_events"
 PROTECTED = ("facts", "relations", "questions")
+# BRAINSTEM_LEXICAL_LAYER_GRADUATION_ELIGIBILITY_V1: this project's own
+# lexical-emergence concept (docs/lexical_emergence_concept.md) explicitly
+# requires the new 'uncertain_lexical_boundary' hypothesis role (see
+# v8_phase0_lexical_boundary_observation_release.py) to graduate through
+# this EXACT SAME consolidation-survival + critic-gate mechanism as every
+# other hypothesis -- not a separate, duplicated graduation path. Extending
+# a small, explicit, easy-to-audit mapping (rather than a generic
+# "uncertain_*" prefix-match convention) is a deliberately conservative
+# choice for this safety-critical module: every currently-known eligible
+# role is named here explicitly, so no future, unrelated role could ever
+# accidentally become graduation-eligible via a wildcard match. Extending
+# _candidates()/run_graduation_cycle() below to iterate this map instead of
+# a single hardcoded role produces IDENTICAL behavior to before whenever
+# the matched role is 'uncertain_hypothesis' (the only role that existed
+# prior to this change) -- byte-for-byte the same resulting SQL and
+# decision strings -- and only takes a new code path when a row's role is
+# 'uncertain_lexical_boundary'.
+ELIGIBLE_ROLES = {
+    "uncertain_hypothesis": "stable_hypothesis",
+    "uncertain_lexical_boundary": "stable_lexical_boundary",
+}
 SCHEMA_TABLES = {
     STATE: [("key","TEXT PRIMARY KEY"),("value","TEXT"),("updated_at","INTEGER")],
     EVENTS: [("id","INTEGER PRIMARY KEY AUTOINCREMENT"),("created_at","INTEGER"),("cycle_index","INTEGER"),
@@ -91,9 +112,17 @@ def _critic(con,anchor_consistency):
 def _candidates(con,minimum,limit=64):
     if not _table_exists(con,"context_hypotheses") or not _table_exists(con,"phase7d_consolidation_survivors"): return []
     cols=set(_columns(con,"context_hypotheses")); role_expr="COALESCE(h.role,'')" if "role" in cols else "''"; status_expr="COALESCE(h.status,'active')" if "status" in cols else "'active'"
-    q=("SELECT h.id,"+role_expr+","+status_expr+",COUNT(DISTINCT s.cycle_index) AS survived,AVG(COALESCE(s.final_consistency,0)) AS consistency "
+    # BRAINSTEM_LEXICAL_LAYER_GRADUATION_ELIGIBILITY_V1: role_expr is
+    # aliased explicitly ("AS matched_role") so callers get a clean,
+    # predictable dict key regardless of the expression's own literal SQL
+    # text (previously unaliased and unused by any caller). The eligible-
+    # role list is built ONLY from this module's own fixed ELIGIBLE_ROLES
+    # keys (never from external/user input), so simple string
+    # concatenation into the IN(...) list is safe here.
+    role_list = ",".join("'" + r.replace("'", "''") + "'" for r in ELIGIBLE_ROLES)
+    q=("SELECT h.id,"+role_expr+" AS matched_role,"+status_expr+" AS matched_status,COUNT(DISTINCT s.cycle_index) AS survived,AVG(COALESCE(s.final_consistency,0)) AS consistency "
        "FROM context_hypotheses h JOIN phase7d_consolidation_survivors s ON s.source_table='context_hypotheses' AND s.source_id=h.id "
-       "WHERE "+role_expr+"='uncertain_hypothesis' AND "+status_expr+"='active' AND COALESCE(s.reinforced,0)=1 "
+       "WHERE "+role_expr+" IN ("+role_list+") AND "+status_expr+"='active' AND COALESCE(s.reinforced,0)=1 "
        "GROUP BY h.id HAVING COUNT(DISTINCT s.cycle_index)>=? ORDER BY survived DESC,consistency DESC,h.id ASC LIMIT ?")
     return [dict(r) for r in con.execute(q,(minimum,limit)).fetchall()]
 def _log(con,cycle,hid,old,new,surv,allowed,penalty,reason,decision,details,b,a):
@@ -109,12 +138,20 @@ def run_graduation_cycle(obj=None,cycle_index=None):
         for cand in _candidates(con,minimum):
             if graduated>=budget: break
             allowed,penalty,reason=_critic(con,_float(cand.get("consistency"),0.0)); decision="blocked_by_critic"
+            # BRAINSTEM_LEXICAL_LAYER_GRADUATION_ELIGIBILITY_V1: old_role is
+            # now read from the candidate row itself (via the "matched_role"
+            # alias) instead of being hardcoded, and new_role is looked up
+            # from ELIGIBLE_ROLES. Whenever old_role=='uncertain_hypothesis'
+            # (the only value that existed before this change), new_role is
+            # ALWAYS 'stable_hypothesis' -- identical, unchanged behavior.
+            old_role=cand.get("matched_role") or "uncertain_hypothesis"
+            new_role=ELIGIBLE_ROLES.get(old_role,"stable_hypothesis")
             if allowed:
-                cur=con.execute("UPDATE context_hypotheses SET role='stable_hypothesis',updated_at=? WHERE id=? AND role='uncertain_hypothesis' AND COALESCE(status,'active')='active'",(_now(),cand["id"]))
-                if cur.rowcount==1: graduated+=1; decision="graduated_to_stable_hypothesis"
+                cur=con.execute("UPDATE context_hypotheses SET role=?,updated_at=? WHERE id=? AND role=? AND COALESCE(status,'active')='active'",(new_role,_now(),cand["id"],old_role))
+                if cur.rowcount==1: graduated+=1; decision="graduated_to_"+new_role
             after_now=_protected(con)
             if after_now!=before: raise RuntimeError("protected_productive_counts_changed")
-            _log(con,cycle,cand["id"],"uncertain_hypothesis","stable_hypothesis" if decision.startswith("graduated") else "uncertain_hypothesis",cand["survived"],allowed,penalty,reason,decision,{"budget":budget,"minimum_7d_survivals":minimum,"anchor_consistency":cand.get("consistency")},before,after_now)
+            _log(con,cycle,cand["id"],old_role,new_role if decision.startswith("graduated") else old_role,cand["survived"],allowed,penalty,reason,decision,{"budget":budget,"minimum_7d_survivals":minimum,"anchor_consistency":cand.get("consistency")},before,after_now)
             decisions.append({"hypothesis_id":cand["id"],"decision":decision,"survival_cycles":cand["survived"],"critic_reason":reason})
         after=_protected(con)
         if after!=before: raise RuntimeError("protected_productive_counts_changed")

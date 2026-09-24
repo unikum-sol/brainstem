@@ -133,6 +133,73 @@ META_PARAMETER_DEFAULTS: List[Dict[str, Any]] = [
     {"parameter_key": "gaba_novel_inhibition",   "default_value": 0.50,  "min_value": 0.10,   "max_value": 0.90,
      "learning_rate": 0.06, "driver_botenstoff": "gaba",          "driver_metric": "plateau_persistence",
      "description":   "GABA-driven probabilistic inhibition of novel candidates in batch selection"},
+    # BRAINSTEM_PHASE6C_NOVEL_FAIRNESS_RECENTER_STRENGTH_V1 (23.09.2026):
+    # Phase 7d's slow-wave consolidation pool pits two competing "novel"
+    # candidate sources against each other every cycle:
+    # phase5g_experiment_outcomes (base_score derived from an
+    # order-statistic-biased selection, structurally near 1.0 at scale)
+    # vs. context_hypotheses (fixed base_score 0.5). Without correction
+    # the former structurally wins the shared activity-threshold
+    # competition almost every time, regardless of pool presence --
+    # measured directly via a 40/200-cycle synthetic simulation on
+    # 23.09.2026 (0 context_hypotheses graduation candidates before the
+    # fix, 200+ after a fixed full mean-recentering was applied).
+    # A FIXED recentering strength, however, is exactly the kind of
+    # hardcoded constant this project's own compass rejects ("Meta
+    # parameters are self-regulating... Aenderungen muessen das System
+    # selbststaendiger machen"). This entry turns the correction strength
+    # into a normal, self-regulating meta-parameter: it lives here (the
+    # single canonical home for all self-regulating meta-parameters),
+    # gets adaptive min/max boundaries for free via phase7c's generic
+    # phase6c_meta_control_parameters sweep, gets its own
+    # meta-metaplasticity (saturation-aware learning-rate adaptation) for
+    # free via phase6d's generic META_LR_DEFAULTS sweep (see that file),
+    # and is regulated below by _regulate_meta_parameters() using a
+    # MEASURED driver_metric ("context_fairness_gap", see
+    # _read_recent_phase7d_fairness()) instead of an assumed constant.
+    # driver_botenstoff=gaba is consistent with this project's existing
+    # convention (novel_ratio_gaba_weight, gaba_novel_inhibition already
+    # use GABA to govern how strongly a dominant/novel signal gets
+    # inhibited/favored) -- GABA strengthens the correction, mirroring
+    # phase7c's own Glu-GABA E/I balance principle (a dominant excitatory
+    # drive gets reciprocally dampened, not eliminated by a fixed rule).
+    # default_value=0.85 intentionally stays short of the hard max=1.0 to
+    # avoid an immediate, artefactual boundary-saturation streak in
+    # phase7c/6d right at initialization (see HARD_BOUNDARIES default
+    # (0.0,1.0) for any key not explicitly listed there).
+    {"parameter_key": "novel_fairness_recenter_strength", "default_value": 0.85, "min_value": 0.0, "max_value": 1.0,
+     "learning_rate": 0.05, "driver_botenstoff": "gaba",          "driver_metric": "context_fairness_gap",
+     "description":   "Strength of per-source base_score mean recentering between context_hypotheses and "
+                       "phase5g_experiment_outcomes in Phase 7d's novel consolidation pool (0=off, 1=full "
+                       "mean-centering); adapted from the measured reinforcement-rate gap between both sources"},
+    # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1 (23.09.2026): approved target
+    # architecture for the empirically confirmed dual-writer bug on the 6
+    # core neuromodulators (a real 865-row GUI log traced repeatable
+    # "torn value" spikes to Phase 6a and cooperative_core independently
+    # computing and overwriting the SAME phase6a_neuromodulated_sleep_state
+    # keys within the same real cycle -- see the matching architecture note
+    # in v8_cooperative_core_neuromodulator_sleep_authority_release.py and
+    # v8_phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release.py).
+    # tonic_weight replaces cooperative_core's previous hardcoded alpha=.18:
+    # it is now the single, self-regulating blend weight Phase 6a itself
+    # applies (in ONE place, immediately after its own phasic computation)
+    # between its freshly computed phasic value and cooperative_core's
+    # published homeostatic (tonic) pull target for dopamine/serotonin/
+    # noradrenaline/acetylcholine. default_value=0.18 intentionally matches
+    # the previous hardcoded alpha exactly, so this refactor is behaviorally
+    # neutral at the moment of activation (no discontinuity), while now
+    # being adaptive going forward. Per the approved architecture, a rising
+    # allostatic_load (Cortisol Stage 2's own stress signal, see
+    # v8_phase7cort_stability_watch_release.py) should shift the system
+    # more strongly toward homeostatic (tonic) control -- driver_botenstoff
+    # is therefore "cortisol", driver_metric is the measured recent
+    # allostatic_load (see _read_recent_allostatic_load() below), not an
+    # assumed constant.
+    {"parameter_key": "tonic_weight", "default_value": 0.18, "min_value": 0.05, "max_value": 0.6,
+     "learning_rate": 0.05, "driver_botenstoff": "cortisol",      "driver_metric": "allostatic_load",
+     "description":   "Blend weight Phase 6a applies between its own phasic neuromodulator computation and "
+                       "cooperative_core's tonic (homeostatic) pull target for dopamine/serotonin/noradrenaline/"
+                       "acetylcholine (0=pure phasic, 1=pure tonic); rises with measured allostatic_load"},
 ]
 
 
@@ -374,6 +441,13 @@ def _log_regulation_event(con: sqlite3.Connection, cycle_index: int, key: str,
 
 def _read_neuromodulators(con: sqlite3.Connection) -> Dict[str, float]:
     st = _read_kv(con, "phase6a_neuromodulated_sleep_state")
+    # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1: cortisol is read here too
+    # (from cortisol_state, not phase6a_neuromodulated_sleep_state) so the
+    # generic _param_regulate() driver-botenstoff lookup below can gate
+    # tonic_weight by cortisol, exactly like every other meta-parameter is
+    # gated by one of the 6 core neuromodulators. Purely additive; no
+    # existing caller of this dict is affected by the extra key.
+    cort = _read_kv(con, "cortisol_state")
     return {
         "dopamine":      _clamp(_to_float(st.get("dopamine"),      0.5)),
         "serotonin":     _clamp(_to_float(st.get("serotonin"),     0.5)),
@@ -381,6 +455,7 @@ def _read_neuromodulators(con: sqlite3.Connection) -> Dict[str, float]:
         "acetylcholine": _clamp(_to_float(st.get("acetylcholine"), 0.5)),
         "glutamate":     _clamp(_to_float(st.get("glutamate_drive", st.get("glutamate")), 0.5)),
         "gaba":          _clamp(_to_float(st.get("gaba_drive", st.get("gaba")), 0.3)),
+        "cortisol":      _clamp(_to_float(cort.get("cortisol_level"), 0.2)),
     }
 
 
@@ -412,6 +487,107 @@ def _read_recent_effectiveness(con: sqlite3.Connection, n: int = 8) -> List[Dict
     keys = ["cycle_index", "delta_outcome", "delta_closure", "delta_overlap",
             "effectiveness_score", "plateau_flag", "anchor_consistency"]
     return [dict(zip(keys, r)) for r in rows]
+
+
+PHASE7D_FAIRNESS_WINDOW_CYCLES = 30
+
+
+def _read_recent_phase7d_fairness(con: sqlite3.Connection,
+                                   window_cycles: int = PHASE7D_FAIRNESS_WINDOW_CYCLES) -> Dict[str, Any]:
+    """BRAINSTEM_PHASE6C_NOVEL_FAIRNESS_RECENTER_STRENGTH_V1 (23.09.2026):
+    measures the ACTUAL reinforcement-rate gap between Phase 7d's two
+    competing novel-pool sources (context_hypotheses vs.
+    phase5g_experiment_outcomes) over a recent cycle window -- consistent
+    with this project's own established convention of using a recent
+    window rather than lifetime averages for feedback signals (see
+    v8_phase6b's PHASE6A_RECENT_WINDOW_ROWS fix). This measured gap
+    drives the self-regulating 'novel_fairness_recenter_strength' meta-
+    parameter below (see META_PARAMETER_DEFAULTS), replacing what would
+    otherwise be an assumed, hardcoded constant.
+
+    reinforcement_rate(source) := COUNT(DISTINCT source_id) reinforced in
+    phase7d_consolidation_survivors within the window /
+    COUNT(DISTINCT source_id) that participated (phase7d_up_state_events)
+    within the same window.
+
+    gap := reinforcement_rate(phase5g_experiment_outcomes)
+         - reinforcement_rate(context_hypotheses)
+    (positive => phase5g still structurally favored, i.e. more
+    correction needed; negative => context_hypotheses now favored, i.e.
+    less correction needed; ~0 => fair).
+
+    Read-only, defensive against missing tables/empty history (returns
+    a neutral 0.0 gap with available=False in that case, so regulation
+    simply skips this parameter that cycle instead of guessing).
+    """
+    if not _table_exists(con, "phase7d_up_state_events") or not _table_exists(con, "phase7d_consolidation_survivors"):
+        return {"context_fairness_gap": 0.0, "available": False}
+    max_cycle_row = con.execute("SELECT MAX(cycle_index) FROM phase7d_up_state_events").fetchone()
+    max_cycle = _to_int(max_cycle_row[0] if max_cycle_row else 0, 0)
+    if max_cycle <= 0:
+        return {"context_fairness_gap": 0.0, "available": False}
+    min_cycle = max(0, max_cycle - int(window_cycles))
+
+    def _ratio(source_table: str) -> Optional[float]:
+        participated = con.execute(
+            "SELECT COUNT(DISTINCT source_id) FROM phase7d_up_state_events "
+            "WHERE source_table=? AND cycle_index>?",
+            (source_table, min_cycle),
+        ).fetchone()[0]
+        if not participated:
+            return None
+        reinforced = con.execute(
+            "SELECT COUNT(DISTINCT source_id) FROM phase7d_consolidation_survivors "
+            "WHERE source_table=? AND reinforced=1 AND cycle_index>?",
+            (source_table, min_cycle),
+        ).fetchone()[0]
+        return reinforced / participated
+
+    ratio_phase5g = _ratio("phase5g_experiment_outcomes")
+    ratio_ctx = _ratio("context_hypotheses")
+    if ratio_phase5g is None or ratio_ctx is None:
+        return {"context_fairness_gap": 0.0, "available": False,
+                "ratio_phase5g_experiment_outcomes": ratio_phase5g,
+                "ratio_context_hypotheses": ratio_ctx}
+    gap = _clamp(ratio_phase5g - ratio_ctx, -1.0, 1.0)
+    return {"context_fairness_gap": gap, "available": True,
+            "ratio_phase5g_experiment_outcomes": ratio_phase5g,
+            "ratio_context_hypotheses": ratio_ctx,
+            "window_cycles": int(window_cycles), "min_cycle": min_cycle, "max_cycle": max_cycle}
+
+
+PHASE6C_ALLOSTATIC_LOAD_WINDOW_CYCLES = 10
+
+
+def _read_recent_allostatic_load(con: sqlite3.Connection,
+                                  window_cycles: int = PHASE6C_ALLOSTATIC_LOAD_WINDOW_CYCLES) -> Dict[str, Any]:
+    """BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1 (23.09.2026): measures the
+    ACTUAL recent allostatic_load from Cortisol Stage 2's own
+    stability_watch_events (see v8_phase7cort_stability_watch_release.py),
+    over a recent cycle window -- consistent with this project's own
+    established convention of using a recent window rather than lifetime
+    averages for feedback signals (see phase6a's PHASE6A_RECENT_WINDOW_ROWS
+    fix and this file's own _read_recent_phase7d_fairness() above). This
+    measured value drives the self-regulating 'tonic_weight' meta-parameter
+    (see META_PARAMETER_DEFAULTS), replacing what would otherwise be an
+    assumed, hardcoded constant.
+
+    Read-only, defensive against a missing table/empty history (returns a
+    neutral 0.0 load with available=False in that case, so regulation
+    simply skips tonic_weight that cycle instead of guessing).
+    """
+    if not _table_exists(con, "stability_watch_events"):
+        return {"allostatic_load": 0.0, "available": False}
+    rows = con.execute(
+        "SELECT allostatic_load FROM stability_watch_events ORDER BY id DESC LIMIT ?",
+        (int(window_cycles),),
+    ).fetchall()
+    vals = [_to_float(r[0]) for r in rows if r[0] is not None]
+    if not vals:
+        return {"allostatic_load": 0.0, "available": False}
+    avg_load = _clamp(sum(vals) / len(vals), 0.0, 1.0)
+    return {"allostatic_load": avg_load, "available": True, "window_cycles": int(window_cycles),
+            "sample_count": len(vals)}
 
 
 def _analyze_history(l2m: List[Dict[str, Any]], eff: List[Dict[str, Any]]) -> Dict[str, float]:
@@ -580,6 +756,28 @@ def _regulate_meta_parameters(con: sqlite3.Connection, cycle_index: int,
                     up_reason="persistent_plateau_stronger_novel_inhibition",
                     down_reason="stable_less_novel_inhibition")
 
+    # BRAINSTEM_PHASE6C_NOVEL_FAIRNESS_RECENTER_STRENGTH_V1: regulated
+    # from a MEASURED gap (see _read_recent_phase7d_fairness()), gated
+    # by GABA like this project's other inhibition-related parameters.
+    fairness_gap = hist.get("context_fairness_gap", 0.0)
+    _param_regulate("novel_fairness_recenter_strength", fairness_gap,
+                    direction_up_condition=(fairness_gap > 0.05),
+                    direction_down_condition=(fairness_gap < -0.05),
+                    up_reason="phase5g_still_favored_increase_fairness_correction",
+                    down_reason="context_hypotheses_overcorrected_relax_fairness_correction")
+
+    # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1: tonic_weight only regulated
+    # when a measured allostatic_load sample is actually available (see
+    # _read_recent_allostatic_load()); otherwise left untouched at its
+    # current/default value rather than guessed.
+    if hist.get("allostatic_load_available", False):
+        allostatic_load = hist.get("allostatic_load", 0.0)
+        _param_regulate("tonic_weight", allostatic_load,
+                        direction_up_condition=(allostatic_load > 0.35),
+                        direction_down_condition=(allostatic_load < 0.15),
+                        up_reason="rising_allostatic_load_favor_homeostatic_tonic_control",
+                        down_reason="calm_allostatic_load_favor_phasic_learning_signal")
+
     con.commit()
     return {"adapted_count": len(changes), "changes": changes}
 
@@ -683,6 +881,16 @@ def run_phase6c_cycle(db_or_obj=None, cycle_index=None):
         row=con.execute("SELECT "+",".join(wanted)+" FROM phase6b_effectiveness_events WHERE "+("measurement_owner='canonical_phase6b'" if "measurement_owner" in cols else "1=1")+" ORDER BY id DESC LIMIT 1").fetchone()
         if row: latest=dict(zip(wanted,row))
     l2m_hist=_read_recent_l2m(con,8); eff_hist=_read_recent_effectiveness(con,8); hist=_analyze_history(l2m_hist,eff_hist)
+    # BRAINSTEM_PHASE6C_NOVEL_FAIRNESS_RECENTER_STRENGTH_V1: read-only,
+    # cheap, computed unconditionally (like l2m_hist/eff_hist above) so
+    # it is always available for both regulation and observability.
+    phase7d_fairness = _read_recent_phase7d_fairness(con)
+    hist["context_fairness_gap"] = phase7d_fairness.get("context_fairness_gap", 0.0)
+    # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1: read unconditionally (cheap,
+    # read-only), same convention as phase7d_fairness above.
+    allostatic = _read_recent_allostatic_load(con)
+    hist["allostatic_load"] = allostatic.get("allostatic_load", 0.0)
+    hist["allostatic_load_available"] = allostatic.get("available", False)
     state=str((latest or {}).get("evidence_state") or "historical_unclassified")
     if state in ("outcome_observed_change","outcome_observed_no_change"):
         neuromod=_read_neuromodulators(con); cfg=_get_all_meta_params(con); regulated=_regulate_meta_parameters(con,cycle_index,neuromod,cfg,hist)
@@ -696,7 +904,7 @@ def run_phase6c_cycle(db_or_obj=None, cycle_index=None):
     # an up-to-date value to protect against phase6a's next recompute.
     saved_bias = _save_sticky_bias(con)
     con.commit()
-    return {"phase":PHASE,"cycle_index":cycle_index,"status":"ok","canonical_phase6b_measurement":latest,"meta_regulation":regulated,"history_snapshot":hist,"bias_bridge":{"restored":restored_bias,"saved":saved_bias},"safety":{"canonical_single_pass":True,"direct_fact_writes":"disabled","direct_relation_writes":"disabled","fact_promotion":"disabled"}}
+    return {"phase":PHASE,"cycle_index":cycle_index,"status":"ok","canonical_phase6b_measurement":latest,"meta_regulation":regulated,"history_snapshot":hist,"phase7d_fairness":phase7d_fairness,"bias_bridge":{"restored":restored_bias,"saved":saved_bias},"safety":{"canonical_single_pass":True,"direct_fact_writes":"disabled","direct_relation_writes":"disabled","fact_promotion":"disabled"}}
 
 
 
