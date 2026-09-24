@@ -38,7 +38,10 @@ YouTube - AI conversation about BrainStem Project
 ---
 
 ### Project-Structure
-[Project-Structure](assets/Project-Structure.png)
+
+<a href="assets/Project-Structure.png" target="_blank">
+  <img src="assets/Project-Structure.png" alt="Project-Structure" width="250" />
+</a>
 
 ---
 
@@ -342,6 +345,64 @@ This project builds upon concepts, algorithms, and theoretical frameworks establ
 9. **Butz, Markus; van Ooyen, Arjen** (2013/2014) *Homeostatic structural plasticity – a key to neuronal network formation and repair*. BMC Neuroscience / PLoS Computational Biology.
 10. **Parker, Paul A.; Holan, Scott H.; Ravishanker, Nalini** (2020) *Nonlinear Time Series Classification Using Bispectrum-based Deep Convolutional Neural Networks*. arXiv preprint arXiv:2003.02353.
 11. **Rončević, Igor; et al.** *A molecule with half-Möbius topology*. Science (Supplementary Materials, SqDRIFT sampling).
+
+---
+
+<details>
+<summary><b>Click to expand BibTeX citations</b></summary>
+
+```bibtex
+@book{hamilton2020graph,
+  title={Graph Representation Learning},
+  author={Hamilton, William L.},
+  year={2020},
+  publisher={Morgan \& Claypool Publishers}
+}
+
+@article{watkins2020using,
+  title={Using Sinusoidally-Modulated Noise as a Surrogate for Slow-Wave Sleep to Accomplish Stable Unsupervised Dictionary Learning in a Spike-Based Sparse Coding Model},
+  author={Watkins, Yijing and Kim, Edward and Kenyon, Garrett T.},
+  journal={Frontiers in Computational Neuroscience},
+  year={2020}
+}
+
+@article{tadros2022biologically,
+  title={Biologically Inspired Sleep Algorithm for Reducing Catastrophic Forgetting in Neural Networks},
+  author={Tadros, Timothy and Tran, Gia-Bao M. and Krishnan, Giri P. and Bazhenov, Maxim},
+  year={2022}
+}
+
+@article{fischbacher2020intelligent,
+  title={Intelligent Matrix Exponentiation},
+  author={Fischbacher, Thomas and Comsa, Iulia M. and Potempa, Krzysztof and Firsching, Moritz and Versari, Luca and Alakuijala, Jyrki},
+  journal={arXiv preprint arXiv:2008.03926},
+  year={2020}
+}
+
+@article{butz2013homeostatic,
+  title={Homeostatic structural plasticity--a key to neuronal network formation and repair},
+  author={Butz, Markus and van Ooyen, Arjen},
+  journal={PLoS Computational Biology},
+  year={2013}
+}
+
+@article{parker2020nonlinear,
+  title={Nonlinear Time Series Classification Using Bispectrum-based Deep Convolutional Neural Networks},
+  author={Parker, Paul A. and Holan, Scott H. and Ravishanker, Nalini},
+  journal={arXiv preprint arXiv:2003.02353},
+  year={2020}
+}
+
+@article{roncevic2023molecule,
+  title={Supplementary Materials for A molecule with half-M{\"o}bius topology},
+  author={Ron{\v{c}}evi{\'c}, Igor and others},
+  journal={Nature Chemistry},
+  year={2023}
+}
+```
+</details>
+
+---
 
 ## Development Notes
 
