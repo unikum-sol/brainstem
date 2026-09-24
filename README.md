@@ -1,50 +1,44 @@
-# BrainStem
-
-Update 14.09.26
+# BrainStem Update 24.09.26
 
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
 [![Backend: SQLite](https://img.shields.io/badge/backend-SQLite-lightgrey)](#database-initialization)
-[![Roadmap: Stage B active](https://img.shields.io/badge/roadmap-Stage%20B%20active-brightgreen)](#current-development-and-testing-status)
+[![Roadmap: Stage B write locks open (experiment)](https://img.shields.io/badge/roadmap-Stage%20B%20write%20locks%20open-brightgreen)](#current-development-and-testing-status)
 
-BrainStem is a biologically inspired, Real Neuro-Symbolic (RNS-AI) cognitive architecture for lifelong learning. It is designed to learn models of the structures and dynamics of language and text through context hypotheses, uncertainty, contradiction, revision, neuromodulation, replay, and consolidation rather than by merely storing isolated facts.
+BrainStem is a biologically inspired, Real Neuro-Symbolic (RNS-AI) cognitive architecture for lifelong learning. It is designed to learn models of the structures and dynamics of language and text through context hypotheses, uncertainty, contradiction, revision, neuromodulation, replay, and consolidation rather than by merely storing isolated facts. A second, character-level observation layer additionally attempts to discover word boundaries directly from unsegmented text, without any predefined notion of "word."
 
->One CPU Core /
->No GPU
+>One CPU Core / No GPU
 
 > [!IMPORTANT]
-> BrainStem is a research and calibration system, not a production-ready assistant. Permanent fact, relation, and question writes remain locked while the learning core and its candidate flow are being validated.
+> BrainStem is a research and calibration system, not a production-ready assistant. As of the current project stage, all previously closed productive write paths (facts, relations, questions, fact promotion, gap/contradiction/revision writes) have been deliberately opened as an explicitly framed, ongoing experiment, with a full project backup taken beforehand as a fallback point.
 
 ---
 
 [![BrainStem Project AI conversation](https://img.youtube.com/vi/4nN7zELSAMo/mqdefault.jpg)](https://www.youtube.com/watch?v=4nN7zELSAMo)
-
 YouTube - AI conversation about BrainStem Project
 
 ---
 
-[NotebookLM codebase exploration](https://notebook.google.com/notebook/34b994eb-9f62-4fd7-a04d-facbd6041654) 11.09.2026
+[NotebookLM codebase exploration](https://notebook.google.com/notebook/34b994eb-9f62-4fd7-a04d-facbd6041654) 24.09.2026
 
 ---
 
 ## 📍 Navigation
-
 * [Core Philosophy](#core-philosophy)
 * [What is BrainStem really](#what-is-brainstem-really)
 * [Roadmap](#Roadmap)
 * [Architecture](#architecture)
+* [Autonomous Lexical Emergence Layer](#autonomous-lexical-emergence-layer)
+* [Stage B Full Write-Path Chain](#stage-b-full-write-path-chain)
 * [Running the System](#running-the-system)
 * [ZIM Import](#zim-import)
 * [Academic References](#Academic-References)
 * [Development Notes](#development-notes)
-    
+
 ---
 
 ### Project-Structure
-
-<a href="assets/Project-Structure.png" target="_blank">
-  <img src="assets/Project-Structure.png" alt="Project-Structure" width="250" />
-</a>
+[Project-Structure](assets/Project-Structure.png)
 
 ---
 
@@ -52,369 +46,170 @@ YouTube - AI conversation about BrainStem Project
 
 ### Current Validation Status
 
-The system has completed a full read-through of its current two-source
-corpus (German Wikipedia *Physics* and *Computer* categories, 167,661
-chunks, 100%) and has since run well beyond 11,500 real learning cycles
-in both active-learning and replay/consolidation-only modes without
-data loss, corruption, or GUI failure.
+The system has completed a full read-through of its current two-source corpus (German Wikipedia *Physics* and *Computer* categories, 167,661 chunks, 100%) and has since run well beyond 11,500 real learning cycles in both active-learning and replay/consolidation-only modes without data loss, corruption, or GUI failure. A dedicated 1,500-cycle Etappe-A drift validation (sensory-deprivation mode, input disabled, inner dynamics only) completed with an overall result of **"konvergiert"**: all 20 evaluated signals were classified either `stabil` or `konvergiert`, with zero signals flagged as divergent. This drift run supersedes the historical 1,344-cycle baseline, which applied only to a much earlier architectural state.
 
-A dedicated 1,500-cycle Etappe-A drift validation (sensory-deprivation
-mode, input disabled, inner dynamics only) completed with an overall
-result of **"konvergiert"**: all 20 evaluated signals were classified
-either `stabil` or `konvergiert`, with zero signals flagged as
-divergent. This drift run supersedes the historical 1,344-cycle
-baseline, which applied only to a much earlier architectural state.
+**Cortisol Stage 2 is active and functionally verified.** `stage=2` is set in the production database. Under real production conditions it has not been triggered live (`allostatic_load` has stayed well below the 0.6 threshold — a sign of a consistently calm system, not a defect). Its guarded intervention logic (per-value cap 0.01, per-cycle budget 0.03, 3-cycle cooldown) has been independently confirmed correct under simulated stress.
 
-**Cortisol Stage 2 is active and functionally verified.** `stage=2` is
-set in the production database (not observer-only Stage 1). Under real
-production conditions it has never yet been triggered (`allostatic_load`
-never exceeded 0.2483 against a 0.6 threshold over 11,500+ cycles — a
-sign of a consistently calm system, not a defect). Because it was never
-exercised live, the actual, unmodified `_apply_stage2_nudges()` function
-was run directly against an isolated synthetic database with artificially
-elevated stress (injected negative `effectiveness_score` values):
-confirmed correct behavior — intervention only above threshold, per-value
-cap (0.01) and per-cycle budget (0.03) strictly respected, cooldown (3
-cycles) correctly honored, 0 rollbacks across 15 real interventions, and
-a clean error path for a missing target table.
+**Hypothesis graduation (`uncertain_hypothesis` → `stable_hypothesis`) is active**, gated by the consolidation-survival criterion (≥3 confirmed Phase-7d survival cycles), an available critic-gate cross-check, warm-up dampening, and a budget of one graduation per cycle.
 
-**Hypothesis graduation (`uncertain_hypothesis` → `stable_hypothesis`) is
-active and has already graduated 36 hypotheses**, starting at cycle 112
-through cycle 1,641, with none since (see Roadmap and GUI State below for
-the full explanation — this is expected queue-size behavior, not a
-defect). All 36 graduations passed exclusively through the consolidation
-criterion (≥3 confirmed, reinforced Phase-7d survival cycles); the
-`_critic_gate` itself has so far always returned `"no_critic_snapshot"`
-(no independent critic evaluation took place), because a critic snapshot
-can only be created once `phase5g_experiment_outcomes` contains data —
-the same, already-known Stage-B safety boundary responsible for the
-frozen `effectiveness`/`exploration_bias`/`plasticity_level` values
-described further below.
+### Current Project Position — Experimental Write-Path Opening
 
-### Current Architecture
+As of the current project stage, the project owner has deliberately declared an ongoing internal experiment — in which every previously closed productive write path was opened at once — to be the new, valid project position rather than a temporary test. A full project backup was taken beforehand as an explicit fallback point. Concretely, direct Facts, Relations, and Questions writes, Fact promotion, Attention writes, and productive Phase-5f/5g/5i experiments are all currently active, alongside a newly registered four-module Stage-B chain described below.
 
-- BrainStem remains a phase-based, hypothesis-centered language and text understanding system.
-- The Python package remains `ki_system`.
-- `autonomous.py` remains the minimal autonomous loop kernel.
-- `phase_registry.py` is the central installer and ordering authority for the runtime phase chain; a required-module load failure sets an explicit `report["fatal"]` flag rather than being silently absorbed.
-- SQLite remains the canonical relational source. All connections (main GUI, dedicated background worker, diagnostics) use a consistent 60-second busy timeout.
-- The learning mode remains `context_hypotheses_with_neuromodulators`.
-- The Modern Gap Candidate Bridge remains checkpoint-based, bounded to at most 512 hypotheses per cycle, `observed_only`, shadow-only, and non-productive.
-- Stage-B gap flow continues to distinguish real shadow-observed candidates from measured zero-source intervals without opening productive downstream writes.
-- No unvalidated replacement of the canonical runtime kernel or relational data source is authorized.
-- The admin GUI's autonomous-learning and drift/sensory-deprivation background threads each use their own dedicated `Memory`/SQLite connection, separate from the GUI's own connection.
-- The GUI performs a periodic, guarded, non-blocking `PRAGMA wal_checkpoint(TRUNCATE)` once per outer cycle, and caches its own periodic corpus/database-stat queries instead of re-querying on every tick.
+### Autonomous Lexical Emergence Layer
 
-### Runtime Phase Structure
+A new Phase 0 module (`v8_phase0_lexical_boundary_observation_release`) is registered at the front of the runtime phase chain, running alongside the existing sentence-level `context_observation_learning` entry point. It reads the raw, unsegmented character stream of already-imported chunks, maintains a pure frequency table of "which character follows this preceding context of length *k*," and computes the local branching entropy at each character position:
 
-The effective runtime architecture includes:
-1. context observation and integrated hypothesis learning
-2. strategy refinement, outcome closure, and observation memory
-3. context expansion and effectiveness evaluation
-4. strategy selection, experiment memory, and outcome learning
-5. outcome-driven strategy diversification
-6. Phase-6a offline replay and meta-plasticity
-7. Phase-6b replay effectiveness evaluation
-8. Phase-6c bias persistence and self-regulating meta-control
-9. Phase-6d saturation homeostasis and meta-metaplasticity
-10. Phase-7a adenosine homeostasis
-11. Phase-7b endocannabinoid regulation
-12. Phase-7b1 wake-chain bridging
-13. Phase-7c adaptive boundaries, E/I balance, and sigmoid soft clipping
-14. Phase-7d slow-wave sleep and down-selection
-15. Phase-7e histamine wake/arousal regulation
-16. Phase-7f orexin wake-endurance regulation
-17. Phase-7g BDNF growth and consolidation regulation
-18. Phase-7cort stability observation and guarded Cortisol Stage 2 regulation
-19. cooperative six-core neuromodulator and sleep/wake authority
-20. guarded Stage-B hypothesis graduation
-21. non-productive shadow recheck runtime
-22. Stage-B gapflow runtime contract
+H(context) = − Σ P(next_char | context) · log2 P(next_char | context)
+
+A pronounced spike in this entropy at a given position is treated as a boundary candidate and creates or re-observes a `context_hypotheses` row using the project's existing `role='uncertain_lexical_boundary'` — reusing exactly the same insert-or-reobserve mechanism, consolidation path (Phase 7d), Stage-B graduation, and (under the current experimental write-path opening) fact promotion already used for every other hypothesis. No second learning pipeline and no new neuromodulator responsibility is introduced; the existing division of labor (exploration/glutamate governs new candidate generation, inhibition/GABA suppresses unstable candidates, consolidation/BDNF/serotonin governs stabilization, revision-bias governs re-opening an already-stable boundary) is reused as-is.
+
+Once two adjacent, sufficiently confirmed boundary hypotheses bracket a character span, that span is intended to become a `lexical_units` row (schema already extended, `context_hypotheses.lexical_offset` column added). Once enough `status='stable'` lexical units exist, they are intended to populate the `relation_hint`/`object` fields of sentence-level hypotheses that are currently hard-coded to empty strings — closing the originally identified gap between raw sentence observation and any notion of word-to-word relation. Segmentation deliberately starts from the raw character stream itself, with no whitespace, punctuation, dictionary, or grammar used as a given boundary hint.
+
+This mechanism is framed explicitly as a measurable experiment, not a guaranteed outcome, with a concrete measurement plan (stabilized unit-length distribution, cross-context recurrence of identical surface forms, a purely read-only comparison against simple whitespace segmentation as an external yardstick never fed back into learning, and a repeat of the existing drift/sensory-deprivation test once enough boundary hypotheses exist).
+
+### Stage B Full Write-Path Chain
+
+Four additional modules are now registered in the runtime phase chain, forming a single, ordered chain per cycle:
+
+1. **Gap detection** (`stageb_gap_detection`) — productively populates `internal_learning_gaps` from observed learning gaps (previously observation-only).
+2. **Contradiction detection** (`stageb_contradiction_detection`) — detects conflicting values between hypotheses and/or already-promoted facts and records them in the existing `contradictions` table.
+3. **Hypothesis revision** (`stageb_hypothesis_revision`) — reverses a hypothesis's role when an independently stronger, contradicting hypothesis is detected, logging the change (old/new role, old/new confidence and uncertainty) in `hypothesis_role_revisions`.
+4. **Fact promotion** (`stageb_fact_promotion`) — promotes a hypothesis into the `facts` table only after it has independently passed Stage-B graduation, linking each fact back to its source hypothesis via `source_hypothesis_id`. If the source hypothesis is later reversed by hypothesis revision, the corresponding fact is automatically retracted — facts remain correctable rather than permanently fixed.
+
+The four modules are positioned so that gap detection runs early in the cycle, contradiction detection and hypothesis revision run immediately after the cooperative six-core authority (and therefore still ahead of graduation/promotion within the same cycle), and fact promotion runs last among the four — so that a revision detected within a cycle is already reflected before that same cycle's fact promotion.
 
 ### Corpus and Learning State
 
-Current corpus baseline (two ZIM sources: German Wikipedia *Physics* and
-*Computer* categories, ~664 MB combined):
-- 167,661 of 167,661 imported chunks read (100%)
-- over 1.59 million active `uncertain_hypothesis` entries, plus 36
-  already-graduated `stable_hypothesis` entries, and growing
-- observed throughput: on the order of 100,000–125,000 chunks processed
-  per 24-hour period of active autonomous learning (single CPU core, no
-  GPU, as per project design)
-
-Corpus completion does not stop autonomous learning. Replay,
-consolidation, hypothesis evaluation, neuromodulator regulation,
-sleep/wake transitions, and guarded Stage-B graduation continue after
-all imported chunks have been read.
-
-Replay activity alone does not prove replay-caused semantic improvement.
-Independent outcome evidence and real-user dialogue measurements remain
-necessary for semantic-effectiveness claims.
+Current corpus baseline (two ZIM sources: German Wikipedia *Physics* and *Computer* categories, ~664 MB combined): 167,661 of 167,661 imported chunks read (100%), over 1.6 million active `uncertain_hypothesis` entries, a growing population of graduated `stable_hypothesis` entries, and — since the experimental write-path opening — a growing, non-zero population of promoted `facts`. Corpus completion does not stop autonomous learning; replay, consolidation, hypothesis evaluation, neuromodulator regulation, sleep/wake transitions, guarded graduation, gap detection, contradiction detection, hypothesis revision, and fact promotion all continue after all imported chunks have been read.
 
 ### Six-Core Neuromodulator State
 
-The six core neuromodulators (dopamine, serotonin, glutamate, GABA,
-noradrenaline, acetylcholine) are governed by the common canonical
-runtime authority in
-`v8_cooperative_core_neuromodulator_sleep_authority_release.py`, writing
-to `phase6a_neuromodulated_sleep_state` (the canonical source also read
-by the GUI), with bounded smoothing (`new = old + 0.18 * (target - old)`)
-and values constrained to `[0.05, 0.95]`.
-
-The 1,500-cycle drift validation confirms all six core values remain
-tightly stable under stable input conditions (span ≤ 0.014 for every
-core neuromodulator), consistent with correct, bounded regulator
-behavior rather than uncontrolled drift.
+The six core neuromodulators (dopamine, serotonin, glutamate, GABA, noradrenaline, acetylcholine) are governed by the common canonical runtime authority in `v8_cooperative_core_neuromodulator_sleep_authority_release.py`. The cooperative authority publishes a homeostatic ("tonic") pull target for the four non-E/I core values (dopamine, serotonin, noradrenaline, acetylcholine — glutamate/GABA remain the sole responsibility of Phase 7c); Phase 6a then blends its own from-scratch phasic (learning-evidence) computation with this tonic target using a self-regulating `tonic_weight` meta-parameter, written to `phase6a_neuromodulated_sleep_state` (the canonical source also read by the GUI), with values constrained to `[0.05, 0.95]`. The 1,500-cycle drift validation confirms all six core values remain tightly stable under stable input conditions.
 
 #### Extended Neuromodulator State
 
-All twelve neuromodulator/regulatory systems (six core + adenosine,
-endocannabinoids, cortisol, histamine, orexin, BDNF) are represented in
-code and runtime state and connected to the GUI. Adenosine and histamine
-show clear, reciprocal, bounded oscillation consistent with the Phase-7a
-sleep/wake cycle. Endocannabinoids remain at 0.000 at the current corpus
-scale (the postsynaptic-overload trigger mechanism has not yet fired).
-Cortisol remains low throughout (regime consistently "calm"), consistent
-with Stage 2 never yet needing to intervene under real load.
+All twelve neuromodulator/regulatory systems (six core + adenosine, endocannabinoids, cortisol, histamine, orexin, BDNF) are represented in code and runtime state and connected to the GUI. Adenosine and histamine show clear, reciprocal, bounded oscillation consistent with the Phase-7a sleep/wake cycle. Endocannabinoids remain at 0.000 at the current corpus scale (the postsynaptic-overload trigger mechanism has not yet fired). Cortisol remains low throughout (regime consistently "calm").
 
 ### Cooperative and Phase-7a Sleep/Wake Authority
 
 BrainStem runs two independent, valid sleep-entry authorities:
 
-- **Phase-7a adenosine homeostat**: a single-signal homeostat
-  (threshold 0.65) confirmed to enter and exit sleep extensively and
-  correctly under real, large-scale operation (thousands of real
-  sleep/wake transitions observed).
-- **Cooperative six-core authority**: a combined, five-signal score
-  (35% adenosine pressure, 25% arousal release, 20% inhibitory
-  readiness, 12% consolidation readiness, 8% absence of cortisol-related
-  stress blocking), with sleep-entry threshold 0.62, wake-entry
-  threshold 0.42, and a minimum dwell time of 3 cycles for hysteresis.
+- **Phase-7a adenosine homeostat**: a single-signal homeostat (threshold 0.65).
+- **Cooperative six-core authority**: a combined, five-signal score —
 
-Both authorities are independently valid; they are not required to enter
-sleep simultaneously. The GUI mood/mission-control indicator reflects
-both authorities explicitly (distinguishing "Schläft" for the
-cooperative authority from "Konsolidiert (Phase7a)" for the adenosine
-homeostat), and Phase 7d/7e admit real slow-wave consolidation whenever
-*either* authority reports sleep — mirroring the same "either authority"
-pattern used internally throughout the sleep/consolidation pipeline.
+sleep_score = 0.35 · adenosine pressure + 0.25 · arousal release + 0.20 · inhibitory readiness + 0.12 · consolidation readiness + 0.08 · (1 − cortisol-related stress block)
 
-### Adenosine and Slow-Wave Sleep
+  with sleep-entry threshold 0.62, wake-entry threshold 0.42, and a minimum dwell time of 3 cycles for hysteresis.
 
-The Phase-7a adenosine homeostat remains active and independently
-confirmed correct via real production data. Phase 7d accepts either the
-Phase-7a homeostat or the cooperative sleep/wake state as a valid
-sleep-entry authority, recording which one authorized entry per cycle.
+Both authorities are independently valid; they are not required to enter sleep simultaneously. Phase 7d/7e admit real slow-wave consolidation whenever *either* authority reports sleep.
 
-Phase 7d's candidate pool is composed of three tracks: established
-anchors, reactivated survivors, and novel hypotheses. Reactivation of
-survivors (hypotheses with 1 or 2, but not yet 3, confirmed reinforced
-consolidation cycles) uses a persistent, fair, rotating cursor per
-survival level — a deliberate mechanism directly analogous to synaptic
-priming/reconsolidation, not a random re-draw from the entire hypothesis
-population and not an efficiency optimization. This is now directly
-observable in the GUI (see GUI State below).
+### Runtime Phase Structure
+
+The effective runtime architecture, top to bottom:
+
+1. Context observation and integrated hypothesis learning
+2. Phase 0 — lexical boundary observation (new)
+3. Strategy refinement, outcome closure, and observation memory
+4. Context expansion and effectiveness evaluation
+5. Strategy selection, experiment memory, and outcome learning
+6. Outcome-driven strategy diversification
+7. Stage-B gap detection (new, productive)
+8. Context expansion and gap closure
+9. Phase-5f context-expansion effectiveness and adaptive windowing
+10. Phase-5g context strategy selection and experiment memory
+11. Phase-5h strategy-experiment outcome learning
+12. Phase-5i outcome-driven context strategy diversification
+13. Phase-6a offline replay and meta-plasticity
+14. Phase-6b replay effectiveness evaluation
+15. Phase-6c bias persistence and self-regulating meta-control
+16. Phase-6d saturation homeostasis and meta-metaplasticity
+17. Phase-7a adenosine homeostasis
+18. Phase-7b endocannabinoid regulation
+19. Phase-7b1 wake-chain bridging
+20. Runtime acceleration (perf0)
+21. Phase-7c adaptive boundaries, E/I balance, and sigmoid soft clipping
+22. Connection-layer acceleration (perf3)
+23. Phase-7d slow-wave sleep and down-selection
+24. Phase-7e histamine wake/arousal regulation
+25. Phase-7f orexin wake-endurance regulation
+26. Phase-7g BDNF growth and consolidation regulation
+27. Phase-7cort stability observation and guarded Cortisol Stage 2
+28. Cooperative six-core neuromodulator and sleep/wake authority
+29. Guarded Stage-B hypothesis graduation
+30. Stage-B contradiction detection (new, productive)
+31. Stage-B hypothesis revision (new, productive)
+32. Stage-B fact promotion (new, productive)
+33. Non-productive shadow recheck runtime
+34. Stage-B gapflow runtime contract (chain top)
 
 ### Efraimidis-Spirakis Sampling / Sigmoid Soft Clipping / E/I Balance
 
-Both mechanisms are intact. The guarded kernel-comparison path used for
-E/I balance only enforces (and only raises) when explicitly running in
-opt-in `kernel_guarded` mode; default production cycles never crash from
-this path, including at neuromodulator boundary values near 0.05/0.95.
-
-### Histamine, Orexin, BDNF, and Cortisol
-
-Real production data confirms histamine oscillating cleanly with correct
-regime transitions; orexin and BDNF growing slowly and monotonically in
-step with reading progress; cortisol remaining low ("calm") throughout.
+Both mechanisms are intact. The guarded kernel-comparison path used for E/I balance only enforces (and only raises) when explicitly running in opt-in `kernel_guarded` mode; default production cycles never crash from this path, including at neuromodulator boundary values near 0.05/0.95.
 
 ### GUI State
 
-The GUI displays all twelve neuromodulators via a dashboard that reuses
-its Tk canvas items across the entire run instead of deleting and
-recreating them on every tick, and skips per-neuromodulator canvas
-updates when the underlying value has not changed beyond display
-precision (±0.005) — updating on every real learning cycle regardless of
-which tab is currently visible.
-
-The "Import & Jobs" tab now also displays the internal state of Phase
-7d's survivor-reactivation queue: current queue size at each survival
-level (1 or 2 confirmed cycles), the current rotating cursor position
-per level, and a rough estimate (in real cycles) of how long a full pass
-through the current queue would take at the last observed reactivation
-rate and sleep-cycle fraction. This is a purely observational,
-read-only addition — it mirrors Phase 7d's own candidate-selection query
-exactly but does not alter, gate, or write to Phase 7d's state in any
-way.
-
-The "Datenbank" and "Fakten/Relationen" tabs — whose Treeview
-repopulation queries scale with total database size — only refresh
-while actually visible, with an immediate one-off refresh on tab switch.
-
-The mood/mission-control indicator reflects both sleep authorities (see
-above). Per-cycle diagnostics and periodic corpus/database statistics
-are cached rather than re-queried on every tick, keeping the GUI
-responsive at large database sizes (confirmed stable at 13.6+ GB after
-a targeted fix to an unconditionally-run, uncached statistics query that
-had become expensive once the `chunks` table reached its final size at
-100% corpus completion).
-
-One visible autonomous GUI cycle contains five real backend cycles, each
-with its own diagnostic evaluation and progress reporting.
-
-### Stage-B Functional State
-
-**Active:** guarded Cortisol Stage 2 regulation (moved from observer to
-applied mode; verified functionally correct under simulated stress, see
-Current Validation Status above) and guarded hypothesis graduation (36
-hypotheses graduated to date). Both remain within their existing
-warm-up/budget/cooldown/critic gates. Facts, Relations, and Questions
-writes remain fully disabled regardless.
-
-Because Phase-5g experiments remain productively closed (a deliberate
-Stage-B safety boundary, not a defect), `effectiveness`,
-`exploration_bias`, and `plasticity_level` remain at their initial
-values, and the `_critic_gate` has so far always operated in its
-fallback "no snapshot available" mode rather than performing an
-independent evaluation — this has been directly confirmed, cycle by
-cycle, against the real database, and is expected, correct behavior
-until Phase-5g experiments are deliberately opened as a separate, later
-step. All 36 graduations to date were therefore gated solely by the
-consolidation-survival criterion, not additionally cross-checked by the
-critic.
-
-The near-complete halt in new graduations since cycle 1,641 (0 further
-graduations across ~9,900 subsequent cycles, despite the underlying
-Phase-7d consolidation-survivor pipeline continuing to feed new
-single-confirmation entries throughout) is explained by queue size, not
-a blockage: at 1,721 currently-queued single-confirmation hypotheses and
-a small, fixed per-sleep-cycle reactivation capacity, it simply takes
-many hundreds of real cycles for the fair, rotating reactivation queue
-(see Adenosine and Slow-Wave Sleep above) to give every waiting
-hypothesis its next chance at a second confirmation — patience, not a
-defect. This is now directly observable via the new GUI queue display.
-
-### Current Safety Boundary
-
-Re-confirmed intact throughout the entire real production run
-(facts/relations/questions counts observed at `[0, 0, 0]` at every
-logged checkpoint): direct Facts, Relations, and Questions writes remain
-closed, as does Fact promotion outside consolidation. Cortisol Stage 2
-and hypothesis graduation write only within their own already-guarded,
-already-verified scope (six canonical neuromodulator nudges bounded by
-cap/budget/cooldown; a single `role` field update per graduated
-hypothesis) — neither opens any of the three core write locks.
-
-A vector database remains explicitly deferred (see Roadmap below).
-
-### Schema and Bootstrap Discipline
-
-The central bootstrap (`db_bootstrap.ensure_database_exists()`) runs
-automatically on every real program start (`main.py --gui` /
-`--user-gui`). All schema-dependent modules are self-healing regardless
-of how or whether the database was bootstrapped beforehand.
-
-Key/value reads continue to follow the repository contract:
-`return dict(con.execute("SELECT key,value FROM " + table).fetchall())`
-
-### Current Evidence Boundary
-
-Proven via real, large-scale production operation: multi-day autonomous
-learning stability at full corpus scale (100% of a 167,661-chunk corpus,
-1.59M+ active hypotheses, 11,500+ real cycles, no data loss or
-corruption), a clean 1,500-cycle formal drift validation with zero
-divergent signals, correct independent operation of both sleep
-authorities, correct E/I regulation at neuromodulator boundary values,
-sustained GUI responsiveness at 13.6+ GB database scale, functionally
-verified Cortisol Stage 2 behavior under simulated stress, and 36 real,
-consolidation-gated hypothesis graduations.
-
-Still not proven:
-- natural cooperative-authority Sleep entries under real conditions (the
-  cooperative score has not yet been observed crossing its own
-  threshold; whether it ever should, or whether the threshold/weighting
-  needs revisiting, remains an open, deliberately low-priority question)
-- Cortisol Stage 2 intervention under genuine (not simulated) production
-  stress (allostatic_load has never yet reached the 0.6 threshold live)
-- critic-gated (as opposed to consolidation-only-gated) hypothesis
-  graduation, pending Phase-5g opening
-- semantic learning effectiveness / real-user dialogue usefulness
-- behavior at corpus/database scales significantly beyond the current
-  ~13.6 GB (see Roadmap: full German Wikipedia scaling)
-- readiness for productive Fact promotion
+The GUI displays all twelve neuromodulators, corpus/hypothesis/fact counters, the Phase-7d survivor-reactivation queue, and — new — a per-parameter phasic/tonic/tonic-weight transparency line reflecting the fixed dual-writer architecture between the cooperative core authority and Phase 6a. A toggleable, continuous CSV value logger can record one row per GUI tick (all displayed values, filename stamped with date and time including seconds), and a separate, standalone CSV viewer (toggleable/overlayable curves, distributed as a standalone EXE as well as a plain Python package for Linux use) is available for offline graphical analysis, independent of the running BrainStem process.
 
 ## Next Major Step
 
-1. Continue observing the hypothesis-graduation reactivation queue (now
-   visible in the GUI) over further real cycles, to confirm that
-   graduations resume at a rate consistent with the queue-size
-   explanation once enough cycles accumulate — no code change is
-   planned or needed unless this observation contradicts the current
-   understanding.
-2. Begin structured evaluation of whether and how to open
-   `phase5g_experiment_outcomes` (at minimum in shadow/observed-only
-   mode first, per the project's established activation discipline),
-   since this is the single dependency currently keeping both the
-   critic-gate and `effectiveness`/`exploration_bias`/
-   `plasticity_level` in their fallback states. This is a distinct,
-   separately gated decision from opening any of the Facts/Relations/
-   Questions write locks and does not imply or require opening those.
-3. Only after (1) and, if pursued, (2) are further along: revisit the
-   Facts/Relations/Questions write-lock roadmap below.
+1. Continue observing the newly opened Stage-B write chain (gap detection → contradiction detection → hypothesis revision → fact promotion) over further real cycles.
+2. Clarify why `phase5g_experiment_outcomes` remains structurally empty even as facts are already being produced under the opened write paths, and whether this reflects an architectural gap in how the new chain and the pre-existing Phase-5g experiment population relate to each other.
+3. Continue calibrating the Lexical Emergence layer's open parameters (context window *k*, entropy threshold) against the real, already-imported corpus before considering Step 3/4 of its implementation plan (calibration, consolidation integration).
+4. Run the Tadros/Bazhenov-motivated catastrophic-forgetting protection test (import a second, topically distinct corpus and measure whether the first corpus's already-stabilized hypotheses/facts are protected, degraded, or reinforced).
 
 ## Roadmap
 
 | Stage | Status | Gating condition to proceed |
 |---|---|---|
 | **Stage A — Core stability** | Complete: 100% corpus completion, 11,500+ real cycles, clean 1,500-cycle formal drift run ("konvergiert", zero divergent signals) | Complete |
-| **Stage B — Guarded graduation** | Active: Cortisol Stage 2 applied (functionally verified under simulated stress, not yet triggered live) and hypothesis graduation active (36 hypotheses graduated) | Ongoing observation; no further gating condition to proceed further within Stage B itself |
-| **Hypothesis graduation (`uncertain_hypothesis` → `stable_hypothesis`)** | Active, consolidation-gated: 36 graduated to date, further graduations expected to resume as the reactivation queue (currently 1,721 single-confirmation hypotheses) cycles through | Currently gated only by the ≥3-confirmed-consolidation criterion; critic-gate cross-check pending Phase-5g opening (see below) |
-| **Opening `phase5g_experiment_outcomes` (shadow/observed-only first)** | Not yet started | Needed to enable genuine critic-gate evaluation and to unfreeze `effectiveness`/`exploration_bias`/`plasticity_level`. Distinct from, and does not require, opening any Facts/Relations/Questions write lock |
-| **Opening the productive write locks (Facts / Relations / Questions / Fact promotion)** | Deliberately closed; not evaluated | Must remain closed until: hypothesis graduation itself has run stably over a real multi-cycle window (in progress); a dedicated validation pass confirms graduated facts carry a complete, correct provenance chain back to source chunks; and an explicit, separate decision is made to open each write path one at a time (Facts before Relations before Questions), never all at once. No timeline is set — this is the project's core "no black box, no unearned answers" safety guarantee and is not to be relaxed by schedule pressure |
-| **Full corpus scaling (complete German Wikipedia)** | Deliberately deferred | Rough estimate from current throughput: ~13.5 GB of text-only content, ~3.4M chunks, ~33M hypotheses, ~0.9 TB resulting database, ~27–28 days of continuous processing at observed throughput — order-of-magnitude only, not a commitment |
-| **Vector database evaluation** | Deliberately deferred per project's own architecture-checkpoint rule | Only once stable hypothesis identities exist (post-graduation, in progress), a concrete semantic-retrieval use case is identified, requirements are measurable, and a read-only/shadow comparison against the SQLite baseline is performed. Must never replace the canonical relational source or open productive gates — the project's provenance-first, no-black-box guarantee takes priority over retrieval convenience |
-| **Symbolic reasoning plugin (deterministic, non-LLM rule engine)** | Concept documented, not scheduled | See `docs/symbolic_reasoning_plugin_concept.md`. Gated behind Stage-B graduation and the write-lock roadmap above; a validated symbolic rule becoming productive is itself a new class of productive write and must be gated at least as strictly as Fact promotion |
-| **Multi-core / multi-process learning** | Explicitly out of scope for now | Acknowledged as a real, non-trivial architectural undertaking (Python's GIL requires `multiprocessing`, not `threading`, for genuine parallel compute; SQLite's single-writer model would require careful cross-process coordination). Not currently planned; current single-core throughput is considered acceptable |
+| **Stage B — Guarded graduation** | Active: Cortisol Stage 2 applied, hypothesis graduation active | Ongoing observation |
+| **Hypothesis graduation** (`uncertain_hypothesis` → `stable_hypothesis`) | Active, consolidation-gated | Ongoing |
+| **Autonomous Lexical Emergence (Phase 0)** | Active in shadow/observe-and-consolidate mode, schema in place, open calibration parameters (*k*, entropy threshold) not yet finalized | Calibration against real corpus, then consolidation-integration decision |
+| **Stage-B full write-path chain** (gap detection, contradiction detection, hypothesis revision, fact promotion) | Active — declared the new, valid project position as of the current experiment; full backup taken as fallback | Ongoing observation; open question on `phase5g_experiment_outcomes` interaction |
+| **Opening the productive write locks** (Facts / Relations / Questions / Fact promotion) | Open (experimental project position) | Ongoing observation of the full chain; this project's "no black box, no unearned answers" guarantee continues to apply to every promoted fact via its source-hypothesis link and automatic retraction on revision |
+| **Full corpus scaling** (complete German Wikipedia) | Deliberately deferred | Order-of-magnitude estimate only, not a commitment |
+| **Vector database evaluation** | Deliberately deferred per project's own architecture-checkpoint rule | Only once stable hypothesis identities exist, a concrete semantic-retrieval use case is identified, requirements are measurable, and a read-only/shadow comparison against the SQLite baseline is performed |
+| **Symbolic reasoning plugin** (deterministic, non-LLM rule engine) | Concept documented, not scheduled | Gated behind Stage-B graduation and the write-lock roadmap; a validated symbolic rule becoming productive is itself a new class of productive write and must be gated at least as strictly as fact promotion |
+| **Multi-core / multi-process learning** | Explicitly out of scope for now | Not currently planned |
 
 ## Core Philosophy
 
-Traditional semantic systems often focus on the **what**: storing and retrieving content. BrainStem focuses on the **how**: learning how context, uncertainty, evidence, contradiction, revision, and consolidation interact over time.
-
-A corpus is treated as training substrate rather than as a static knowledge base. The active learning architecture forms and revises context hypotheses, preserves errors as learning material, and delays permanent knowledge promotion until consolidation and safety gates are validated.
+Traditional semantic systems often focus on the **what**: storing and retrieving content. BrainStem focuses on the **how**: learning how context, uncertainty, evidence, contradiction, revision, and consolidation interact over time — now extended to a second, character-level layer that learns how recurring units and boundaries emerge from raw text itself. A corpus is treated as training substrate rather than as a static knowledge base.
 
 Core principles:
-
-- **Learning before rules:** no fixed lexical blacklists or hand-authored word-role mappings in the active learning path.
-- **Errors remain evidence:** unresolved and contradicted hypotheses remain available for later revision.
-- **Consolidation before promotion:** permanent fact promotion stays closed until the staged write-gating design is validated.
-- **Neuromodulation governs learning:** learning rate, error weighting, revision, confidence, exploration, inhibition, attention, stabilization, and consolidation are state-dependent.
-- **Measure before changing:** diagnostics, audits, drift tests, and Shadow experiments precede active-control changes.
+- **Learning before rules:** no fixed lexical blacklists or hand-authored word-role mappings in the active learning path — including at the character level.
+- **Errors remain evidence:** unresolved and contradicted hypotheses remain available for later revision; a fact promoted from a hypothesis is retracted, not silently overwritten, if that hypothesis is later reversed.
+- **Consolidation before promotion:** every fact traces back to a specific source hypothesis that has independently survived the project's own consolidation and graduation gates.
+- **Neuromodulation governs learning:** learning rate, error weighting, revision, confidence, exploration, inhibition, attention, stabilization, and consolidation are state-dependent, and the same division of labor is reused rather than duplicated for new hypothesis types.
+- **Measure before changing:** diagnostics, audits, drift tests, and shadow experiments precede active-control changes.
 - **No hidden legacy paths:** obsolete modules and duplicate learning paths are removed rather than retained as inactive code.
-
 
 ## What is BrainStem really
 
 **BrainStem** is an autonomous software architecture designed for continuous, self-improving data processing and knowledge management. At its core, the system operates through an Autonomous Loop that orchestrates a chain of learning phases to ingest, analyze, and refine information without manual intervention.
 
-The biological terminology used throughout the project's technical documentation, including terms such as "neuromodulators," "sleep," or "homeostasis," is not decorative. These labels are functional designators for mathematical state variables and algorithmic control mechanisms. They describe real control functions, learning rates, error weightings, and consolidation thresholds, not simulated chemistry. The values are floats, not molecules. The behavior is biologically inspired, but the implementation is strictly mathematical.
+The biological terminology used throughout the project's technical documentation, including terms such as "neuromodulators," "sleep," or "homeostasis," is not decorative. These labels are functional designators for mathematical state variables and algorithmic control mechanisms. The values are floats, not molecules. The behavior is biologically inspired, but the implementation is strictly mathematical.
 
 **The system's primary mechanics include:**
 
-**Dynamic Steering Variables:** The variables referred to as "digital messenger substances" are dynamic meta-parameters. These numerical equivalents, such as "dopamine" or "serotonin," adjust the system's learning rate, error weighting, and exploration strategies in real time.
+**Dynamic Steering Variables:** Digital messenger substances are dynamic meta-parameters that adjust the system's learning rate, error weighting, and exploration strategies in real time.
 
-**Active versus Offline Processing:** The system cycles between an active ingestion phase and an optimization phase. During active processing, the system extracts context hypotheses from new data inputs. During the optimization phase, referred to as "sleep," the system re-evaluates recorded hypotheses through batch replay and consolidation to improve overall accuracy and stability.
+**Active versus Offline Processing:** The system cycles between active ingestion and an offline optimization phase ("sleep") in which recorded hypotheses are re-evaluated through batch replay and consolidation.
 
-**Knowledge Distillation:** By comparing new data against existing stable records, the system filters out inconsistencies and promotes reliable information into its long-term memory structures.
+**Character-Level Emergence:** Alongside sentence-level hypotheses, a branching-entropy-driven process observes the raw character stream to propose, and — through the same consolidation/graduation machinery — stabilize, candidate word-boundary units.
 
-**Equilibrium Control:** To prevent control variables from reaching unproductive extreme values, or saturation, the system uses stability monitoring routines. These routines act as a feedback mechanism that pulls meta-parameters back into a functional range when the system detects a performance plateau or excessive variance.
+**Knowledge Distillation:** By comparing new data against existing stable records, the system filters out inconsistencies and, in the current experimental write-path stage, promotes reliable information into its long-term fact store — while retaining the ability to retract a fact if the underlying hypothesis is revised.
 
-**Adaptive Boundaries:** The limits within which the system operates are not hardcoded but self-regulating. The software learns from its own performance metrics, referred to as L2M metrics, to expand or contract its processing thresholds based on the complexity of the data it encounters.
+**Equilibrium Control:** Stability monitoring routines act as a feedback mechanism that pulls meta-parameters back into a functional range when the system detects a performance plateau or excessive variance.
 
-In summary, the project is a recursive learning engine that uses biologically derived control logic to implement a highly flexible, self-governing system for automated knowledge acquisition.
+**Adaptive Boundaries:** The limits within which the system operates are not hardcoded but self-regulating, expanding or contracting processing thresholds based on the complexity of the data encountered.
+
+In summary, the project is a recursive learning engine that uses biologically derived control logic to implement a highly flexible, self-governing system for automated knowledge acquisition, now including an emerging capacity to discover the very units of language it reasons about.
 
 ---
 
-Every answer the system produces is retrieved from proof, not generated. Each fact in the knowledge base carries a complete provenance chain, from the final anchor back through its consolidation cycles, its originating hypotheses, and down to the exact source chunks and documents that justified its creation. There is no black box. If the system states something, it can show why it states it. Knowledge enters the system as raw observation, but it is never exposed to a user until it has passed through a multi-phase verification pipeline: hypothesis generation, strategic outcome testing, sleep-replay reinforcement, and guarded graduation. Only then does it become an anchor, a deductively usable fact. Until that point, it remains in the shadow layer, unable to influence any user-facing output. This creates a hard epistemic boundary. The system cannot hallucinate an answer it has not earned. When no verified anchor exists for a query, it does not invent a plausible response, and it reports the gap. The safety is architectural, not statistical. Trust is not placed in a model's weights, but in a transparent, auditable process that can be inspected, challenged, and verified, just like an engineering safety circuit.
+Every promoted fact carries a complete provenance chain, from the final fact through its source hypothesis, its consolidation cycles, and down to the exact source chunks and documents that justified its creation — and can be automatically retracted if that source hypothesis is later revised. There is no black box. If the system states something, it can show why it states it, and it can take it back if the evidence changes.
 
 ---
 
@@ -422,32 +217,22 @@ Every answer the system produces is retrieved from proof, not generated. Each fa
 
 ---
 
-<a href="assets/Autonomous_Learning_Architecture_Diagram.png" target="_blank">
-  <img src="assets/Autonomous_Learning_Architecture_Diagram.png" alt="Project-Structure" width="250" />
-</a>
+[Project-Structure](assets/Autonomous_Learning_Architecture_Diagram.png)
 
 ---
 
 BrainStem does not operate as a continuously coupled system of differential equations. Instead, it traverses a cyclic state graph: each phase activates at most 2–3 dominant neuromodulators, while the remainder are kept inactive or passive. This sequential architecture prevents interaction cascades and enables deterministic debugging.
-
----
 
 ### Two-Stage Data Pipeline
 
 | Stage | Name | Description |
 |---:|---|---|
 | 1 | Inference-free pre-parsing | A raw corpus such as a Wikipedia ZIM file is extracted, structured, and partitioned into the chunk store before autonomous learning begins. |
-| 2 | Autonomous learning | `AutonomousLoop` processes prepared chunks while the neuromodulatory and consolidation chain reacts to the evolving internal state. |
+| 2 | Autonomous learning | `AutonomousLoop` processes prepared chunks while the neuromodulatory, consolidation, and — since the experimental opening — full write-path chain reacts to the evolving internal state. |
 
 ### Runtime Chain
 
-Runtime phases are loaded through `ki_system/phase_registry.py`. The registry defines load order, isolates module-loading failures, and verifies the managed-cycle top phase.
-
-Current chain, top to bottom:
-
-`7cort Cortisol → 7g BDNF → 7f Orexin → 7e Histamine → 7d Slow-Wave → 7c E/I → 7b1 Wake-Chain Bridge → 7b Endocannabinoids → 7a Adenosine → 6d → 6c → 6b → 6a`
-
-The cleaned chain uses Phase 7b1 as orchestrator so a normal global cycle produces one complete Phase-6a replay path, one Phase-7c E/I event, one Phase-7d cycle, and one workpoint-observer event.
+Runtime phases are loaded through `ki_system/phase_registry.py`. The registry defines load order, isolates module-loading failures, and verifies the managed-cycle top phase (chain top: Stage-B gapflow runtime contract).
 
 ## Digital Neuromodulator Cockpit
 
@@ -463,14 +248,12 @@ BrainStem currently uses **12 digital neuromodulators**. Their values are normal
 | Acetylcholine | novelty, attention, and structural-revision signal |
 | Adenosine | sleep-pressure homeostat |
 | Endocannabinoids | retrograde gain control |
-| Cortisol | top-level stability watcher and planned soft regulator |
+| Cortisol | top-level stability watcher and guarded soft regulator (Stage 2 active) |
 | Histamine | wake and arousal signal |
 | Orexin | reading-endurance and curiosity-related drive |
 | BDNF | activity-dependent growth and consolidation substrate |
 
-GABA currently regulates **system-level inhibition**. It does not identify or suppress individual words, relations, or extraction errors.
-
-All 12 displays are connected both statically and at runtime in the GUI.
+GABA currently regulates **system-level inhibition**. It does not identify or suppress individual words, relations, or extraction errors. All 12 displays are connected both statically and at runtime in the GUI.
 
 ## Sleep, Consolidation, and Selection
 
@@ -480,69 +263,26 @@ Phase 6a performs offline-style replay after the wake path. Phase 6b evaluates r
 
 ### Slow-Wave Substructure
 
-Phase 7d adds sub-1-Hz up/down-state processing with:
-
-- stochastic reactivation
-- adaptive thresholds
-- activity-dependent participation
-- survivor and weakening statistics
-- anchor interleaving
-- self-regulating down-selection
-
-A passive Phase-7d workpoint observer records longitudinal E/I state, activity, survivor ratios, reference movement, and virtual adjustment proposals without applying them.
+Phase 7d adds sub-1-Hz up/down-state processing with stochastic reactivation, adaptive thresholds, activity-dependent participation, survivor and weakening statistics, anchor interleaving, and self-regulating down-selection. Both sentence-level and lexical-boundary hypotheses share this same candidate pool, distinguished only by their `role` value.
 
 ### E/I State Separation
 
-The E/I path distinguishes:
-
-- **Phase-6a drive:** `glutamate_drive` and `gaba_drive`
-- **active Phase-7c state:** `glutamate_state` and `gaba_state`
-- **compatibility mirror:** active values remain available to existing readers and GUI components
-- **Shadow state:** non-applying recurrent candidates can be evaluated separately
-
-This separation prevents Phase 6a from overwriting the active Phase-7c state on the next cycle.
-
-## Stage B — Controlled Preparation
-
-Stage B will not open all write capabilities at once. The controlled sequence is:
-
-1. introduce Cortisol Stage 2 as a gentle regulator
-2. validate it in observer operation before allowing applied control
-3. allow only consolidation-gated graduation from `uncertain_hypothesis` to `stable_hypothesis`
-4. require at least **three survived Phase-7d consolidations**
-5. apply `_critic_gate`
-6. use warm-up dampening
-7. begin with a budget of **one promotion per cycle**
-8. keep the facts table closed during the initial hypothesis-graduation stage
-9. assess true fact promotion separately at a later milestone
-
-Stage B remains blocked until the current Shadow bridge has demonstrably processed real candidates.
+The E/I path distinguishes Phase-6a drive (`glutamate_drive`/`gaba_drive`), active Phase-7c state (`glutamate_state`/`gaba_state`), a compatibility mirror for existing readers/GUI components, and a non-applying shadow state for recurrent candidates. This separation prevents Phase 6a from overwriting the active Phase-7c state on the next cycle.
 
 ## Safety Locks
 
-The following productive paths remain disabled:
+As of the current experimental project position, the following paths — previously listed here as disabled — are now open:
 
-- direct fact writes
-- direct relation writes
-- direct question writes
-- permanent fact promotion
-- direct Phase-5f / Phase-5g / Phase-5i experimental writes from the new bridge
-- direct attention and internal-gap writes from the new bridge
+- Direct fact, relation, and question writes.
+- Permanent fact promotion, gated through Stage-B graduation and reversible via hypothesis revision.
+- Direct Phase-5f/5g/5i experimental writes.
+- Direct attention and internal-gap writes.
 
-The active architecture does not use word blacklists or hard-coded linguistic filters.
+This reflects a deliberate, explicitly framed experiment declared as the current project position, undertaken with a full backup as a fallback point — not a relaxation of the project's underlying provenance guarantee, since every fact remains traceable to, and retractable from, its source hypothesis. The active architecture continues to use no word blacklists or hard-coded linguistic filters.
 
 ## Database and Schema Discipline
 
-BrainStem uses `ki_memory.sqlite3` in the project root. The database is created automatically when absent.
-
-Schema rules:
-
-- schema changes must be reflected in the bootstrap in the same delivery
-- `ensure_schema` must be idempotent
-- `_self_check_schema` must run before writes
-- every written column must already be declared in `SCHEMA_TABLES`
-- compile checks, smoke tests, and intermediate checks are required before delivery
-- structural changes require a full backup first
+BrainStem uses `ki_memory.sqlite3` in the project root. The database is created automatically when absent. Schema rules: schema changes must be reflected in the bootstrap in the same delivery; `ensure_schema` must be idempotent; `_self_check_schema` must run before writes; every written column must already be declared in `SCHEMA_TABLES`; compile checks, smoke tests, and intermediate checks are required before delivery; structural changes require a full backup first.
 
 ### Corpus-Preserving Learning Reset
 
@@ -552,22 +292,9 @@ Learning state can be reset without re-importing the corpus. Preserved content i
 
 Performance indexes are ensured during bootstrap. Bounded pruning is limited to explicitly approved history tables. Active state, Phase-5f/5g/5i data, and other protected tables are excluded from generic pruning.
 
-Periodic autonomous execution of the approved pruning routine remains an open maintenance item.
-
 ## Sensory Deprivation and Drift Report
 
-The GUI includes a sensory-deprivation mode that skips new wake/read input while replay, consolidation, and neuromodulatory dynamics continue.
-
-It provides:
-
-- start and stop controls
-- optional cycle limits
-- per-cycle CSV diagnostics
-- bounded/downsampled live graphs
-- signal-level and overall drift verdicts
-- fail-safe cleanup when the run completes or is interrupted
-
-The completed **1,344-cycle** no-input test supported the Stage-A stability decision.
+The GUI includes a sensory-deprivation mode that skips new wake/read input while replay, consolidation, and neuromodulatory dynamics continue. It provides start/stop controls, optional cycle limits, per-cycle CSV diagnostics, bounded/downsampled live graphs, signal-level and overall drift verdicts, and fail-safe cleanup when the run completes or is interrupted. The completed 1,500-cycle no-input test supersedes the historical 1,344-cycle baseline for the Stage-A stability decision.
 
 ## Running the System
 
@@ -589,103 +316,32 @@ python main.py --gui
 
 ### GUI Areas
 
-- Import and Jobs
+- Import and Jobs (including the toggleable CSV value logger)
 - Export and Configuration
 - Drift Report
-- live 12-neuromodulator display
-- corpus-coverage and cycle-progress indicators
-- bounded diagnostic logs and graphs
-- cooperative worker shutdown
+- Live 12-neuromodulator display, corpus-coverage and cycle-progress indicators, bounded diagnostic logs and graphs, cooperative worker shutdown
 
-The GUI remains an experimental testing interface; individual areas may still be incomplete.
+The GUI remains an experimental testing interface; individual areas may still be incomplete. A separate, standalone CSV viewer application (toggleable/overlayable curves) is available for offline analysis of logged sessions.
 
 ## ZIM Import
 
-A Windows `zimdump.exe` build and its required DLL files must be placed in the project root next to `main.py`. Users must provide their own ZIM corpus.
-
-The current development corpus is the German Wikipedia category **Computer**, imported into roughly 102,000 chunks.
+A Windows `zimdump.exe` build and its required DLL files must be placed in the project root next to `main.py`. Users must provide their own ZIM corpus. The current development corpus is the German Wikipedia categories *Physics* and *Computer*.
 
 ## Academic References
 
 This project builds upon concepts, algorithms, and theoretical frameworks established in the following academic literature:
 
-1. **Hamilton, William L.** (2020)  
-   *Graph Representation Learning*. Morgan & Claypool Publishers (McGill University).
-
-2. **Watkins, Yijing; Kim, Edward; Kenyon, Garrett T.** (2020)  
-   *Using Sinusoidally-Modulated Noise as a Surrogate for Slow-Wave Sleep to Accomplish Stable Unsupervised Dictionary Learning in a Spike-Based Sparse Coding Model*. Frontiers in Computational Neuroscience.
-
-3. **Tadros, Timothy; Tran, Gia-Bao M.; Krishnan, Giri P.; Bazhenov, Maxim** (2022)  
-   *Biologically Inspired Sleep Algorithm for Reducing Catastrophic Forgetting in Neural Networks*. eLife / bioRxiv.
-
-4. **Fischbacher, Thomas; Comsa, Iulia M.; Potempa, Krzysztof; Firsching, Moritz; Versari, Luca; Alakuijala, Jyrki** (2020)  
-   *Intelligent Matrix Exponentiation*. arXiv preprint arXiv:2008.03926.
-
-5. **Butz, Markus; van Ooyen, Arjen** (2013)  
-   *Homeostatic structural plasticity – a key to neuronal network formation and repair*. PLoS Computational Biology.
-
-6. **Parker, Paul A.; Holan, Scott H.; Ravishanker, Nalini** (2020)  
-   *Nonlinear Time Series Classification Using Bispectrum-based Deep Convolutional Neural Networks*. arXiv preprint arXiv:2003.02353.
-
-7. **Rončević, Igor; et al.** (2023)  
-   *Supplementary Materials for A molecule with half-Möbius topology*. Nature Chemistry.
-
-<details>
-<summary><b>Click to expand BibTeX citations</b></summary>
-
-```bibtex
-@book{hamilton2020graph,
-  title={Graph Representation Learning},
-  author={Hamilton, William L.},
-  year={2020},
-  publisher={Morgan \& Claypool Publishers}
-}
-
-@article{watkins2020using,
-  title={Using Sinusoidally-Modulated Noise as a Surrogate for Slow-Wave Sleep to Accomplish Stable Unsupervised Dictionary Learning in a Spike-Based Sparse Coding Model},
-  author={Watkins, Yijing and Kim, Edward and Kenyon, Garrett T.},
-  journal={Frontiers in Computational Neuroscience},
-  year={2020}
-}
-
-@article{tadros2022biologically,
-  title={Biologically Inspired Sleep Algorithm for Reducing Catastrophic Forgetting in Neural Networks},
-  author={Tadros, Timothy and Tran, Gia-Bao M. and Krishnan, Giri P. and Bazhenov, Maxim},
-  year={2022}
-}
-
-@article{fischbacher2020intelligent,
-  title={Intelligent Matrix Exponentiation},
-  author={Fischbacher, Thomas and Comsa, Iulia M. and Potempa, Krzysztof and Firsching, Moritz and Versari, Luca and Alakuijala, Jyrki},
-  journal={arXiv preprint arXiv:2008.03926},
-  year={2020}
-}
-
-@article{butz2013homeostatic,
-  title={Homeostatic structural plasticity--a key to neuronal network formation and repair},
-  author={Butz, Markus and van Ooyen, Arjen},
-  journal={PLoS Computational Biology},
-  year={2013}
-}
-
-@article{parker2020nonlinear,
-  title={Nonlinear Time Series Classification Using Bispectrum-based Deep Convolutional Neural Networks},
-  author={Parker, Paul A. and Holan, Scott H. and Ravishanker, Nalini},
-  journal={arXiv preprint arXiv:2003.02353},
-  year={2020}
-}
-
-@article{roncevic2023molecule,
-  title={Supplementary Materials for A molecule with half-M{\"o}bius topology},
-  author={Ron{\v{c}}evi{\'c}, Igor and others},
-  journal={Nature Chemistry},
-  year={2023}
-}
-```
-</details>
-
-
----
+1. **Saffran, Jenny R.; Aslin, Richard N.; Newport, Elissa L.** (1996) *Statistical Learning by 8-Month-Old Infants*. Science.
+2. **Aslin, Richard N.; Saffran, Jenny R.; Newport, Elissa L.** (1998) *Computation of Conditional Probability Statistics by 8-Month-Old Infants*. Psychological Science.
+3. **Fló, Ana; Benjamin, Lucas; Palu, Marisa; Dehaene-Lambertz, Ghislaine** (2022) *Sleeping neonates track transitional probabilities in speech but only retain the first syllable of words*. Scientific Reports.
+4. **Zhikov, Valentin; Takamura, Hiroya; Okumura, Manabu** *An Efficient Algorithm for Unsupervised Word Segmentation with Branching Entropy and MDL*.
+5. **Hamilton, William L.** (2020) *Graph Representation Learning*. Morgan & Claypool Publishers (McGill University).
+6. **Watkins, Yijing; Kim, Edward; Sornborger, Andrew; Kenyon, Garrett T.** (2020) *Using Sinusoidally-Modulated Noise as a Surrogate for Slow-Wave Sleep to Accomplish Stable Unsupervised Dictionary Learning in a Spike-Based Sparse Coding Model*.
+7. **Tadros, Timothy; Krishnan, Giri P.; Ramyaa, Ramyaa; Bazhenov, Maxim** (2022) *Biologically Inspired Sleep Algorithm for Reducing Catastrophic Forgetting in Neural Networks*.
+8. **Fischbacher, Thomas; Comsa, Iulia M.; Potempa, Krzysztof; Firsching, Moritz; Versari, Luca; Alakuijala, Jyrki** (2020) *Intelligent Matrix Exponentiation*. arXiv preprint arXiv:2008.03926. (Evaluated; assessed as not relevant to this project's architecture and not adopted.)
+9. **Butz, Markus; van Ooyen, Arjen** (2013/2014) *Homeostatic structural plasticity – a key to neuronal network formation and repair*. BMC Neuroscience / PLoS Computational Biology.
+10. **Parker, Paul A.; Holan, Scott H.; Ravishanker, Nalini** (2020) *Nonlinear Time Series Classification Using Bispectrum-based Deep Convolutional Neural Networks*. arXiv preprint arXiv:2003.02353.
+11. **Rončević, Igor; et al.** *A molecule with half-Möbius topology*. Science (Supplementary Materials, SqDRIFT sampling).
 
 ## Development Notes
 
@@ -693,16 +349,13 @@ This project builds upon concepts, algorithms, and theoretical frameworks establ
 - **Local project folder:** `BrainStem`
 - **Primary runtime:** Python 3.11 on Windows with SQLite
 - **Documentation language:** English, German
-- **Status:** highly experimental and under mathematical and architectural validation
+- **Status:** highly experimental and under mathematical and architectural validation, currently in an explicitly declared full-write-path-open experimental stage
 - **Engineering discipline:** backup, compile check, schema self-check, smoke test, and rollback planning for structural changes
-- **AI-assisted engineering:** development has included collaborative AI assistance. Concept elaboration with ChatGPT, Code generation Claude Opus/Sonnet and ChatGPT 5.6 Depp Thinking, Code review NotebookLM, Gemini and Copilot as critics (no sugarcoat mode)
-
+- **AI-assisted engineering:** development has included collaborative AI assistance. Concept elaboration with ChatGPT, code generation Claude Opus/Sonnet and ChatGPT Deep Thinking, code review NotebookLM, Gemini and Copilot as critics (no sugarcoat mode)
 
 ## Claims and Limitations
 
-BrainStem does not claim that every current hypothesis is meaningful or that the system understands language at a human level. The current objective is to establish and validate the mechanisms by which hypotheses are formed, challenged, revised, inhibited, replayed, and consolidated.
-
-Current zero-result Shadow measurements do not prove a defect and do not prove successful candidate processing. Candidate-flow evidence is the next required result.
+BrainStem does not claim that every current hypothesis is meaningful or that the system understands language at a human level. The current objective is to establish and validate the mechanisms by which hypotheses are formed, challenged, revised, inhibited, replayed, consolidated, and — now — promoted into and retracted from a fact store, as well as the mechanisms by which word-like units might emerge from raw character statistics.
 
 ## Disclaimer
 
