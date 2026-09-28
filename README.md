@@ -32,6 +32,7 @@ YouTube - AI conversation about BrainStem Project
 - [Academic References](#Academic-References)
 - [Development Notes](#development-notes)
 
+---
 ### Current State
 
 #### Current Validation Status
@@ -107,13 +108,13 @@ Beyond the pre-existing six-core neuromodulator engine, eleven of the pipeline's
 | Phase 7d consolidation gate | Acetylcholine | Gais & Born (2004); Hasselmo & McGaughy (2004) |
 
 One coupling — noradrenaline's effect on the ontology layer's minimum cluster size — is deliberately **not** hardcoded in either theoretically predicted direction. Two competing, independently plausible neuroscience findings disagree on the correct sign for this specific parameter, so the system instead learns the sign from its own real, already-recorded promotion/retraction outcomes (requiring a minimum evidence count in each outcome group before committing to either direction), mirroring the same sliding-threshold-homeostasis philosophy already used elsewhere in the system for meta-parameter learning rates.
-
+---
 ### Next Major Step
 - Continue observing the full, now nine-module Stage-B write chain over further real cycles, at real production corpus scale.
 - Re-measure the sleep/wake rhythm period and the ontology-layer's own self-regulating noradrenaline direction against the real, full production corpus rather than only the smaller synthetic corpora used for this session's own calibration and verification runs.
 - Continue calibrating the Lexical Emergence layer's open parameters (context window _k_, entropy threshold) against the real, already-imported corpus.
 - Run the Tadros/Bazhenov-motivated catastrophic-forgetting protection test (import a second, topically distinct corpus and measure whether the first corpus's already-stabilized hypotheses/facts/relations/categories are protected, degraded, or reinforced).
-
+---
 ### Roadmap
 
 <table>
@@ -131,7 +132,7 @@ One coupling — noradrenaline's effect on the ontology layer's minimum cluster 
 <tr><td>**Symbolic reasoning plugin** (deterministic, non-LLM rule engine)</td><td>Concept documented, not scheduled</td><td>Gated behind Stage-B graduation and the write-lock roadmap; a validated symbolic rule becoming productive is itself a new class of productive write and must be gated at least as strictly as fact promotion</td></tr>
 <tr><td>**Multi-core / multi-process learning**</td><td>Explicitly out of scope for now</td><td>Not currently planned</td></tr>
 </table>
-
+---
 ### Core Philosophy
 
 Traditional semantic systems often focus on the **what**: storing and retrieving content. BrainStem focuses on the **how**: learning how context, uncertainty, evidence, contradiction, revision, and consolidation interact over time — extended to a character-level layer that learns how recurring units emerge from raw text, a relational layer that learns how those units connect to each other, a categorical layer that learns how connected units group into categories, and a curiosity layer that learns which of its own unresolved gaps are durable enough to motivate further reading. A corpus is treated as training substrate rather than as a static knowledge base.
@@ -143,6 +144,8 @@ Core principles:
 - **Neuromodulation governs learning:** learning rate, error weighting, revision, confidence, exploration, inhibition, attention, stabilization, and consolidation are state-dependent; the same division of labor is reused, and — new this session — extended with direct, literature-grounded couplings into the pipeline's own thresholds, rather than duplicated for new hypothesis types.
 - **Measure before changing:** diagnostics, audits, drift tests, and shadow experiments precede active-control changes; where two neuroscience findings disagree on a specific coupling's direction, the system learns the direction from its own real outcomes rather than assuming either.
 - **No hidden legacy paths:** obsolete modules and duplicate learning paths are removed rather than retained as inactive code.
+
+---
 
 ### What is BrainStem really
 
@@ -169,8 +172,14 @@ The biological terminology used throughout the project's technical documentation
 In summary, the project is a recursive learning engine that uses biologically derived control logic to implement a highly flexible, self-governing system for automated knowledge acquisition, now spanning word-, relation-, category-, and question-level structure discovery.
 
 Every promoted fact, relation, category, and question carries a complete provenance chain, from the final artifact through its source hypothesis or gap, its consolidation cycles, and down to the exact source chunks and documents that justified its creation — and can be automatically retracted if that source is later revised, dissolved, or habituated. There is no black box. If the system states something, it can show why it states it, and it can take it back if the evidence changes.
-
+---
 ### Architecture
+
+<a href="assets/Project-Structure.png" target="_blank">
+  <img src="assets/Project-Structure.png" alt="Project-Structure" width="200" />
+</a>
+
+---
 
 BrainStem does not operate as a continuously coupled system of differential equations. Instead, it traverses a cyclic state graph: each phase activates at most 2–3 dominant neuromodulators, while the remainder are kept inactive or passive. This sequential architecture prevents interaction cascades and enables deterministic debugging.
 
@@ -185,7 +194,7 @@ BrainStem does not operate as a continuously coupled system of differential equa
 #### Runtime Chain
 
 Runtime phases are loaded through ki_system/phase_registry.py. The registry defines load order (39 entries), isolates module-loading failures, and verifies the managed-cycle top phase (chain top: Stage-B gapflow runtime contract).
-
+---
 ### Digital Neuromodulator Cockpit
 
 BrainStem currently uses **12 digital neuromodulators**. Their values are normalized to [0.0, 1.0] and derived from internal system state under bounded, biologically inspired dynamics and homeostatic constraints.
@@ -207,7 +216,7 @@ BrainStem currently uses **12 digital neuromodulators**. Their values are normal
 </table>
 
 GABA regulates **system-level inhibition and competitive sharpness**. It does not identify or suppress individual words, relations, or extraction errors via any word-level mechanism. All 12 displays are connected both statically and at runtime in the GUI.
-
+---
 ### Sleep, Consolidation, and Selection
 
 #### Sleep Replay and Critic Gate
@@ -221,7 +230,7 @@ Phase 7d adds sub-1-Hz up/down-state processing with stochastic reactivation, ad
 #### E/I State Separation
 
 The E/I path distinguishes Phase-6a drive (glutamate_drive/gaba_drive), active Phase-7c state (glutamate_state/gaba_state), a compatibility mirror for existing readers/GUI components, and a non-applying shadow state for recurrent candidates. This separation prevents Phase 6a from overwriting the active Phase-7c state on the next cycle.
-
+---
 ### Safety Locks
 
 As of the current experimental project position, the following paths are open:
@@ -231,7 +240,7 @@ As of the current experimental project position, the following paths are open:
 - Direct attention and internal-gap writes, including question-chunk feedback's own attention writes.
 
 This reflects a deliberate, explicitly framed experiment declared as the current project position, undertaken with a full backup as a fallback point — not a relaxation of the project's underlying provenance guarantee, since every artifact remains traceable to, and retractable from, its source. The active architecture continues to use no word blacklists or hard-coded linguistic filters.
-
+---
 ### Database and Schema Discipline
 
 BrainStem uses ki_memory.sqlite3 in the project root. The database is created automatically when absent. Schema rules: schema changes must be reflected in the bootstrap in the same delivery; ensure_schema must be idempotent; _self_check_schema must run before writes; every written column must already be declared in SCHEMA_TABLES; compile checks, smoke tests, and intermediate checks are required before delivery; structural changes require a full backup first.
@@ -243,11 +252,11 @@ Learning state can be reset without re-importing the corpus. Preserved content i
 #### Performance Maintenance
 
 Performance indexes are ensured during bootstrap. Bounded pruning is limited to explicitly approved history tables. Active state, Phase-5f/5g/5i data, and other protected tables are excluded from generic pruning.
-
+---
 ### Sensory Deprivation and Drift Report
 
 The GUI includes a sensory-deprivation mode that skips new wake/read input while replay, consolidation, and neuromodulatory dynamics continue. It provides start/stop controls, optional cycle limits, per-cycle CSV diagnostics, bounded/downsampled live graphs, signal-level and overall drift verdicts, and fail-safe cleanup when the run completes or is interrupted. The completed 1,500-cycle no-input test remains the current Stage-A stability baseline.
-
+---
 ### Running the System
 
 From the project root: `python main.py --gui`
@@ -270,11 +279,11 @@ From the project root: `python main.py --gui`
 - Live 12-neuromodulator display, corpus-coverage and cycle-progress indicators, bounded diagnostic logs and graphs, cooperative worker shutdown
 
 The GUI remains an experimental testing interface; individual areas may still be incomplete. A separate, standalone CSV viewer application (toggleable/overlayable curves) is available for offline analysis of logged sessions.
-
+---
 ### ZIM Import
 
 A Windows zimdump.exe build and its required DLL files must be placed in the project root next to main.py. Users must provide their own ZIM corpus. The current development corpus is the German Wikipedia categories _Physics_ and _Computer_.
-
+---
 ### Academic References
 
 This project builds upon concepts, algorithms, and theoretical frameworks established in the following academic literature:
@@ -434,7 +443,7 @@ This project builds upon concepts, algorithms, and theoretical frameworks establ
   year={2023}
 }
 ```
-
+---
 ### Development Notes
 - **Python package:** ki_system
 - **Local project folder:** BrainStem
@@ -443,11 +452,11 @@ This project builds upon concepts, algorithms, and theoretical frameworks establ
 - **Status:** highly experimental and under mathematical and architectural validation, currently in an explicitly declared full-write-path-open experimental stage, now spanning facts, relations, ontology categories, and questions
 - **Engineering discipline:** backup, compile check, schema self-check, smoke test, and rollback planning for structural changes
 - **AI-assisted engineering:** development has included collaborative AI assistance. Concept elaboration with ChatGPT, code generation Claude Opus/Sonnet and ChatGPT Deep Thinking, code review NotebookLM, Gemini and Copilot as critics (no sugarcoat mode)
-
+---
 ### Claims and Limitations
 
 BrainStem does not claim that every current hypothesis is meaningful or that the system understands language at a human level. The current objective is to establish and validate the mechanisms by which hypotheses are formed, challenged, revised, inhibited, replayed, consolidated, and promoted into and retracted from fact, relation, ontology, and question stores, as well as the mechanisms by which word-like units, relations, categories, and durable questions might emerge from raw statistics and the system's own recorded outcomes.
-
+---
 ### Disclaimer
 
 BrainStem is an experimental cognitive-architecture research project. Biological terminology is used as an engineering analogy and design inspiration. The software is not a biological simulation and does not claim neuroscientific equivalence.
