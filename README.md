@@ -19,7 +19,6 @@ YouTube - AI conversation about BrainStem Project
 [NotebookLM codebase exploration](https://notebook.google.com/notebook/34b994eb-9f62-4fd7-a04d-facbd6041654) 24.09.2026
 ---
 ### 📍 Navigation
-- [Core Philosophy](#core-philosophy)
 - [What is BrainStem really](#what-is-brainstem-really)
 - [Roadmap](#Roadmap)
 - [Architecture](#architecture)
