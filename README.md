@@ -1,16 +1,23 @@
 ## BrainStem Update 28.09.26
 
-[Status: Experimental](#current-development-and-testing-status)[Python 3.11](#running-the-system)[Backend: SQLite](#database-initialization)[Roadmap: Full Relations/Ontology/Questions emergence chain active](#current-development-and-testing-status)
+[![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-development-and-testing-status)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
+[![Backend: SQLite](https://img.shields.io/badge/backend-SQLite-lightgrey)](#database-initialization)
+[![Roadmap: Stage B write locks open (experiment)](https://img.shields.io/badge/roadmap-Stage%20B%20write%20locks%20open-brightgreen)](#current-development-and-testing-status)
 
 BrainStem is a biologically inspired, Real Neuro-Symbolic (RNS-AI) cognitive architecture for lifelong learning. It is designed to learn models of the structures and dynamics of language and text through context hypotheses, uncertainty, contradiction, revision, neuromodulation, replay, and consolidation rather than by merely storing isolated facts. A second, character-level observation layer discovers word boundaries directly from unsegmented text, without any predefined notion of "word." Since 25–28 September 2026, a third, fourth, and fifth observation layer additionally discover relations between already-observed elements, categories emerging from the resulting relation graph, and durable questions emerging from persistent, unresolved information gaps.
 
 One CPU Core / No GPU
 
-BrainStem is a research and calibration system, not a production-ready assistant. As of the current project stage, all previously closed productive write paths (facts, relations, ontology categories, questions, fact/relation/ontology/question promotion, gap/contradiction/revision writes) have been deliberately opened as an explicitly framed, ongoing experiment, with a full project backup taken beforehand as a fallback point.
+> [!IMPORTANT]
+> BrainStem is a research and calibration system, not a production-ready assistant. As of the current project stage, all previously closed productive write paths (facts, relations, ontology categories, questions, fact/relation/ontology/question promotion, gap/contradiction/revision writes) have been deliberately opened as an explicitly framed, ongoing experiment, with a full project backup taken beforehand as a fallback point.
 
-[BrainStem Project AI conversation](https://www.youtube.com/watch?v=4nN7zELSAMo)YouTube - AI conversation about BrainStem Project
-[NotebookLM codebase exploration](https://notebook.google.com/notebook/34b994eb-9f62-4fd7-a04d-facbd6041654) 28.09.2026
-
+---
+[![BrainStem Project AI conversation](https://img.youtube.com/vi/4nN7zELSAMo/mqdefault.jpg)](https://www.youtube.com/watch?v=4nN7zELSAMo)
+YouTube - AI conversation about BrainStem Project
+---
+[NotebookLM codebase exploration](https://notebook.google.com/notebook/34b994eb-9f62-4fd7-a04d-facbd6041654) 24.09.2026
+---
 ### 📍 Navigation
 - [Core Philosophy](#core-philosophy)
 - [What is BrainStem really](#what-is-brainstem-really)
