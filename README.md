@@ -352,6 +352,10 @@ This project builds upon concepts, algorithms, and theoretical frameworks establ
 - **Parker, Paul A.; Holan, Scott H.; Ravishanker, Nalini** (2020) _Nonlinear Time Series Classification Using Bispectrum-based Deep Convolutional Neural Networks_. arXiv preprint arXiv:2003.02353.
 - **Rončević, Igor; et al.** _A molecule with half-Möbius topology_. Nature Chemistry (Supplementary Materials, SqDRIFT sampling).
 
+
+<details>
+<summary><b>Click to expand BibTeX citations</b></summary>
+
 ```bibtex
 @article{aston-jones2005integrative,
   title={An Integrative Theory of Locus Coeruleus-Norepinephrine Function: Adaptive Gain and Optimal Performance},
@@ -443,6 +447,8 @@ This project builds upon concepts, algorithms, and theoretical frameworks establ
   year={2023}
 }
 ```
+</details>
+
 ---
 ### Development Notes
 - **Python package:** ki_system
