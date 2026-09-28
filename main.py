@@ -56,6 +56,14 @@ def main():
     # record_dual_write), so the schema is correct even if some future code
     # path constructs the GUI classes directly without going through this
     # entrypoint.
+    #
+    # BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): both modules
+    # named directly above (v8_phase6a_replay_control_shadow_release and
+    # v8_modern_gap_phase5f_shadow_observation_v2_release) have since been
+    # removed as confirmed-unused shadow cascades (see the Legacy Report
+    # shipped with that cleanup). This historical comment is left in place
+    # unchanged above because the underlying bootstrap-invocation bug and
+    # fix it documents remain fully valid and unrelated to that removal.
     from ki_system.db_bootstrap import ensure_database_exists
     bootstrap_report = ensure_database_exists(a.memory_db)
     if bootstrap_report.get('errors'):
