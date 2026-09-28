@@ -134,7 +134,66 @@ LOAD_ORDER = [{'module': 'v8_context_observation_learning_release',
  # among the four new Stage-B modules (see timing fix note above) so both
  # a fresh graduation AND a same-cycle revision are already visible to it.
  {'module': 'v8_stageb_fact_promotion_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_FACT_PROMOTION'},
- {'module': 'v8_non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1', 'how': 'autoload', 'target': 'LOOP', 'label': 'non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1'},  # CANONICAL_AUTOLOAD_SHADOW_RUNTIME_INTEGRATION_V1
+ # BRAINSTEM_RELATIONS_EMERGENCE_SLICE1_V1 (25 September 2026): registered
+ # directly after STAGEB_FACT_PROMOTION and before the chain-top
+ # STAGEB_EF, per BrainStem_Relations_Ontology_Questions_Emergence_
+ # Concept.md, Abschnitt 10.4. PHASE0B_RELATIONAL_BINDING (observation)
+ # must run before STAGEB_RELATION_PROMOTION so a relation graduated in
+ # the SAME cycle it was (re)observed is already visible to promotion --
+ # matching the same same-cycle-visibility principle already used for the
+ # gap-detection/contradiction/revision/fact-promotion ordering above.
+ {'module': 'v8_phase0b_relational_binding_observation_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'PHASE0B_RELATIONAL_BINDING'},
+ {'module': 'v8_stageb_relation_promotion_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_RELATION_PROMOTION'},
+ # BRAINSTEM_ONTOLOGY_EMERGENCE_SLICE2_V1 (25 September 2026): registered
+ # directly after STAGEB_RELATION_PROMOTION and before the chain-top
+ # STAGEB_EF, per BrainStem_Relations_Ontology_Questions_Emergence_
+ # Concept.md, Abschnitt 10.4's already-planned Relations -> Ontologie ->
+ # Fragen chain position. Cluster observation must run before ontology
+ # promotion so a cluster reconfirmed stable in THIS cycle is already
+ # visible to promotion within the same cycle -- the same same-cycle-
+ # visibility principle already used throughout this chain.
+ {'module': 'v8_stageb_ontology_cluster_observation_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_ONTOLOGY_CLUSTER_OBSERVATION'},
+ {'module': 'v8_stageb_ontology_promotion_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_ONTOLOGY_PROMOTION'},
+ # BRAINSTEM_QUESTIONS_EMERGENCE_SLICE3_V1 (25 September 2026): registered
+ # directly after STAGEB_ONTOLOGY_PROMOTION and before the chain-top
+ # STAGEB_EF, completing the Relations -> Ontologie -> Fragen chain per
+ # BrainStem_Relations_Ontology_Questions_Emergence_Concept.md, Abschnitt
+ # 10.4/10.7. Unlike the two entries above, this module needs no paired
+ # observation-phase entry: it reads only the already-populated, already-
+ # productive internal_learning_gaps table (STAGEB_GAP_DETECTION, which
+ # already runs much earlier in this same chain, directly after PHASE5D)
+ # -- no new context_hypotheses role, no ELIGIBLE_ROLES/REVERT_ROLES/
+ # contradiction-detection role-list entry needed.
+ {'module': 'v8_stageb_question_promotion_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_QUESTION_PROMOTION'},
+ # BRAINSTEM_QUESTION_CHUNK_FEEDBACK_V1 (25 September 2026): registered
+ # directly after STAGEB_QUESTION_PROMOTION so a question promoted or
+ # retracted in THIS cycle (including retraction driven by this same
+ # cycle's gap habituation/closure) is already reflected before this
+ # module reads the `questions` table -- the same same-cycle-visibility
+ # principle already used throughout this chain. Closes the Questions
+ # Slice 3 audit's "rein schreibender Blinddarm" finding: this is the
+ # first and only module that reads `questions` to influence real
+ # reading_queue/chunk_attention_scores behavior. Deliberately built
+ # AFTER, not before, v8_stageb_gap_detection_release.py's own
+ # habituation mechanism -- see that module's own docstring for why
+ # wiring chunker feedback in first would have risked the
+ # "noisy-TV problem" on unfiltered Phase-0 lexical noise.
+ {'module': 'v8_stageb_question_chunk_feedback_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_QUESTION_CHUNK_FEEDBACK'},
+ # BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): the
+ # 'non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1'
+ # entry that used to sit here has been removed together with its entire
+ # dependency chain (registration_v1 -> initialization_cursor_wrap_
+ # fairness_telemetry_v1_2 -> delayed_evidence_recheck_watermark_
+ # awaiting_state_contract_v1_1 -> real_outcome_delayed_eligibility_
+ # shadow). That chain existed solely to observe a hypothetical future
+ # outcome-eligibility/fact-promotion decision before that decision was
+ # made. Since Stage-B fact promotion, gap detection, contradiction
+ # detection and hypothesis revision are now productive (see the four
+ # STAGEB_* entries above), the chain's own purpose was already fulfilled
+ # and its output was confirmed to have no consumer anywhere in the
+ # codebase (see the Legacy Report shipped with this cleanup for the full
+ # verification trail). See the same Legacy Report for the removal of
+ # four further, independently-confirmed-unused shadow cascades.
  {'module': 'v8_stageb_gapflow_runtime_contract_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_EF'}]
 
 EXPECTED_TOP_MODULE = "v8_stageb_gapflow_runtime_contract_release"
@@ -214,7 +273,17 @@ def _self_check(AutonomousLoop, verbose=True, errors=None):
     chk["direct_fact_writes"] = getattr(AutonomousLoop, "direct_fact_writes", None)
     chk["slow_wave_sleep"] = getattr(AutonomousLoop, "slow_wave_sleep", None)
     chk["load_errors"] = list(errors or [])
-    ok = chk["cycle_on_phase7d"] and chk["fact_promotion"] == "disabled" and not chk["load_errors"]
+    # BRAINSTEM_COMPASS_FACT_PROMOTION_FLAG_FIX_V1 (24 September 2026): this
+    # self-check used to require fact_promotion == "disabled" to be
+    # considered healthy. That was correct for the original, closed-by-
+    # default build, but is now the OPPOSITE of the current, user-declared
+    # experiment state (see v8_stageb_fact_promotion_release.py, the sole,
+    # guarded writer of the facts table, whose own autoload() now
+    # correctly asserts "enabled"). Left unchanged, this self-check would
+    # print a spurious [PHASE_REGISTRY_SELF_CHECK_WARNING] on every single
+    # real startup from now on, despite nothing actually being wrong.
+    # Fixed to expect the current, correct value instead.
+    ok = chk["cycle_on_phase7d"] and chk["fact_promotion"] == "enabled" and not chk["load_errors"]
     chk["ok"] = bool(ok)
     if verbose and not ok:
         print("[PHASE_REGISTRY_SELF_CHECK_WARNING]", chk)

@@ -240,13 +240,35 @@ def main():
         print("  %-25s %s" % (key + ":", _show(value)))
     all_initialized = all(initialized)
 
-    print("\n[6] SAFETY")
+    print("\n[6] SAFETY / SCHREIBPFAD-STATUS")
     safe = []
     for table in ("facts", "relations", "questions"):
         value = _count(con, table)
         safe.append(value if value is not None else -1)
-    safe_ok = safe == [0, 0, 0]
-    print("  facts/relations/questions:", safe)
+    # BRAINSTEM_EXPERIMENT_WRITE_LOCK_STATUS_FIX_V1 (24 September 2026),
+    # updated BRAINSTEM_QUESTIONS_EMERGENCE_SLICE3_V1 (25 September 2026)
+    #
+    # This check used to require facts/relations/questions == [0, 0, 0]
+    # to be considered healthy -- correct for the original, closed-by-
+    # default build, but this project's own current, user-declared state
+    # (see the Stage-B Full Write-Path Chain in the README/handover) is
+    # that these locks were deliberately opened on 23 September 2026,
+    # with a full backup taken beforehand as a fallback, not a temporary
+    # test. A real production database with real Stage-B graduations
+    # correctly and expectedly shows a growing, non-zero facts count;
+    # that is the intended outcome of the experiment, not a defect. As of
+    # Relations Slice 1 (25 September 2026), relations is expected non-
+    # zero too, and as of Ontology Slice 2 / Questions Slice 3 (both also
+    # 25 September 2026), the same now holds for ontology and questions:
+    # v8_stageb_relation_promotion_release.py, v8_stageb_ontology_
+    # promotion_release.py and v8_stageb_question_promotion_release.py are
+    # now the guarded, Stage-B-graduation-gated (or, for questions,
+    # persistence-gated) writers of relations/ontology/questions
+    # respectively. This check therefore no longer treats a non-zero value
+    # in any of the three as suspicious; it only still flags a negative
+    # (i.e. unreadable/errored) count.
+    safe_ok = all(v >= 0 for v in safe)
+    print("  facts/relations/questions:", safe, "(Schreibsperren experimentell offen seit 23.09.2026)")
 
     print("\n[7] REGISTRY")
     load_order = getattr(registry, "LOAD_ORDER", [])
@@ -261,8 +283,17 @@ def main():
         "_BRAINSTEM_LOAD_REPORT", None,
     )
     registry_fatal = bool(registry_load_report and registry_load_report.get("fatal"))
+    # BRAINSTEM_COMPASS_FACT_PROMOTION_FLAG_FIX_V1 (24 September 2026): this
+    # check used to require fact_promotion == "disabled". That was correct
+    # before the user's explicit decision to open the Stage-B write locks;
+    # since v8_stageb_fact_promotion_release.py (the sole, guarded writer
+    # of the facts table) now correctly asserts "enabled", this check is
+    # updated to expect that instead. direct_fact_writes and
+    # direct_relation_writes remain expected as "disabled" -- correctly,
+    # since no module performs an ungated, non-consolidated direct write;
+    # only the guarded Stage-B fact-promotion path is active.
     compass_ok = (
-        getattr(Loop, "fact_promotion", None) == "disabled"
+        getattr(Loop, "fact_promotion", None) == "enabled"
         and getattr(Loop, "direct_fact_writes", None) == "disabled"
         and getattr(Loop, "direct_relation_writes", None) == "disabled"
         and getattr(Loop, "no_word_blacklists", None) is True
@@ -321,7 +352,7 @@ def main():
     print("  [%s] Bootstrap / Schema" % _mark(bootstrap_ok))
     print("  [%s] 7cort ist Ketten-Spitze" % _mark(top_ok))
     print("  [%s] Kompass-Flags gesetzt (inkl. Registry ohne Fatal-Fehler)" % _mark(compass_ok))
-    print("  [%s] Uebergangssperre 0/0/0" % _mark(safe_ok))
+    print("  [%s] Schreibpfad-Status konsistent lesbar (Experiment: Sperren offen)" % _mark(safe_ok))
     print("  [%s] Echter Lernzyklus ohne Kernphasen-Fehler (Status: %s)" % (_mark(real_cycle_ok), cycle_status))
     if selection_sharp is None:
         print("  [i] 7d-Selektion: noch keine Laufzeitdaten")

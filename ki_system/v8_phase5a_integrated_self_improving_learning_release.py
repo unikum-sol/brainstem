@@ -10,7 +10,6 @@ import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
-from ki_system import v8_modern_gap_phase5f_shadow_observation_release as gap_phase5f_shadow_observation
 
 PHASE = "phase5a_integrated_self_improving_learning_release"
 LEARNING_MODE = "context_hypotheses_with_neuromodulators"
@@ -362,17 +361,25 @@ def integrated_control_step(mem: Any = None) -> Dict[str, Any]:
 # filename -- it silently opens/creates a WRONG, unrelated database (or
 # raises "no such table") for any custom --memory-db path or working
 # directory. Fixed by using the attribute AutonomousLoop actually sets.
+# BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): this function
+# used to call v8_modern_gap_candidate_bridge_shadow_release.observe_shadow()
+# and v8_modern_gap_phase5f_shadow_observation_release.observe_shadow()
+# unconditionally on every single cycle. Both modules, and their entire
+# dependency chain, have been removed: exhaustive cross-reference across
+# the whole codebase confirmed their output (modern_gap_candidate_shadow,
+# modern_gap_phase5f_shadow_observation_v2_latest, etc.) was never read by
+# anything else, and their original purpose -- observing what a productive
+# gap/Phase-5f decision would look like before one was made -- is already
+# superseded by the now-productive Stage-B gap detection chain. Removing
+# these two calls also removes a confirmed, real per-cycle performance
+# cost (see the Legacy Report shipped with this cleanup) and a confirmed
+# duplicate invocation (the same two modules were also being re-invoked,
+# completely independently, once per cycle from
+# v8_stageb_gapflow_runtime_contract_release.py's own observe_cycle()).
 def managed_cycle(self, progress=None):
     ensure_phase5a_schema(getattr(self, "memory", None))
     result = _PREV_CYCLE(self, progress) if _PREV_CYCLE is not None else {"status": "phase5a_no_previous_cycle"}
-    try:
-        from ki_system import v8_modern_gap_candidate_bridge_shadow_release as gap_shadow
-        shadow = gap_shadow.observe_shadow(getattr(self, "memory", None))
-        gap_phase5f_shadow_observation.observe_shadow(getattr(self, "memory", None), limit=512)
-    except Exception as exc:
-        shadow = {"status": "modern_gap_candidate_shadow_error", "error": str(exc), "bridge_mode": "shadow"}
     summary = integrated_control_step(getattr(self, "memory", None))
-    summary["modern_gap_candidate_shadow"] = shadow
     if isinstance(result, dict):
         result["phase5a_integrated_release"] = summary
         return result

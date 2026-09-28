@@ -8,7 +8,15 @@ import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from ki_system import v8_phase6a_replay_control_shadow_release as replay_control_shadow
+# BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): the
+# v8_phase6a_replay_control_shadow_release import that used to sit here,
+# and its single per-replayed-candidate call below, have been removed.
+# Exhaustive cross-reference across the whole codebase confirmed that
+# module's own "replay control fingerprint" tables (phase6a_replay_
+# control_shadow_latest/_events/_state) were never read anywhere else;
+# its own state explicitly recorded "observation_ready": "false" and
+# "semantic_hypothesis_version": "not_created" for every real cycle it
+# ran. See the Legacy Report shipped with this cleanup.
 
 
 def _canonical_outcome_observation_count(con):
@@ -764,7 +772,6 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
             "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (key, src, sid, c.get("candidate_type"), c.get("gap_key"), c.get("role"), priority, replay_weight, outcome, closure, overlap, no_candidate, plasticity, _j(nm), decision, _j(details), now),
         )
-        replay_control_shadow.capture_last_inserted_event(db)
         # Non-destructive target updates.
         if src == "internal_learning_gaps" and table_exists(db, src):
             db.execute(

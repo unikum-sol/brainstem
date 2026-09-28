@@ -179,9 +179,40 @@ def insert_observation(connection, chunk_id, sentence, title, neuromodulators):
     if existing:
         hypothesis_id = existing[0]
         evidence_count = int(existing[1] or 1) + 1
+        # BRAINSTEM_HYPOTHESIS_CONFIDENCE_FREEZE_FIX_V1 (25 September 2026)
+        #
+        # Root cause (confirmed via a real 30-fact export from the live
+        # production database): confidence/uncertainty were only ever
+        # written once, at initial creation (_raw_hypothesis() above, fixed
+        # at 0.0/1.0), and this reobserve branch previously updated only
+        # evidence_count/updated_at. A project-wide cross-reference
+        # confirmed no other module ever writes a new confidence/uncertainty
+        # value either (Stage-B graduation only ever updates role; Phase 6a
+        # only ever updates its own phase6a_* columns). The real, concrete
+        # symptom: hypothesis_id 387, reobserved 670 times, still carried
+        # confidence=0.0/uncertainty=1.0 -- identical to a hypothesis with
+        # evidence_count=1 -- making the column meaningless for any future
+        # quality assessment, sorting, or filtering (in the GUI, in exports,
+        # or in the planned BCM-sliding-threshold/divisive-normalization
+        # mechanisms for the upcoming Relations work, both of which assume
+        # confidence-like values actually reflect observation history).
+        #
+        # Fixed with a simple, transparent Bayesian pseudo-count update,
+        # applied only here on reobservation (not as a separate periodic
+        # Phase 6a step -- kept deliberately minimal and scoped to the
+        # confirmed bug, matching this project's own "erst messen, dann
+        # aendern" / no-scope-creep convention): confidence asymptotically
+        # approaches 1 and uncertainty asymptotically approaches 0 as
+        # evidence_count grows, but neither ever reaches the exact bound --
+        # more repeated observation increases confidence, but never implies
+        # absolute certainty. This does not touch, gate, or loosen the
+        # Stage-B graduation threshold itself, which continues to decide
+        # purely via phase7d_consolidation_survivors, exactly as before.
+        new_confidence = 1.0 - (1.0 / (1.0 + evidence_count))
+        new_uncertainty = 1.0 / (1.0 + evidence_count)
         connection.execute(
-            "UPDATE context_hypotheses SET evidence_count=?, updated_at=? WHERE id=?",
-            (evidence_count, now, hypothesis_id),
+            "UPDATE context_hypotheses SET evidence_count=?, confidence=?, uncertainty=?, updated_at=? WHERE id=?",
+            (evidence_count, new_confidence, new_uncertainty, now, hypothesis_id),
         )
         event_type = "raw_observation_reobserved"
     else:

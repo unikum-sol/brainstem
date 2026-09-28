@@ -503,9 +503,24 @@ def observe_lexical_boundaries(con, neuromodulators):
             ).fetchone()
             if existing:
                 hid, ev = existing
+                # BRAINSTEM_HYPOTHESIS_CONFIDENCE_FREEZE_FIX_V1 (25 September
+                # 2026): this reobserve branch had the exact same
+                # confidence/uncertainty-freeze bug independently found and
+                # fixed in v8_context_observation_learning_release.py's own
+                # insert_observation() -- confirmed here directly during
+                # validation of that fix (a lexical-boundary hypothesis with
+                # evidence_count=236 still showed confidence=0.0/
+                # uncertainty=1.0). Same fix applied here: a simple,
+                # transparent Bayesian pseudo-count update, asymptotically
+                # approaching 1/0 but never reaching the exact bound. Does
+                # not touch Stage-B graduation, which continues to decide
+                # purely via phase7d_consolidation_survivors.
+                new_evidence_count = int(ev or 1) + 1
+                new_confidence = 1.0 - (1.0 / (1.0 + new_evidence_count))
+                new_uncertainty = 1.0 / (1.0 + new_evidence_count)
                 con.execute(
-                    "UPDATE context_hypotheses SET evidence_count=?, updated_at=? WHERE id=?",
-                    (int(ev or 1) + 1, now, hid),
+                    "UPDATE context_hypotheses SET evidence_count=?, confidence=?, uncertainty=?, updated_at=? WHERE id=?",
+                    (new_evidence_count, new_confidence, new_uncertainty, now, hid),
                 )
                 reobserved += 1
             else:

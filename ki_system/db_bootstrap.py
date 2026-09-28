@@ -4,11 +4,15 @@ from __future__ import annotations
 import os, sqlite3, importlib
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
-from ki_system import v8_modern_gap_phase5f_shadow_observation_release as _gap_phase5f_shadow_observation
-from ki_system import v8_modern_gap_phase5f_shadow_history_release as _gap_phase5f_shadow_history
-from ki_system import v8_modern_gap_phase5f_shadow_observation_v2_release as _gap_phase5f_shadow_v2
-from ki_system import v8_stable_obs_content_fp_shadow_classifier_release as _content_fp_shadow_classifier
-from ki_system import v8_phase6a_replay_control_shadow_release as _phase6a_replay_control_shadow
+# BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): the five
+# standalone shadow/observation module imports that used to be declared
+# here (modern_gap_phase5f_shadow_observation[_v2]/_history,
+# stable_obs_content_fp_shadow_classifier, phase6a_replay_control_shadow)
+# have been removed together with the modules themselves. All five were
+# confirmed, by exhaustive cross-reference across the whole codebase, to
+# feed only each other and never a consumer outside their own cascade.
+# See the Legacy Report shipped with this cleanup for the full
+# verification trail.
 
 
 # BRAINSTEM_CORE_TABLE_NAMING_SYNC_FIX_V1: this central declaration for
@@ -54,13 +58,32 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                ('target', 'TEXT'),
                ('confidence', 'REAL DEFAULT 0'),
                ('source_chunk_id', 'INTEGER'),
-               ('created_at', 'INTEGER')],
+               ('created_at', 'INTEGER'),
+               # BRAINSTEM_RELATIONS_EMERGENCE_SLICE1_V1 (25 September 2026):
+               # additive, nullable column linking a promoted relation back
+               # to the exact context_hypotheses row it was promoted from
+               # (see v8_stageb_relation_promotion_release.py), mirroring
+               # facts.source_hypothesis_id's existing role/rationale
+               # exactly. Required so a relation can be retracted again if
+               # its source hypothesis is later reversed by
+               # v8_stageb_hypothesis_revision_release.py.
+               ('source_hypothesis_id', 'INTEGER')],
  'questions': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
                ('question', 'TEXT'),
                ('priority', 'REAL DEFAULT 0'),
                ('status', "TEXT DEFAULT 'open'"),
                ('created_at', 'INTEGER'),
-               ('updated_at', 'INTEGER')],
+               ('updated_at', 'INTEGER'),
+               # BRAINSTEM_QUESTIONS_EMERGENCE_SLICE3_V1 (25 September 2026):
+               # additive, nullable column linking a promoted question back
+               # to the exact internal_learning_gaps row it was promoted
+               # from (see v8_stageb_question_promotion_release.py),
+               # mirroring facts.source_hypothesis_id and relations.
+               # source_hypothesis_id's existing role/rationale exactly.
+               # Required so a question can be resolved again (status set
+               # to 'resolved', never deleted) if its source gap is later
+               # closed.
+               ('source_gap_id', 'INTEGER')],
  'documents': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
                ('path', 'TEXT'),
                ('title', 'TEXT'),
@@ -83,7 +106,27 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
               ('relation', 'TEXT'),
               ('confidence', 'REAL DEFAULT 0'),
               ('fact_id', 'INTEGER'),
-              ('created_at', 'INTEGER')],
+              ('created_at', 'INTEGER'),
+              # BRAINSTEM_ONTOLOGY_EMERGENCE_SLICE2_V1 (25 September 2026):
+              # two additive, nullable columns for
+              # v8_stageb_ontology_promotion_release.py, per
+              # BrainStem_Relations_Ontology_Questions_Emergence_Concept.md,
+              # Abschnitt 3.2/10.2. source_cluster_key links a promoted
+              # ontology row back to the stable-cluster anchor (prototype
+              # node key) it was derived from, enabling retraction if the
+              # cluster later dissolves (see v8_stageb_ontology_cluster_
+              # observation_release.py). source_relation_ids is a JSON list
+              # of the contributing relations.id values -- a single foreign
+              # key (like facts.source_hypothesis_id) is not sufficient
+              # here because an ontology row derives from a GROUP of
+              # multiple relations (the edges connecting child to prototype
+              # within the stable cluster), not from one single hypothesis.
+              # fact_id remains unused by this module (Slice 2 clusters
+              # over `relations`, not `facts` -- see the module's own
+              # docstring for the full rationale) but is left in place,
+              # unremoved, for any future direct-fact-based clustering.
+              ('source_cluster_key', 'TEXT'),
+              ('source_relation_ids', 'TEXT')],
  'context_hypotheses': [('id', 'INTEGER PRIMARY KEY'),
                         ('subject', 'TEXT'),
                         ('hypothesis', 'TEXT'),
@@ -160,7 +203,50 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                         # populate it, with the character offset (within the
                         # FIRST-seen chunk's normalized text) of that
                         # boundary candidate.
-                        ('lexical_offset', 'INTEGER')],
+                        ('lexical_offset', 'INTEGER'),
+                        # BRAINSTEM_RELATIONS_EMERGENCE_SLICE1_V1 (25
+                        # September 2026): additive column for the new
+                        # v8_phase0b_relational_binding_observation_release.py
+                        # module (see BrainStem_Relations_Ontology_
+                        # Questions_Emergence_Concept.md, Abschnitt 10.2).
+                        # Nullable and NULL for every existing hypothesis
+                        # role (sentence-level and lexical-boundary
+                        # hypotheses leave it NULL); only rows with
+                        # role='uncertain_relation_hypothesis' populate it,
+                        # marking that the row's subject/object direction
+                        # was assigned via the Positions-Heuristik (Signal
+                        # 1, Abschnitt 2.4.1) rather than a more certain
+                        # source. Per Abschnitt 2.4.5/6, hypotheses with
+                        # this origin receive increased revision tolerance
+                        # in contradiction/revision handling.
+                        ('origin', 'TEXT')],
+ # BRAINSTEM_RELATIONS_EMERGENCE_SLICE1_V1 (25 September 2026): pure
+ # observation/counting table for
+ # v8_phase0b_relational_binding_observation_release.py (Abschnitt 2.4/10.3
+ # of the Emergence Concept). One row per ordered pair of stable elements
+ # (subject_signature, object_signature) observed co-occurring within the
+ # same sentence. pair_count/count_a/count_b are the raw frequency inputs
+ # to the symmetric PMI existence gate (Abschnitt 2.4.2); first_as_a_count/
+ # first_as_b_count are the raw inputs to the Positions-Heuristik direction
+ # signal (Abschnitt 2.4.1). No confidence/uncertainty/neuromodulator
+ # columns here deliberately -- this table is a pure frequency ledger, not
+ # itself a hypothesis; the resulting uncertain_relation_hypothesis row in
+ # context_hypotheses carries all of that via the existing, shared
+ # machinery.
+ 'relational_cooccurrence_counts': [
+     ('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+     ('signature_a', 'TEXT'),
+     ('signature_b', 'TEXT'),
+     ('subject_a', 'TEXT'),
+     ('subject_b', 'TEXT'),
+     ('pair_count', 'INTEGER DEFAULT 0'),
+     ('count_a', 'INTEGER DEFAULT 0'),
+     ('count_b', 'INTEGER DEFAULT 0'),
+     ('first_as_a_count', 'INTEGER DEFAULT 0'),
+     ('first_as_b_count', 'INTEGER DEFAULT 0'),
+     ('first_seen_at', 'INTEGER'),
+     ('updated_at', 'INTEGER'),
+ ],
  'internal_learning_gaps': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
                             ('gap_key', 'TEXT'),
                             ('gap_type', 'TEXT'),
@@ -258,6 +344,55 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                             ('revision_pressure', 'REAL DEFAULT 0'),
                             ('strategy_effectiveness_score', 'REAL DEFAULT 0'),
                             ('evidence_count', 'INTEGER DEFAULT 0'),
+                            # BRAINSTEM_GAP_CLOSURE_AND_HABITUATION_V1 (25
+                            # September 2026): five additive columns, all
+                            # nullable/defaulted, needed to close two
+                            # gaps identified in the Questions Slice 3
+                            # audit -- (a) a gap whose own hypothesis_id
+                            # graduates into a fact/relation is never
+                            # marked resolved (status stayed 'open'
+                            # forever, making Slice 3's retraction path
+                            # permanently dead code in real operation),
+                            # and (b) resolution_attempts, once fixed to
+                            # actually increment, grows monotonically
+                            # forever with no decay, so a gap whose
+                            # underlying hypothesis is genuine, unresolvable
+                            # noise (e.g. a Phase-0 lexical-boundary
+                            # parsing artifact that keeps being
+                            # reobserved but never gains new evidence)
+                            # would stay at permanently maximal priority/
+                            # salience instead of habituating -- contrary
+                            # to the empirically well-established inverted-
+                            # U relationship between resolvability and
+                            # curiosity (Kang et al. 2009, Psychological
+                            # Science 20(8):963-973; synthesized further in
+                            # Ten/Oudeyer/Sakaki/Murayama 2025, Open Mind
+                            # 9:1763-1785) and to habituation as a real,
+                            # reversible neural process driven by absence
+                            # of new information gain, not by elapsed
+                            # attempts alone (Ueda/Sekoguchi/Yanagisawa
+                            # 2021, PLoS One 16(6):e0237278; Smart/
+                            # Shvartsman/Moennigmann 2026, Annual Review of
+                            # Control, Robotics and Autonomous Systems).
+                            # closed_at/closure_reason record a positive
+                            # resolution (hypothesis graduated); habituated_
+                            # at/stagnant_streak/evidence_count_at_last_gain
+                            # implement the separate, reversible decay path
+                            # (see v8_stageb_gap_detection_release.py's own
+                            # _upsert_gap() for the full mechanism). Both
+                            # paths are owned exclusively by
+                            # v8_stageb_gap_detection_release.py, which
+                            # remains the sole writer of internal_learning_
+                            # gaps' base lifecycle row; fact/relation
+                            # promotion only ever set status/closed_at/
+                            # closure_reason at their own existing
+                            # promotion/retraction write points, never any
+                            # of the stagnation/habituation columns.
+                            ('closed_at', 'INTEGER'),
+                            ('closure_reason', 'TEXT'),
+                            ('habituated_at', 'INTEGER'),
+                            ('stagnant_streak', 'INTEGER DEFAULT 0'),
+                            ('evidence_count_at_last_gain', 'INTEGER'),
                             ('updated_at', 'INTEGER DEFAULT 0'),
                             ('created_at', 'INTEGER')],
  'phase5g_experiment_outcomes': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
@@ -474,7 +609,16 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                             ('phase6a_replay_weight', 'REAL DEFAULT 0'),
                             ('phase6a_meta_plasticity', 'REAL DEFAULT 0'),
                             ('phase6a_last_adjusted_at', 'INTEGER'),
-                            ('phase6a_reason', 'TEXT')],
+                            ('phase6a_reason', 'TEXT'),
+                            # BRAINSTEM_QUESTION_CHUNK_FEEDBACK_V1 (25
+                            # September 2026): mirrors the identically-named
+                            # reading_queue columns above; see that
+                            # declaration's own comment for the full
+                            # rationale.
+                            ('question_feedback_score', 'REAL DEFAULT 0'),
+                            ('question_feedback_reason', 'TEXT'),
+                            ('question_feedback_question_id', 'INTEGER'),
+                            ('question_feedback_last_adjusted_at', 'INTEGER DEFAULT 0')],
  'context_learning_events': [('id', 'INTEGER PRIMARY KEY'),
                              ('hypothesis_id', 'INTEGER'),
                              ('event_type', 'TEXT'),
@@ -627,7 +771,24 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                    ('phase6a_replay_weight', 'REAL DEFAULT 0'),
                    ('phase6a_meta_plasticity', 'REAL DEFAULT 0'),
                    ('phase6a_last_adjusted_at', 'INTEGER'),
-                   ('phase6a_reason', 'TEXT')],
+                   ('phase6a_reason', 'TEXT'),
+                   # BRAINSTEM_QUESTION_CHUNK_FEEDBACK_V1 (25 September
+                   # 2026): additive columns for v8_stageb_question_
+                   # chunk_feedback_release.py, following this table's own
+                   # already-established per-phase column-triplet
+                   # convention (score/reason/last_adjusted_at, e.g.
+                   # phase5f_priority/phase5f_reason/phase5f_last_
+                   # adjusted_at above). Closes the Questions Slice 3
+                   # audit's "rein schreibender Blinddarm" finding: this is
+                   # the first and only module that ever reads the
+                   # questions table to influence real system behavior.
+                   # question_feedback_question_id records exactly which
+                   # still-open question caused the most recent boost, for
+                   # traceability/debugging.
+                   ('question_feedback_priority', 'REAL DEFAULT 0'),
+                   ('question_feedback_reason', 'TEXT'),
+                   ('question_feedback_question_id', 'INTEGER'),
+                   ('question_feedback_last_adjusted_at', 'INTEGER DEFAULT 0')],
  'reading_strategy_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER DEFAULT 0')],
  'rollback_safe_core_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER DEFAULT 0')],
  'phase5g_strategy_selection_memory': [('memory_key', 'TEXT PRIMARY KEY'),
@@ -770,127 +931,21 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                                         ('details', 'TEXT'),
                                         ('created_at', 'INTEGER'),
                                         ('updated_at', 'INTEGER')],
- 'modern_outcome_bridge_shadow': [('shadow_key', 'TEXT PRIMARY KEY'),
-                                  ('source_table', 'TEXT'),
-                                  ('source_id', 'INTEGER'),
-                                  ('experiment_key', 'TEXT'),
-                                  ('gap_id', 'INTEGER'),
-                                  ('gap_key', 'TEXT'),
-                                  ('gap_type', 'TEXT'),
-                                  ('role', 'TEXT'),
-                                  ('center_chunk_id', 'INTEGER'),
-                                  ('target_chunk_id', 'INTEGER'),
-                                  ('selected_strategy', 'TEXT'),
-                                  ('strategy_score', 'REAL DEFAULT 0'),
-                                  ('expected_outcome_score', 'REAL DEFAULT 0'),
-                                  ('expected_closure_delta', 'REAL DEFAULT 0'),
-                                  ('expected_overlap_score', 'REAL DEFAULT 0'),
-                                  ('expected_no_candidate_rate', 'REAL DEFAULT 0'),
-                                  ('observed_read_status', 'TEXT'),
-                                  ('observed_read_count', 'INTEGER DEFAULT 0'),
-                                  ('observed_attention_score', 'REAL DEFAULT 0'),
-                                  ('observation_ready', 'INTEGER DEFAULT 0'),
-                                  ('mapped_closure_delta', 'REAL DEFAULT 0'),
-                                  ('mapped_overlap_score', 'REAL DEFAULT 0'),
-                                  ('mapped_no_candidate_rate', 'REAL DEFAULT 0'),
-                                  ('mapped_outcome_score', 'REAL DEFAULT 0'),
-                                  ('mapped_outcome_label', 'TEXT'),
-                                  ('mapped_recommendation', 'TEXT'),
-                                  ('projection_status', 'TEXT'),
-                                  ('missing_signals', 'TEXT'),
-                                  ('bridge_mode', "TEXT DEFAULT 'shadow'"),
-                                  ('details', 'TEXT'),
-                                  ('source_created_at', 'INTEGER'),
-                                  ('created_at', 'INTEGER'),
-                                  ('updated_at', 'INTEGER')],
- 'modern_outcome_bridge_shadow_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
-                                         ('phase', 'TEXT'),
-                                         ('source_rows_seen', 'INTEGER DEFAULT 0'),
-                                         ('shadow_rows_created', 'INTEGER DEFAULT 0'),
-                                         ('shadow_rows_updated', 'INTEGER DEFAULT 0'),
-                                         ('observation_ready', 'INTEGER DEFAULT 0'),
-                                         ('awaiting_observation', 'INTEGER DEFAULT 0'),
-                                         ('productive_outcomes_before', 'INTEGER DEFAULT 0'),
-                                         ('productive_outcomes_after', 'INTEGER DEFAULT 0'),
-                                         ('productive_memory_before', 'INTEGER DEFAULT 0'),
-                                         ('productive_memory_after', 'INTEGER DEFAULT 0'),
-                                         ('facts_before', 'INTEGER DEFAULT 0'),
-                                         ('facts_after', 'INTEGER DEFAULT 0'),
-                                         ('relations_before', 'INTEGER DEFAULT 0'),
-                                         ('relations_after', 'INTEGER DEFAULT 0'),
-                                         ('questions_before', 'INTEGER DEFAULT 0'),
-                                         ('questions_after', 'INTEGER DEFAULT 0'),
-                                         ('safety_ok', 'INTEGER DEFAULT 1'),
-                                         ('bridge_mode', "TEXT DEFAULT 'shadow'"),
-                                         ('created_at', 'INTEGER')],
- 'modern_outcome_bridge_shadow_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
- 'modern_gap_candidate_shadow': [('shadow_key', 'TEXT PRIMARY KEY'),
-                                 ('hypothesis_id', 'INTEGER'),
-                                 ('signature', 'TEXT'),
-                                 ('chunk_id', 'INTEGER'),
-                                 ('role', 'TEXT'),
-                                 ('status', 'TEXT'),
-                                 ('hypothesis_confidence', 'REAL DEFAULT 0'),
-                                 ('hypothesis_uncertainty', 'REAL DEFAULT 0'),
-                                 ('evidence_count', 'INTEGER DEFAULT 0'),
-                                 ('raw_observation_count', 'INTEGER DEFAULT 0'),
-                                 ('raw_created_count', 'INTEGER DEFAULT 0'),
-                                 ('raw_reobserved_count', 'INTEGER DEFAULT 0'),
-                                 ('stability', 'REAL'),
-                                 ('stability_confidence', 'REAL'),
-                                 ('stability_uncertainty', 'REAL'),
-                                 ('feedback_count', 'INTEGER DEFAULT 0'),
-                                 ('error_count', 'INTEGER DEFAULT 0'),
-                                 ('conflict_count', 'INTEGER DEFAULT 0'),
-                                 ('dopamine', 'REAL DEFAULT 0'),
-                                 ('serotonin', 'REAL DEFAULT 0'),
-                                 ('glutamate', 'REAL DEFAULT 0'),
-                                 ('gaba', 'REAL DEFAULT 0'),
-                                 ('noradrenaline', 'REAL DEFAULT 0'),
-                                 ('acetylcholine', 'REAL DEFAULT 0'),
-                                 ('phase6a_replay_weight', 'REAL DEFAULT 0'),
-                                 ('phase6a_meta_plasticity', 'REAL DEFAULT 0'),
-                                 ('phase6a_sleep_replay_count', 'INTEGER DEFAULT 0'),
-                                 ('last_replayed_at', 'INTEGER'),
-                                 ('first_observed_at', 'INTEGER'),
-                                 ('last_observed_at', 'INTEGER'),
-                                 ('signal_presence', 'TEXT'),
-                                 ('missing_signals', 'TEXT'),
-                                 ('candidate_state', "TEXT DEFAULT 'observed_only'"),
-                                 ('bridge_mode', "TEXT DEFAULT 'shadow'"),
-                                 ('details', 'TEXT'),
-                                 ('created_at', 'INTEGER'),
-                                 ('updated_at', 'INTEGER')],
- 'modern_gap_candidate_shadow_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
-                                        ('phase', 'TEXT'),
-                                        ('source_rows_seen', 'INTEGER DEFAULT 0'),
-                                        ('shadow_rows_created', 'INTEGER DEFAULT 0'),
-                                        ('shadow_rows_updated', 'INTEGER DEFAULT 0'),
-                                        ('rows_with_reobservation', 'INTEGER DEFAULT 0'),
-                                        ('rows_with_stability', 'INTEGER DEFAULT 0'),
-                                        ('rows_with_feedback', 'INTEGER DEFAULT 0'),
-                                        ('rows_with_errors', 'INTEGER DEFAULT 0'),
-                                        ('rows_with_replay', 'INTEGER DEFAULT 0'),
-                                        ('productive_gaps_before', 'INTEGER DEFAULT 0'),
-                                        ('productive_gaps_after', 'INTEGER DEFAULT 0'),
-                                        ('attention_before', 'INTEGER DEFAULT 0'),
-                                        ('attention_after', 'INTEGER DEFAULT 0'),
-                                        ('phase5f_experiments_before', 'INTEGER DEFAULT 0'),
-                                        ('phase5f_experiments_after', 'INTEGER DEFAULT 0'),
-                                        ('phase5g_experiments_before', 'INTEGER DEFAULT 0'),
-                                        ('phase5g_experiments_after', 'INTEGER DEFAULT 0'),
-                                        ('phase5i_experiments_before', 'INTEGER DEFAULT 0'),
-                                        ('phase5i_experiments_after', 'INTEGER DEFAULT 0'),
-                                        ('facts_before', 'INTEGER DEFAULT 0'),
-                                        ('facts_after', 'INTEGER DEFAULT 0'),
-                                        ('relations_before', 'INTEGER DEFAULT 0'),
-                                        ('relations_after', 'INTEGER DEFAULT 0'),
-                                        ('questions_before', 'INTEGER DEFAULT 0'),
-                                        ('questions_after', 'INTEGER DEFAULT 0'),
-                                        ('safety_ok', 'INTEGER DEFAULT 1'),
-                                        ('bridge_mode', "TEXT DEFAULT 'shadow'"),
-                                        ('created_at', 'INTEGER')],
- 'modern_gap_candidate_shadow_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')]}
+ # BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): the six
+ # 'modern_outcome_bridge_shadow[_cycles/_state]' and
+ # 'modern_gap_candidate_shadow[_cycles/_state]' table declarations that
+ # used to sit here have been removed together with every module that
+ # ever wrote to them (v8_modern_gap_candidate_bridge_shadow_release,
+ # v8_modern_gap_phase5f_shadow_observation[_v2]_release,
+ # v8_modern_gap_phase5f_shadow_history_release,
+ # v8_modern_outcome_bridge_shadow_release,
+ # v8_stable_obs_content_fp_shadow_classifier_release). Removing the
+ # declarations here only stops these tables from being (re-)created on a
+ # fresh database; it does not touch any already-existing production
+ # database. See the Legacy Report shipped with this cleanup for the
+ # full verification trail and for an optional, separate, read-only-first
+ # migration script to retire the tables in an existing database.
+ }
 BASE_SCHEMA = SCHEMA_TABLES
 
 PHASE_REGISTRY: List[Tuple[str, str]] = [
@@ -907,9 +962,41 @@ PHASE_REGISTRY: List[Tuple[str, str]] = [
     ("v8_phase7a_adenosine_homeostat_release", "phase7a"),
     ("v8_phase7b_endocannabinoid_retrograde_gain_control_release", "phase7b"),
     ("v8_stageb_guarded_hypothesis_graduation_release", "stageb_graduation"),
+    # BRAINSTEM_RELATIONS_EMERGENCE_SLICE1_REVIEW_FIX_V1 (25 September 2026)
+    #
+    # Root cause, found during the Slice 1 internal review: both new Slice 1
+    # modules (v8_phase0b_relational_binding_observation_release.py and
+    # v8_stageb_relation_promotion_release.py) already expose their own
+    # ensure_schema(con) functions and are correctly self-healing on their
+    # own first real cycle -- but, unlike every other Stage-B module (gap
+    # detection, contradiction detection, hypothesis revision, fact
+    # promotion, graduation, all registered above/below), neither was ever
+    # added to this bootstrap-time PHASE_REGISTRY list. Confirmed
+    # reproducible: a fresh ensure_database_exists() call does not create
+    # phase0b_relational_state, stageb_relation_promotion_state, or
+    # stageb_relation_promotion_events, so any tooling (e.g. the new
+    # diagnose_relational_binding_calibration.py) or GUI feature that reads
+    # or writes those tables before the module's own first real cycle has
+    # run fails with "no such table" -- exactly the same class of gap this
+    # project's own BRAINSTEM_LEXICAL_LAYER_BOOTSTRAP_REGISTRATION_V1
+    # comment above (for Phase 0 lexical) was written to prevent. Fixed by
+    # registering both here, matching that exact same convention.
+    ("v8_phase0b_relational_binding_observation_release", "phase0b_relational"),
+    ("v8_stageb_relation_promotion_release", "stageb_relation_promotion"),
+    # BRAINSTEM_ONTOLOGY_EMERGENCE_SLICE2_V1 (25 September 2026): registered
+    # here from the start (not retrofitted after the fact), applying the
+    # exact lesson from the Slice 1 internal review directly above -- both
+    # new Slice 2 modules are registered immediately, matching the same
+    # bootstrap-registration convention already established for every other
+    # Stage-B module.
+    ("v8_stageb_ontology_cluster_observation_release", "stageb_ontology_cluster_observation"),
+    ("v8_stageb_ontology_promotion_release", "stageb_ontology_promotion"),
     ("v8_stageb_gapflow_runtime_contract_release", "stageb_ef"),
-
-    ('v8_non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1', 'non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1'),  # CANONICAL_AUTOLOAD_SHADOW_RUNTIME_SCHEMA_V1
+    # BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): the
+    # 'v8_non_productive_recheck_canonical_autoload_shadow_runtime_
+    # integration_v1' entry that used to sit here has been removed
+    # together with the module itself and its entire dependency chain.
+    # See the Legacy Report shipped with this cleanup.
 ]
 
 def register_phase_module(module_name, phase_name):
@@ -955,7 +1042,13 @@ SCHEMA_INDEXES = [('idx_bs_attention_queue_state_key_uniq', 'attention_queue_sta
  ('idx_bs_learning_strategy_state_key_uniq', 'learning_strategy_state', ('key',), True),
  ('idx_bs_reading_queue_chunk_id_uniq', 'reading_queue', ('chunk_id',), True),
  ('idx_bs_reading_strategy_state_key_uniq', 'reading_strategy_state', ('key',), True),
- ('idx_bs_rollback_safe_core_state_key_uniq', 'rollback_safe_core_state', ('key',), True)]
+ ('idx_bs_rollback_safe_core_state_key_uniq', 'rollback_safe_core_state', ('key',), True),
+ # BRAINSTEM_RELATIONS_EMERGENCE_SLICE1_V1 (25 September 2026): enforces
+ # exactly one row per ordered (signature_a, signature_b) pair in
+ # relational_cooccurrence_counts, used by
+ # v8_phase0b_relational_binding_observation_release.py's own
+ # INSERT ... ON CONFLICT(signature_a, signature_b) DO UPDATE upsert.
+ ('idx_bs_relational_cooccurrence_pair_uniq', 'relational_cooccurrence_counts', ('signature_a', 'signature_b'), True)]
 
 
 def _self_check_schema(con):
@@ -1076,26 +1169,15 @@ def ensure_perf_indexes(con):
             continue
     con.commit()
     return created
-def _bootstrap_shadow_modules(con, errors):
-    """Bootstrap the standalone shadow/observation modules against the SAME
-    already-open connection, instead of letting each module silently open its
-    own DEFAULT_DB connection (which could point at a different database than
-    the one being bootstrapped here). Fixes BRAINSTEM_BOOTSTRAP_SHADOW_CONN_V1.
-    """
-    bootstrapped = []
-    for label, mod in (
-        ("modern_gap_phase5f_shadow_observation_v1", _gap_phase5f_shadow_observation),
-        ("modern_gap_phase5f_shadow_history", _gap_phase5f_shadow_history),
-        ("stable_obs_content_fp_shadow_classifier", _content_fp_shadow_classifier),
-        ("phase6a_replay_control_shadow", _phase6a_replay_control_shadow),
-        ("modern_gap_phase5f_shadow_observation_v2", _gap_phase5f_shadow_v2),
-    ):
-        try:
-            mod.ensure_schema(con)
-            bootstrapped.append(label)
-        except Exception as exc:
-            errors.append((label, "ensure_schema_error: " + str(exc)))
-    return bootstrapped
+# BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): the
+# _bootstrap_shadow_modules() function that used to sit here has been
+# removed together with the five standalone shadow/observation modules
+# it bootstrapped (modern_gap_phase5f_shadow_observation[_v2]/_history,
+# stable_obs_content_fp_shadow_classifier, phase6a_replay_control_shadow).
+# All five were confirmed, by exhaustive cross-reference across the whole
+# codebase, to feed only each other and never a consumer outside their
+# own cascade. See the Legacy Report shipped with this cleanup for the
+# full verification trail.
 
 
 def ensure_database_exists(db_path):
@@ -1112,7 +1194,6 @@ def ensure_database_exists(db_path):
         # authority itself is inconsistent right after it was applied.
         _self_check_schema(con)
         bootstrapped, phase_reports, errors = _bootstrap_phase_modules(con)
-        shadow_bootstrapped = _bootstrap_shadow_modules(con, errors)
         perf_indexes = ensure_perf_indexes(con)
         con.commit()
         return {"db_created": db_created, "db_path": str(p.resolve()),
@@ -1120,7 +1201,6 @@ def ensure_database_exists(db_path):
                 "base_tables_created": base_report["created_tables"],
                 "base_columns_added": base_report["added_columns"],
                 "phases_bootstrapped": bootstrapped,
-                "shadow_modules_bootstrapped": shadow_bootstrapped,
                 "phase_reports": phase_reports, "errors": errors}
     finally:
         con.close()

@@ -41,6 +41,54 @@ SLOW_WAVE_PARAMS = {
     "min_participation_ratio": 0.4, "activity_threshold_floor": 0.15,
     "selection_pressure_gaba_gain": 0.6, "selection_pressure_glu_gain": 0.4,
     "selection_pressure_base": 0.5,
+    # BRAINSTEM_PHASE7D_ACETYLCHOLINE_CONSOLIDATION_GATE_V1 (25 September
+    # 2026)
+    #
+    # Root cause: this module's own _run_slow_wave_sleep() already reads
+    # acetylcholine into the neuromod dict (via _read_neuromod()), but the
+    # up-state activity formula below only ever used glutamate/gaba --
+    # dopamine, serotonin, noradrenaline and acetylcholine were dead reads,
+    # silently ignored by this module's actual consolidation-survival
+    # decision.
+    #
+    # Acetylcholine specifically is not a minor omission: Gais & Born
+    # (2004, PNAS 101(7):2140-2144) is a causal, pharmacological human
+    # study, not merely correlational -- artificially RAISING cholinergic
+    # tone during slow-wave sleep (via the cholinesterase inhibitor
+    # physostigmine) completely BLOCKED declarative memory consolidation,
+    # while leaving non-declarative learning and waking consolidation
+    # unaffected. Hasselmo & McGaughy (2004, Progress in Brain Research
+    # 145:207-231) supply the mechanism: high acetylcholine suppresses
+    # excitatory hippocampal/cortical feedback (favoring new encoding);
+    # low acetylcholine releases that same suppression, permitting the
+    # feedback-driven replay that memory consolidation requires. This is
+    # exactly the phase this module already models (slow-wave up-state
+    # reactivation) -- so acetylcholine's real, causally-demonstrated
+    # direction is: LOW acetylcholine -> HIGHER consolidation activity;
+    # HIGH acetylcholine -> LOWER consolidation activity (the opposite
+    # sign from glutamate/gaba's own already-existing gains above).
+    #
+    # Deliberately NOT extended to dopamine, serotonin, or noradrenaline in
+    # this same fix: a targeted literature check for each found no
+    # comparably direct, causal evidence specific to slow-wave-sleep
+    # consolidation survival (noradrenaline's own role is genuinely
+    # unsettled in current literature -- recent work, e.g. Jacobsen et al.
+    # 2026, eLife, shows infraslow, RHYTHMIC noradrenaline bursts actively
+    # gate memory-relevant sleep spindles, which this module's own
+    # single-value-per-cycle neuromodulator model cannot represent without
+    # inventing an oscillatory mechanism this fix does not attempt).
+    # Extending those three without equivalent evidence would violate this
+    # project's own "erst messen/belegen, dann aendern" principle -- they
+    # remain disclosed, dead reads for now, unchanged by this fix.
+    #
+    # A modest, symmetric, self-regulating gain (matching the existing
+    # glu/gaba gain magnitudes above): activity is multiplied by
+    # (1.0 - selection_pressure_ach_gain * (acetylcholine - 0.5)), so at
+    # the existing neutral baseline (ach=0.5) this term is exactly 1.0 (no
+    # behavior change from before this fix at baseline), and moves
+    # activity up/down symmetrically around that baseline as acetylcholine
+    # deviates from it.
+    "selection_pressure_ach_gain": 0.5,
     # BRAINSTEM_PHASE7D_CONTEXT_HYPOTHESES_NOVEL_QUOTA_V1 (23.09.2026):
     # Diagnose (diagnose_phase7d_source_table_distribution.py) belegte
     # empirisch, dass ueber 13.900 Survivor-Zeilen in
@@ -547,11 +595,12 @@ def _run_slow_wave_sleep(con, cycle_index, neuromod, adenosine_level):
     sp_base = _get_sw(con, "selection_pressure_base", 0.5)
     sp_gaba = _get_sw(con, "selection_pressure_gaba_gain", 0.6)
     sp_glu = _get_sw(con, "selection_pressure_glu_gain", 0.4)
+    sp_ach = _get_sw(con, "selection_pressure_ach_gain", 0.5)
     ctx_min_novel_ratio = _get_sw(con, "context_hypotheses_min_novel_ratio", 0.3)
     fairness_enabled = _get_sw(con, "novel_fairness_recentering_enabled", 1.0) != 0.0
     fairness_target = _get_sw(con, "novel_fairness_recenter_target", 0.5)
     now = _now(); rnd = random.Random(now + cycle_index * 7919)
-    glu = neuromod["glutamate"]; gaba = neuromod["gaba"]
+    glu = neuromod["glutamate"]; gaba = neuromod["gaba"]; ach = neuromod["acetylcholine"]
     # self-regulating selection pressure from the system's own neuromodulator state
     sel_pressure = _clamp(sp_base + sp_gaba * gaba - sp_glu * glu)
     pool_size = max(size, int(size * pool_factor))
@@ -567,7 +616,7 @@ def _run_slow_wave_sleep(con, cycle_index, neuromod, adenosine_level):
         acts = []
         for it in pool:
             noise = (rnd.random() - 0.5) * 0.3
-            a = _clamp(it["base_score"] * (0.6 + 0.5 * glu) * (1.0 - 0.3 * gaba) + noise + (0.12 if it["is_anchor"] else 0.0))
+            a = _clamp(it["base_score"] * (0.6 + 0.5 * glu) * (1.0 - 0.3 * gaba) * (1.0 - sp_ach * (ach - 0.5)) + noise + (0.12 if it["is_anchor"] else 0.0))
             acts.append((it, a))
         # Efraimidis-Spirakis weighted sampling without replacement
         keyed = [(rnd.random() ** (1.0 / max(1e-6, a)), it, a) for (it, a) in acts]

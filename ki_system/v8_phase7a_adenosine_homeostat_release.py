@@ -15,10 +15,18 @@ import sqlite3
 import time
 from pathlib import Path
 
-try:
-    from ki_system import v8_guarded_core_adapters_canonical_sleep_wake_shadow_release as __gca_shadow
-except Exception:
-    __gca_shadow = None
+# BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): the
+# v8_guarded_core_adapters_canonical_sleep_wake_shadow_release import
+# that used to sit here, and its single per-cycle observe_sleep_wake_
+# shadow() call below, have been removed. That specific function (and
+# its companion observe_event_typed_checkpoint()) has itself been
+# removed from the target module: exhaustive cross-reference confirmed
+# its "canonical_*_shadow" state keys were never read by anything else,
+# and its own state explicitly recorded "canonical_downstream_authority":
+# "disabled" for every real cycle it ran. The target module's unrelated,
+# still-actively-used observe_adapter()/adapter_snapshot() kernel-
+# consistency helpers (called from Phase 7b/7c/6b/7g) are unaffected and
+# remain in place. See the Legacy Report shipped with this cleanup.
 
 PHASE = "phase7a_adenosine_homeostat_release"
 PHASE_VERSION = "phase7a_v2_gated_sleep_discharge"
@@ -180,9 +188,6 @@ def run_phase7a_cycle(db_or_obj=None,cycle_index=None):
         _log(con,cycle_index,"buildup",new,new,0.0,"accumulate",[],"gated_wake_buildup","acetylcholine",neu["acetylcholine"])
         accum={"old":old,"new":new,"rate":rate,"sleep_pressure":new,"inhibited_by_sleep_gate":False}
         down=_enter_sleep(con,new,neu,cycle_index) if new>=_to_float(_get(con,"threshold_high",0.65),0.65) else {"triggered":False,"action":"wake_hold","new_adenosine":new,"adenosine_after":new,"targets_affected":[]}
-    if __gca_shadow is not None:
-        try: __gca_shadow.observe_sleep_wake_shadow(con,{"cycle_index":cycle_index,"accum":accum,"downscale_result":down})
-        except Exception: pass
     for k,v in (("cycle_count",cycle_index),("last_cycle_at",_now()),("phase",PHASE),("phase_version",PHASE_VERSION),("learning_mode",LEARNING_MODE),("no_word_blacklists",True),("direct_fact_writes","disabled"),("direct_relation_writes","disabled"),("fact_promotion","disabled"),("adenosine_homeostat",True)):_kv_set(con,"phase7a_state",k,v)
     con.commit()
     return {"phase":PHASE,"phase_version":PHASE_VERSION,"cycle_index":cycle_index,"status":"ok","homeostat_mode":str(_get(con,"homeostat_mode","wake")),"wake_activity":wake,"adenosine_accumulation":accum,"downscale":down,"safety":{"direct_fact_writes":"disabled","direct_relation_writes":"disabled","fact_promotion":"disabled","no_word_blacklists":True}}

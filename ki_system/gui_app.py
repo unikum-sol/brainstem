@@ -15,11 +15,16 @@ from ki_system.search import semantic_search, answer
 from ki_system import v8_cycle_diagnostics_release as _cycle_diagnostics
 from ki_system import v8_wal_maintenance_release as _wal_maintenance
 
-# BEGIN BRAINSTEM CANONICAL PER-CYCLE RUNTIME STARTUP ACTIVATION V1.1
-# Startup-only activation. The imported bridge remains shadow-only.
-import importlib as _brainstem_runtime_importlib
-_brainstem_runtime_importlib.import_module("ki_system.v8_non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1")
-# END BRAINSTEM CANONICAL PER-CYCLE RUNTIME STARTUP ACTIVATION V1.1
+# BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): the startup
+# activation block that used to sit here (importing
+# ki_system.v8_non_productive_recheck_canonical_autoload_shadow_runtime_
+# integration_v1 to monkey-patch AutonomousLoop.cycle) has been removed
+# together with that module and its entire dependency chain. Exhaustive
+# cross-reference across the whole codebase confirmed its output was
+# never read by anything else, and its own purpose -- observing a
+# hypothetical future outcome-eligibility/fact-promotion decision -- is
+# already superseded by the now-productive Stage-B chain. See the Legacy
+# Report shipped with this cleanup for the full verification trail.
 
 NEURO_CORE = ["dopamine", "serotonin", "glutamate", "gaba", "noradrenaline", "acetylcholine"]
 NEURO_NEW = ["adenosine", "endocannabinoid", "cortisol", "histamine", "orexin", "bdnf"]
@@ -372,7 +377,33 @@ class App(tk.Tk):
         ttk.Button(f, text="Senden", command=self.chat_send).pack(anchor=tk.W)
     def _import_tab(self):
         f = self.tabs["Import & Jobs"]
-        ttk.Button(f, text="Import starten", command=self.pick_import).pack(anchor=tk.W)
+        import_row = ttk.Frame(f)
+        import_row.pack(anchor=tk.W, pady=(0, 2))
+        ttk.Button(import_row, text="Import starten", command=self.pick_import).pack(side=tk.LEFT)
+        # BRAINSTEM_RELATIONS_CORPUS_LANGUAGE_SELECTOR_V1 (25 September 2026)
+        #
+        # Concept document requirement (Abschnitt 2.4.5 / 10.3 of
+        # BrainStem_Relations_Ontology_Questions_Emergence_Concept.md):
+        # v8_phase0b_relational_binding_observation_release.py's Gate-&-
+        # Direction mechanism needs a single, explicit corpus_language
+        # setting ("de" or "en") to calibrate how strongly the Positions-
+        # Heuristik (Signal 1, Abschnitt 2.4.1) is weighted relative to the
+        # PMI existence gate -- this is deliberately a developer decision,
+        # not something the system can infer on its own (see Abschnitt
+        # 2.4.5's explicit reasoning). Placed directly next to the Import
+        # button per explicit user request, since corpus language is a
+        # property of whatever corpus is about to be imported. Persisted
+        # via the existing settings table (same mechanism already used for
+        # max_articles above), read directly by
+        # v8_phase0b_relational_binding_observation_release.py at the start
+        # of every cycle -- no restart required to take effect.
+        ttk.Label(import_row, text="Korpussprache:").pack(side=tk.LEFT, padx=(12, 4))
+        stored_lang = str(self.mem.get_setting("corpus_language", "de") or "de")
+        self.corpus_language = tk.StringVar(value=stored_lang if stored_lang in ("de", "en") else "de")
+        lang_box = ttk.Combobox(import_row, textvariable=self.corpus_language, values=("de", "en"),
+                                 width=4, state="readonly")
+        lang_box.pack(side=tk.LEFT)
+        lang_box.bind("<<ComboboxSelected>>", self._on_corpus_language_changed)
         ttk.Button(f, text="Import/Lernen abbrechen", command=lambda: setattr(self, "cancel", True)).pack(anchor=tk.W)
         row = ttk.Frame(f)
         row.pack(anchor=tk.W, pady=(4, 2))
@@ -425,6 +456,13 @@ class App(tk.Tk):
         self.logger_status.pack(anchor=tk.W, pady=(2, 4))
         self.log = tk.Text(f, wrap=tk.WORD)
         self.log.pack(fill=tk.BOTH, expand=True)
+    def _on_corpus_language_changed(self, event=None):
+        value = self.corpus_language.get()
+        if value not in ("de", "en"):
+            value = "de"
+            self.corpus_language.set(value)
+        self.mem.set_setting("corpus_language", value)
+        self.println("Korpussprache auf '" + value + "' gesetzt (wirkt ab dem naechsten Zyklus).")
     def _search_tab(self):
         f = self.tabs["Suche & Antwort"]
         self.q = tk.StringVar()
@@ -933,14 +971,18 @@ class App(tk.Tk):
             except Exception: pass
         self.println("Stop-Anforderung gesetzt.")
     def _auto_worker(self):
-        import importlib as _brainstem_late_importlib
-        _brainstem_late_runtime = _brainstem_late_importlib.import_module("ki_system.v8_non_productive_recheck_canonical_autoload_shadow_runtime_integration_v1")
-        from ki_system.autonomous import AutonomousLoop as _brainstem_late_loop
-        _brainstem_patch_marker = "_brainstem_per_cycle_runtime_provenance_fix_v1"
-        _brainstem_current_cycle = getattr(_brainstem_late_loop, "cycle", None)
-        if not hasattr(_brainstem_current_cycle, "__wrapped__") and hasattr(_brainstem_late_loop, _brainstem_patch_marker):
-            delattr(_brainstem_late_loop, _brainstem_patch_marker)
-        _brainstem_late_runtime.autoload(_brainstem_late_loop)
+        # BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): this
+        # method used to re-import and re-apply
+        # v8_non_productive_recheck_canonical_autoload_shadow_runtime_
+        # integration_v1's own AutonomousLoop.cycle monkey-patch here,
+        # defensively, in case a fresh AutonomousLoop import at this point
+        # had lost that specific module's patch marker. That module (and
+        # its entire dependency chain) has been removed -- see the Legacy
+        # Report shipped with this cleanup. The rest of the phase chain is
+        # unaffected: it is installed exactly once, at the first
+        # module-level "from ki_system.autonomous import AutonomousLoop"
+        # import in this file, via autonomous.py's own
+        # phase_registry.load_all() call, and remains fully intact.
         n = 0
         self.mode = "learn"
         worker_mem = self._get_worker_memory()

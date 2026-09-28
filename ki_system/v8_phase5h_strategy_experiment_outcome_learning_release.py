@@ -593,12 +593,15 @@ def managed_cycle(self, progress=None):
         result = {'phase5g_cycle_error': str(exc)}
     db = _get_db(self)
     outcome = evaluate_strategy_experiment_outcomes(db)
-    try:
-        from ki_system import v8_modern_outcome_bridge_shadow_release as shadow_bridge
-        shadow = shadow_bridge.observe_shadow(db)
-    except Exception as exc:
-        shadow = {'status':'modern_outcome_bridge_shadow_error','error':str(exc),'bridge_mode':'shadow'}
-    return {'phase': PHASE, 'base_result': result, 'outcome_learning': outcome, 'modern_outcome_bridge_shadow': shadow, 'facts': outcome.get('facts',0), 'relations': outcome.get('relations',0), 'questions': outcome.get('questions',0)}
+    # BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): this function
+    # used to call v8_modern_outcome_bridge_shadow_release.observe_shadow()
+    # unconditionally on every single cycle. That module has been removed:
+    # exhaustive cross-reference across the whole codebase confirmed its
+    # output (modern_outcome_bridge_shadow) was never read by anything else,
+    # and it was also being re-invoked, completely independently, once per
+    # cycle from v8_stageb_gapflow_runtime_contract_release.py's own
+    # observe_cycle() -- see the Legacy Report shipped with this cleanup.
+    return {'phase': PHASE, 'base_result': result, 'outcome_learning': outcome, 'facts': outcome.get('facts',0), 'relations': outcome.get('relations',0), 'questions': outcome.get('questions',0)}
 
 
 def managed_run(self, cycles=1, progress=None):

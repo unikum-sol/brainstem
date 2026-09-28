@@ -77,7 +77,27 @@ def apply_context_expansion_and_gap_closure(mem=None, limit_gaps=80, neighbor_wi
     facts,relations,questions=_cnt(db,'facts'),_cnt(db,'relations'),_cnt(db,'questions')
     if not _exists(db,'internal_learning_gaps'):
         return {'status':'skip','reason':'missing_internal_learning_gaps','phase':PHASE}
-    rows=db.execute("""SELECT id,gap_key,gap_type,role,COALESCE(priority,0),COALESCE(resolution_score,0),COALESCE(strategy_effectiveness_score,0),COALESCE(uncertainty,0),COALESCE(pattern_key,''),COALESCE(hypothesis_id,0) FROM internal_learning_gaps WHERE COALESCE(status,'open') NOT IN ('closed','resolved') ORDER BY COALESCE(phase5e_expected_gain,0) DESC, COALESCE(priority,0) DESC, COALESCE(revision_pressure,0) DESC, id DESC LIMIT ?""",(limit_gaps,)).fetchall()
+    # BRAINSTEM_PHASE5E_HABITUATION_RESPECT_FIX_V1 (25 September 2026)
+    #
+    # Root cause, found while building the Questions -> Chunker feedback
+    # module: this query's own exclusion list ('closed','resolved') was
+    # written before v8_stageb_gap_detection_release.py's habituation
+    # state machine (BRAINSTEM_GAP_CLOSURE_AND_HABITUATION_V1) existed, and
+    # was never updated afterward. A gap that has since been habituated
+    # (sustained, evidence-free stagnation -- e.g. genuine Phase-0
+    # lexical-boundary noise) is NEITHER 'closed' NOR 'resolved', so it
+    # passed this filter completely unchanged and kept receiving the exact
+    # same context-expansion/reading_queue priority boost as any healthy,
+    # still-open gap. This directly reproduces, in this already-existing
+    # module, the "noisy-TV problem" (Modirshanechi et al. 2023) that
+    # Questions Slice 3's own persistence-and-habituation gating was
+    # deliberately built to avoid -- confirming the sequencing decision to
+    # build habituation before any chunker feedback was correct: this
+    # latent defect existed here already, independent of and before the
+    # new Questions feedback module below. Fixed narrowly, matching the
+    # exact exclusion-list-widening pattern already used for
+    # 'closed'/'resolved': 'habituated' is now excluded too.
+    rows=db.execute("""SELECT id,gap_key,gap_type,role,COALESCE(priority,0),COALESCE(resolution_score,0),COALESCE(strategy_effectiveness_score,0),COALESCE(uncertainty,0),COALESCE(pattern_key,''),COALESCE(hypothesis_id,0) FROM internal_learning_gaps WHERE COALESCE(status,'open') NOT IN ('closed','resolved','habituated') ORDER BY COALESCE(phase5e_expected_gain,0) DESC, COALESCE(priority,0) DESC, COALESCE(revision_pressure,0) DESC, id DESC LIMIT ?""",(limit_gaps,)).fetchall()
     plans=actions=attempts=0; total_gain=total_delta=0.0
     chunk_count=max(1,_cnt(db,'chunks'))
     for gid,gkey,gtype,role,priority,resolution,effectiveness,uncertainty,pattern_key,hid in rows:

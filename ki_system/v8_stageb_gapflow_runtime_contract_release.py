@@ -51,26 +51,39 @@ def _self_check_schema(c):
         live=set(_cols(c,t));miss += [t+"."+n for n,_ in defs if n not in live]
     if miss:raise RuntimeError("stageb runtime schema missing: "+repr(miss))
     return {"overall":True,"missing":[]}
-def _source_rows(r):
-    if not isinstance(r,dict):return 0
-    for k in ("source_rows_seen","rows_seen","source_rows"):
-        if k in r:return _i(r.get(k),0)
-    return 0
+# BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): _source_rows()
+# used to read the removed shadow modules' own "source_rows_seen"-style
+# result keys; it is now unused (observe_cycle() below no longer calls
+# any of those modules) and has been removed rather than left as dead
+# code, per this project's own Legacy Cleanup convention.
+# BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): this function
+# used to import and call v8_modern_outcome_bridge_shadow_release,
+# v8_modern_gap_candidate_bridge_shadow_release and
+# v8_modern_gap_phase5f_shadow_observation_release unconditionally on
+# every single cycle -- as a SECOND, fully independent invocation of the
+# very same three modules already being called (also unconditionally,
+# also every cycle) from v8_phase5a_integrated_self_improving_learning_
+# release.py and v8_phase5h_strategy_experiment_outcome_learning_
+# release.py. All three modules, and their two supporting dependency
+# chains, have been removed: exhaustive cross-reference across the whole
+# codebase confirmed their output was never read by anything else, and
+# their original purpose -- observing what a productive gap/outcome
+# decision would look like before one was made -- is already superseded
+# by the now-productive Stage-B gap detection, contradiction detection,
+# hypothesis revision and fact promotion chain. See the Legacy Report
+# shipped with this cleanup for the full verification trail. This
+# module's own runtime-contract bookkeeping (STATE/CYCLES tables,
+# managed_cycle()/autoload() chaining as the chain-top module) is
+# unchanged; only the now-removed cascades' observation calls and their
+# result classification are gone, replaced by an explicit
+# "shadow_cascades_removed" flow state.
 def observe_cycle(obj=None,backend_cycle=None):
     c=resolve_db(obj);ensure_schema(c);st=_read_kv(c,STATE);cycle=_i(backend_cycle,_i(st.get("backend_cycle"),0)+1);before=_protected(c);errors=[]
-    results={}
-    modules=(("outcome","v8_modern_outcome_bridge_shadow_release",1200),("gap","v8_modern_gap_candidate_bridge_shadow_release",512),("phase5f","v8_modern_gap_phase5f_shadow_observation_release",512))
-    for label,name,limit in modules:
-        try:
-            m=__import__("ki_system."+name,fromlist=["observe_shadow"]);results[label]=m.observe_shadow(c,limit=limit)
-        except Exception as exc:errors.append(label+":"+type(exc).__name__+":"+str(exc));results[label]={"status":"error"}
+    results={"outcome":{"status":"removed_shadow_cascade"},"gap":{"status":"removed_shadow_cascade"},"phase5f":{"status":"removed_shadow_cascade"}}
     after=_protected(c);safe=before==after and not errors
-    outcome_rows=_source_rows(results["outcome"]);gap_rows=_source_rows(results["gap"]);p5_rows=_source_rows(results["phase5f"])
-    p5_obs=_i(results["phase5f"].get("observations_created"),0)+_i(results["phase5f"].get("observations_updated"),0)
-    if errors:flow="error"
-    elif outcome_rows==0 and gap_rows==0 and p5_rows==0:flow="measured_zero_no_new_sources"
-    elif gap_rows>0 or p5_rows>0:flow="real_candidates_observed_shadow_only"
-    else:flow="upstream_outcomes_without_gap_candidates"
+    outcome_rows=0;gap_rows=0;p5_rows=0
+    p5_obs=0
+    flow="shadow_cascades_removed"
     if not safe: c.rollback(); raise RuntimeError("stageb E protected-count or pipeline failure: "+repr(errors)+" before="+repr(before)+" after="+repr(after))
     c.execute("INSERT INTO "+CYCLES+"(created_at,backend_cycle,outcome_source_rows,gap_source_rows,phase5f_source_rows,phase5f_observations,candidate_flow_state,protected_before,protected_after,safety_ok,errors) VALUES(?,?,?,?,?,?,?,?,?,?,?)",(_now(),cycle,outcome_rows,gap_rows,p5_rows,p5_obs,flow,json.dumps(before,sort_keys=True),json.dumps(after,sort_keys=True),1,json.dumps(errors)))
     for k,v in {"backend_cycle":cycle,"backend_status":"running","last_backend_at":_now(),"candidate_flow_state":flow,"last_outcome_source_rows":outcome_rows,"last_gap_source_rows":gap_rows,"last_phase5f_source_rows":p5_rows,"last_phase5f_observations":p5_obs,"last_safety_ok":True,"productive_writes":"disabled"}.items():_set(c,k,v)
@@ -113,8 +126,26 @@ def managed_cycle(self,progress=None):
 def managed_run(self,cycles=1,progress=None):return {"phase":PHASE,"results":[managed_cycle(self,progress) for _ in range(max(1,int(cycles or 1)))]}
 _PREV_CYCLE=None
 _PREV_RUN=None
+# BRAINSTEM_COMPASS_FACT_PROMOTION_FLAG_FIX_V1 (24 September 2026): this
+# autoload() runs LAST in phase_registry.py's LOAD_ORDER, so whatever it
+# stamps onto AutonomousLoop.fact_promotion here is the final, observable
+# value for the entire real cycle chain -- overwriting the correct
+# "enabled" assertion made moments earlier by
+# v8_stageb_fact_promotion_release.py's own autoload(), which is the
+# actual, sole, guarded writer of the facts table. This module (a pure
+# runtime-integrity/chaining contract, unrelated to fact promotion
+# itself) previously hardcoded "disabled" unconditionally, causing the
+# compass to falsely report fact promotion as disabled even while it was
+# actively and correctly promoting facts every cycle (confirmed against
+# a real production database with 36+ already-promoted facts). Fixed by
+# no longer touching fact_promotion here at all, so the correct value
+# asserted by its owning module survives. direct_fact_writes and
+# direct_relation_writes are left unchanged ("disabled") -- that remains
+# correct, since no module performs an ungated, non-consolidated direct
+# write to facts or relations; only the guarded Stage-B fact-promotion
+# path is active.
 def autoload(AutonomousLoop):
     global _PREV_CYCLE,_PREV_RUN
     _PREV_CYCLE=getattr(AutonomousLoop,"cycle",None);_PREV_RUN=getattr(AutonomousLoop,"run",None)
     AutonomousLoop.cycle=managed_cycle;AutonomousLoop.run=managed_run;AutonomousLoop.stageb_gapflow_runtime_contract=True
-    AutonomousLoop.fact_promotion="disabled";AutonomousLoop.direct_fact_writes="disabled";AutonomousLoop.direct_relation_writes="disabled";return AutonomousLoop
+    AutonomousLoop.direct_fact_writes="disabled";AutonomousLoop.direct_relation_writes="disabled";return AutonomousLoop

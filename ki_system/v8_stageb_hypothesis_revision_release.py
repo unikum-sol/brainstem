@@ -54,6 +54,14 @@ PROTECTED = ("facts", "relations", "questions")
 REVERT_ROLES = {
     "stable_hypothesis": "uncertain_hypothesis",
     "stable_lexical_boundary": "uncertain_lexical_boundary",
+    # BRAINSTEM_RELATIONS_EMERGENCE_SLICE1_V1 (25 September 2026): mirrors
+    # the new entry added to ELIGIBLE_ROLES in
+    # v8_stageb_guarded_hypothesis_graduation_release.py (see
+    # BrainStem_Relations_Ontology_Questions_Emergence_Concept.md,
+    # Abschnitt 10.1, point 3). Without this entry, a graduated relation
+    # hypothesis could never be reverted, breaking the "no knowledge is
+    # permanently fixed" guarantee for relations specifically.
+    "stable_relation_hypothesis": "uncertain_relation_hypothesis",
 }
 DEFAULTS = {
     "enabled": "true",
@@ -62,6 +70,43 @@ DEFAULTS = {
     # most this many revisions per real cycle, deliberately conservative.
     "revision_budget": "1",
     "total_revised": "0",
+    # BRAINSTEM_HYPOTHESIS_REVISION_NEUROMODULATOR_COUPLING_V1 (28
+    # September 2026)
+    #
+    # Root cause: this module never read the shared neuromodulator
+    # snapshot at all, despite this project already having established,
+    # project-internal precedent for exactly this messenger's role here --
+    # v8_phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release.py's
+    # own formula already ties acetylcholine directly to "revision_bias"
+    # (this project's own structural-revision signal). This module IS the
+    # structural-revision mechanism that signal was always meant to
+    # describe -- reversing a hypothesis's graduated role back to
+    # uncertain is the single most direct structural revision this
+    # project performs -- so acetylcholine modulates this module's own
+    # revision_budget directly, using the same internal convention
+    # already reused twice this session (v8_stageb_guarded_hypothesis_
+    # graduation_release.py's own acetylcholine-novelty pressure boost;
+    # v8_phase0b_relational_binding_observation_release.py's own
+    # acetylcholine-direction-threshold coupling).
+    #
+    # Deliberately NOT rounded to an integer step function: revision_
+    # budget's own hard on/off switch (budget==0 disables this module
+    # entirely) remains governed ONLY by the raw, unmodulated config
+    # value, exactly like gap_detection's own `enabled` flag staying
+    # orthogonal to its noradrenaline coupling -- acetylcholine only ever
+    # scales an ALREADY-nonzero budget continuously (permitting, at
+    # elevated acetylcholine, an occasional additional revision within
+    # the same cycle beyond the nominal integer budget; at low
+    # acetylcholine, shrinking -- but for a base budget of 1, never fully
+    # zeroing -- how many resolvable candidates are actually acted upon).
+    # This deliberately mirrors this project's own literature-grounded
+    # acetylcholine direction already established in v8_phase7d_slow_
+    # wave_sleep_substructure_release.py (Gais & Born 2004; Hasselmo &
+    # McGaughy 2004): low acetylcholine favors consolidation/stability
+    # over new structural encoding, so a low-acetylcholine state should
+    # correctly be LESS willing to revise/restructure existing knowledge,
+    # not more.
+    "selection_pressure_ach_gain": "0.6",
 }
 
 
@@ -138,6 +183,25 @@ def _float(v, d=0.0) -> float:
         return d
 
 
+def _neuromodulators(con) -> Dict[str, float]:
+    """Identical access pattern to every other module in this chain that
+    reads the shared six-core neuromodulator snapshot -- no new messenger
+    responsibility introduced."""
+    defaults = {
+        "dopamine": 0.5, "serotonin": 0.6, "glutamate": 0.4,
+        "gaba": 0.4, "noradrenaline": 0.3, "acetylcholine": 0.5,
+    }
+    if not _table_exists(con, "phase6a_neuromodulated_sleep_state"):
+        return defaults
+    values = _read_kv(con, "phase6a_neuromodulated_sleep_state")
+    for key in tuple(defaults):
+        try:
+            defaults[key] = float(values.get(key, defaults[key]))
+        except (TypeError, ValueError):
+            pass
+    return defaults
+
+
 def _count(con, table) -> int:
     if not _table_exists(con, table):
         return 0
@@ -185,10 +249,19 @@ def run_revision_cycle(con, cycle_index=None) -> Dict[str, Any]:
     if str(state.get("enabled", "true")).strip().lower() != "true":
         con.commit()
         return {"phase": PHASE, "revised": 0, "reason": "disabled", "cycle_index": cycle}
-    budget = max(0, _int(state.get("revision_budget"), 1))
-    if budget == 0:
+    base_budget = max(0, _int(state.get("revision_budget"), 1))
+    if base_budget == 0:
         con.commit()
         return {"phase": PHASE, "revised": 0, "reason": "zero_budget", "cycle_index": cycle}
+
+    # BRAINSTEM_HYPOTHESIS_REVISION_NEUROMODULATOR_COUPLING_V1: see
+    # DEFAULTS' own comment for the full derivation. Exactly base_budget
+    # (no behavior change) at acetylcholine's own neutral baseline of 0.5.
+    # The structural on/off switch above deliberately stays governed only
+    # by the raw, unmodulated base_budget.
+    ach_gain = _float(state.get("selection_pressure_ach_gain"), 0.6)
+    acetylcholine = _neuromodulators(con)["acetylcholine"]
+    effective_budget = max(0.0, base_budget * (1.0 + ach_gain * (acetylcholine - 0.5)))
 
     before = _protected(con)
     revised = 0
@@ -196,7 +269,7 @@ def run_revision_cycle(con, cycle_index=None) -> Dict[str, Any]:
     con.execute("SAVEPOINT stageb_revision")
     try:
         for cand in _resolvable_candidates(con, limit=64):
-            if revised >= budget:
+            if revised >= effective_budget:
                 break
             hid = cand["hypothesis_id"]
             row = con.execute(

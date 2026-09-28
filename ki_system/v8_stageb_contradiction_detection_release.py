@@ -47,6 +47,36 @@ DEFAULTS = {
     "scan_limit": "100",
     "contradictions_created_total": "0",
     "contradictions_reobserved_total": "0",
+    # BRAINSTEM_CONTRADICTION_DETECTION_NEUROMODULATOR_COUPLING_V1 (28
+    # September 2026)
+    #
+    # Root cause: _pick_weaker_hypothesis()'s own decisive-evidence-ratio
+    # check (see that function's own BRAINSTEM_CONTRADICTION_DETECTION_
+    # UNCERTAINTY_INTERACTION_FIX_V1 comment for the full history) used a
+    # bare, hardcoded literal "3" directly in its own SQL/Python logic --
+    # unlike every other calibrated threshold in this codebase, this value
+    # was never exposed via STATE_TABLE, so it could not be tuned at
+    # runtime and could not be coupled to any neuromodulator. Lifted here
+    # to match this project's own universal convention (every calibrated
+    # constant lives in STATE_TABLE, runtime-tunable, no code change
+    # needed to recalibrate).
+    #
+    # Coupled to noradrenaline using the exact same gain magnitude and the
+    # exact same symmetric (1.0 + gain*(0.5-value)) formula already
+    # verified three times this session (gap_detection's own
+    # stalled_min_evidence_count; question_promotion's own
+    # min_resolution_attempts_for_question; phase0b's own min_pair_count/
+    # pmi_threshold_bits), grounded in Aston-Jones & Cohen's Adaptive Gain
+    # Theory (2005, Annu. Rev. Neurosci. 28:403-450): elevated tonic
+    # noradrenaline is associated with disengagement from the current
+    # task and exploratory search for alternatives -- a system in this
+    # state should be MORE willing to decisively resolve a contested pair
+    # on a SMALLER evidence-count ratio (lower bar), rather than waiting
+    # for an even more lopsided margin, while a low-noradrenaline,
+    # exploitative state stays conservative, requiring a larger margin
+    # before committing to a decisive resolution.
+    "decisive_evidence_ratio": "3.0",
+    "selection_pressure_na_gain": "0.5",
 }
 
 
@@ -152,6 +182,27 @@ def _float(v, d=0.0) -> float:
         return d
 
 
+def _neuromodulators(con) -> Dict[str, float]:
+    """Identical access pattern to every other module in this chain that
+    reads the shared six-core neuromodulator snapshot (e.g. v8_stageb_
+    gap_detection_release.py's / v8_phase0b_relational_binding_
+    observation_release.py's own _neuromodulators()) -- no new messenger
+    responsibility introduced."""
+    defaults = {
+        "dopamine": 0.5, "serotonin": 0.6, "glutamate": 0.4,
+        "gaba": 0.4, "noradrenaline": 0.3, "acetylcholine": 0.5,
+    }
+    if not _table_exists(con, "phase6a_neuromodulated_sleep_state"):
+        return defaults
+    values = _read_kv(con, "phase6a_neuromodulated_sleep_state")
+    for key in tuple(defaults):
+        try:
+            defaults[key] = float(values.get(key, defaults[key]))
+        except (TypeError, ValueError):
+            pass
+    return defaults
+
+
 def _ensure_stability_row(con, hid: int):
     """hypothesis_stability_scores rows are only created lazily by other,
     already-existing modules when they first touch a given hypothesis. To
@@ -165,7 +216,7 @@ def _ensure_stability_row(con, hid: int):
     )
 
 
-def _pick_weaker_hypothesis(con, hyp_ids) -> Optional[Tuple[int, int]]:
+def _pick_weaker_hypothesis(con, hyp_ids, decisive_ratio: float = 3.0) -> Optional[Tuple[int, int]]:
     """Given a list of context_hypotheses ids sharing a contested subject,
     return (weaker_id, stronger_id) using ONLY already-existing,
     already-observed signals (evidence_count, uncertainty) -- no new
@@ -221,19 +272,21 @@ def _pick_weaker_hypothesis(con, hyp_ids) -> Optional[Tuple[int, int]]:
     if strongest[0] == weakest[0]:
         return None
     ev_strong, ev_weak = strongest[1], weakest[1]
-    # Decisive case: evidence_count alone is lopsided enough (at least 3x)
-    # to decide on its own, without needing uncertainty to agree. No
-    # additional absolute-margin requirement -- at real production scale
-    # (evidence_count regularly in the hundreds to low thousands, see this
-    # project's own lexical-boundary layer diagnostics) a 3x ratio is
-    # already a large, meaningful gap; requiring an additional fixed
-    # absolute margin on top made the check too strict for the realistic
-    # smaller-scale case actually observed in end-to-end testing
-    # (evidence_count 4 vs. 1) without adding a proportional safety
-    # benefit at larger scale.
-    if ev_weak > 0 and ev_strong >= 3 * ev_weak:
+    # Decisive case: evidence_count alone is lopsided enough (at least
+    # `decisive_ratio`x, base default 3.0 -- see DEFAULTS' own comment for
+    # the neuromodulator-coupled derivation of the effective value passed
+    # in here) to decide on its own, without needing uncertainty to agree.
+    # No additional absolute-margin requirement -- at real production
+    # scale (evidence_count regularly in the hundreds to low thousands,
+    # see this project's own lexical-boundary layer diagnostics) a 3x
+    # ratio is already a large, meaningful gap; requiring an additional
+    # fixed absolute margin on top made the check too strict for the
+    # realistic smaller-scale case actually observed in end-to-end
+    # testing (evidence_count 4 vs. 1) without adding a proportional
+    # safety benefit at larger scale.
+    if ev_weak > 0 and ev_strong >= decisive_ratio * ev_weak:
         return (weakest[0], strongest[0])
-    if ev_weak == 0 and ev_strong >= 3:
+    if ev_weak == 0 and ev_strong >= decisive_ratio:
         return (weakest[0], strongest[0])
     # Close-evidence case: fall back to requiring uncertainty to agree too
     # (the original, more conservative rule), for genuinely close calls.
@@ -249,6 +302,14 @@ def run_contradiction_detection_cycle(con) -> Dict[str, Any]:
         return {"status": "stageb_contradiction_detection_disabled", "created": 0, "reobserved": 0}
     scan_limit = max(1, _int(state.get("scan_limit"), 100))
     now = _now()
+
+    # BRAINSTEM_CONTRADICTION_DETECTION_NEUROMODULATOR_COUPLING_V1: see
+    # DEFAULTS' own comment for the full derivation. Exactly 1.0 (no
+    # behavior change) at noradrenaline's own neutral baseline of 0.5.
+    base_decisive_ratio = max(1.0, _float(state.get("decisive_evidence_ratio"), 3.0))
+    na_gain = _float(state.get("selection_pressure_na_gain"), 0.5)
+    noradrenaline = _neuromodulators(con)["noradrenaline"]
+    decisive_ratio = max(1.0, base_decisive_ratio * (1.0 + na_gain * (0.5 - noradrenaline)))
 
     created = 0
     reobserved = 0
@@ -266,9 +327,16 @@ def run_contradiction_detection_cycle(con) -> Dict[str, Any]:
     for gap_key, subject in gap_rows:
         if not subject:
             continue
+        # BRAINSTEM_RELATIONS_EMERGENCE_SLICE1_V1 (25 September 2026): unlike
+        # ELIGIBLE_ROLES/REVERT_ROLES in the graduation/revision modules,
+        # this role list is a hardcoded SQL literal, not derived from a
+        # shared dict -- see BrainStem_Relations_Ontology_Questions_
+        # Emergence_Concept.md, Abschnitt 10.1, point 2. Without adding
+        # 'stable_relation_hypothesis' here, graduated relations would
+        # never be checked against other facts for contradictions.
         hyp_rows = con.execute(
             "SELECT id, text_excerpt FROM context_hypotheses "
-            "WHERE subject=? AND role IN ('stable_hypothesis','stable_lexical_boundary') "
+            "WHERE subject=? AND role IN ('stable_hypothesis','stable_lexical_boundary','stable_relation_hypothesis') "
             "ORDER BY id",
             (subject,),
         ).fetchall()
@@ -286,7 +354,7 @@ def run_contradiction_detection_cycle(con) -> Dict[str, Any]:
         value_a = excerpts_by_id.get(hyp_ids[0], "")
         value_b = excerpts_by_id.get(hyp_ids[-1], "") if len(hyp_ids) > 1 else ""
 
-        pick = _pick_weaker_hypothesis(con, hyp_ids)
+        pick = _pick_weaker_hypothesis(con, hyp_ids, decisive_ratio)
         details = {
             "gap_key": gap_key,
             "hypothesis_ids": hyp_ids,

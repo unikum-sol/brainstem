@@ -170,6 +170,74 @@ def _count(con, table) -> int:
     return int(con.execute("SELECT COUNT(*) FROM " + table).fetchone()[0])
 
 
+def _close_gaps_for_hypothesis(con, hypothesis_id, reason, now) -> int:
+    """BRAINSTEM_GAP_CLOSURE_AND_HABITUATION_V1 (25 September 2026)
+    -- found and fixed as a follow-up to the Questions Slice 3 audit: a
+    gap's hypothesis_id (populated exclusively by v8_stageb_gap_detection_
+    release.py at gap-creation time) graduating into a durable fact here
+    is the real-world event that resolves the gap the system itself
+    raised about that hypothesis -- but no module previously ever moved
+    such a gap's status away from 'open', permanently, making Slice 3's
+    own retraction/resolution path (questions.status -> 'resolved' once
+    its source gap closes) dead code in real operation. Fixed at this
+    module's own, already-existing promotion write point (right after a
+    fact is actually inserted), not inside gap_detection itself, since
+    only this module knows a graduation has become durable. Deliberately
+    narrow and idempotent: only 'open'/'persistent_gap'/'habituated' rows
+    are touched; a gap already 'closed' is left untouched (closure is
+    final unless explicitly reopened via _reopen_gaps_for_hypothesis()
+    below on retraction).
+    'habituated' IS included here, not excluded: a real, instrumented
+    end-to-end test run (see this delivery's own audit report,
+    "Habituation/Closure Interaction" section) surfaced a genuine case
+    where a hypothesis's own gap had already habituated (sustained,
+    evidence-free stagnation) before that SAME hypothesis later graduated
+    into a durable fact via a different path (consolidation/critic-gate
+    pressure, not renewed raw evidence volume). A positive graduation is
+    strictly stronger, more specific proof of resolution than mere
+    stagnation-driven habituation (which only ever meant "the system
+    stopped expecting new evidence", not "this can never resolve") -- so
+    graduation must be able to override a habituated state, exactly as it
+    already overrides a merely-open/persistent one. No cross-module
+    Python import is used -- matching this project's established
+    convention that every module coordinates exclusively through the
+    shared database, never through direct function calls into a sibling
+    module."""
+    if not _table_exists(con, "internal_learning_gaps"):
+        return 0
+    cols = _columns(con, "internal_learning_gaps")
+    if not {"hypothesis_id", "status", "closed_at", "closure_reason"}.issubset(cols):
+        return 0
+    cur = con.execute(
+        "UPDATE internal_learning_gaps SET status='closed', closed_at=?, closure_reason=? "
+        "WHERE hypothesis_id=? AND status IN ('open','persistent_gap','habituated')",
+        (now, reason[:200], hypothesis_id),
+    )
+    return cur.rowcount or 0
+
+
+def _reopen_gaps_for_hypothesis(con, hypothesis_id, reason, now) -> int:
+    """Counterpart to _close_gaps_for_hypothesis(), called at this
+    module's own existing retraction write point (right after a fact is
+    deleted because its source hypothesis was reversed): the underlying
+    uncertainty is real again, so any gap this module had closed for that
+    hypothesis is reopened rather than left incorrectly marked closed
+    forever. Does not touch a currently-'habituated' gap -- that is a
+    separate, stagnation-driven state, not reopened by a hypothesis
+    reversal event."""
+    if not _table_exists(con, "internal_learning_gaps"):
+        return 0
+    cols = _columns(con, "internal_learning_gaps")
+    if not {"hypothesis_id", "status", "closed_at", "closure_reason"}.issubset(cols):
+        return 0
+    cur = con.execute(
+        "UPDATE internal_learning_gaps SET status='open', closed_at=NULL, closure_reason=? "
+        "WHERE hypothesis_id=? AND status='closed'",
+        (reason[:200], hypothesis_id),
+    )
+    return cur.rowcount or 0
+
+
 def _protected_others(con) -> Dict[str, int]:
     """Facts is intentionally EXCLUDED from this check -- this module's
     entire purpose is to change facts. relations/questions are still
@@ -187,22 +255,55 @@ def _promote_from_graduations(con, now) -> Dict[str, int]:
         return {"promoted": 0}
     state = _read_kv(con, STATE_TABLE)
     last_id = _int(state.get("last_promoted_graduation_event_id"), 0)
+    # BRAINSTEM_RELATIONS_EMERGENCE_SLICE1_V1 (25 September 2026)
+    #
+    # Root cause found while implementing Relations Slice 1: this query
+    # previously read every graduation event with decision LIKE
+    # 'graduated_to_%', regardless of new_role, and promoted each one as a
+    # fact. Once v8_stageb_guarded_hypothesis_graduation_release.py's
+    # ELIGIBLE_ROLES map was extended with
+    # 'uncertain_relation_hypothesis' -> 'stable_relation_hypothesis' (see
+    # BrainStem_Relations_Ontology_Questions_Emergence_Concept.md, Abschnitt
+    # 10.1, point 4), a graduated relation hypothesis would have been
+    # promoted here AS A FACT ADDITIONALLY to its correct promotion as a
+    # relation by the new v8_stageb_relation_promotion_release.py module --
+    # a genuine double-promotion bug, not a hypothetical one. Fixed by
+    # restricting this module to new_role='stable_hypothesis' only, so it
+    # remains exclusively responsible for sentence-level (and lexical-
+    # boundary) facts; relation graduations are now exclusively handled by
+    # v8_stageb_relation_promotion_release.py.
     rows = con.execute(
         "SELECT id, hypothesis_id, new_role FROM stageb_graduation_events "
-        "WHERE id>? AND decision LIKE 'graduated_to_%' ORDER BY id LIMIT 200",
+        "WHERE id>? AND decision LIKE 'graduated_to_%' AND new_role='stable_hypothesis' "
+        "ORDER BY id LIMIT 200",
         (last_id,),
     ).fetchall()
     promoted = 0
     max_id_seen = last_id
     for event_id, hid, new_role in rows:
         max_id_seen = max(max_id_seen, event_id)
+        # BRAINSTEM_FACT_SOURCE_CHUNK_ID_FIX_V1 (25 September 2026)
+        #
+        # Root cause (confirmed via a real 30-fact export from the live
+        # production database): every single promoted fact's source_chunk_id
+        # was hardcoded to None a few lines below, breaking this project's
+        # own "every promoted fact carries a complete provenance chain"
+        # guarantee at the facts.source_chunk_id level -- even though
+        # context_hypotheses.chunk_id is populated for every hypothesis (see
+        # v8_context_observation_learning_release.py's insert_observation()).
+        # The only reason this was not a total loss of provenance is that
+        # facts.source_hypothesis_id -> context_hypotheses.chunk_id still
+        # provides an indirect path -- but any direct query or GUI feature
+        # against facts.source_chunk_id itself would silently see nothing.
+        # Fixed by additionally selecting chunk_id here and threading it
+        # through to the INSERT below, instead of the literal None.
         hyp = con.execute(
-            "SELECT text_excerpt, subject, confidence FROM context_hypotheses WHERE id=?",
+            "SELECT text_excerpt, subject, confidence, chunk_id FROM context_hypotheses WHERE id=?",
             (hid,),
         ).fetchone()
         if hyp is None:
             continue
-        text_excerpt, subject, confidence = hyp
+        text_excerpt, subject, confidence, chunk_id = hyp
         subject_value = (subject or text_excerpt or "").strip()[:180]
         if not subject_value:
             continue
@@ -223,7 +324,7 @@ def _promote_from_graduations(con, now) -> Dict[str, int]:
             "INSERT OR IGNORE INTO facts(subject,relation,value,confidence,source_chunk_id,"
             "created_at,source_hypothesis_id) VALUES(?,?,?,?,?,?,?)",
             (subject_value, "observed_as", (text_excerpt or subject_value)[:500],
-             _float(confidence, 0.5), None, now, hid),
+             _float(confidence, 0.5), chunk_id, now, hid),
         )
         if cur.rowcount:
             fact_id = cur.lastrowid
@@ -234,6 +335,7 @@ def _promote_from_graduations(con, now) -> Dict[str, int]:
                  (text_excerpt or subject_value)[:500], _float(confidence, 0.5),
                  "graduated_via_stageb_event:" + str(event_id), now),
             )
+            _close_gaps_for_hypothesis(con, hid, "fact_promoted:fact_id=" + str(fact_id), now)
             promoted += 1
     if max_id_seen != last_id:
         _set_kv(con, STATE_TABLE, "last_promoted_graduation_event_id", max_id_seen)
@@ -273,6 +375,7 @@ def _retract_from_revisions(con, now) -> Dict[str, int]:
             ("fact_retracted", hid, fact_id, subject, relation, value, confidence,
              "hypothesis_revised_" + old_role + "_to_" + new_role + ":revision_id:" + str(rev_id), now),
         )
+        _reopen_gaps_for_hypothesis(con, hid, "fact_retracted:revision_id=" + str(rev_id), now)
         retracted += 1
     if max_id_seen != last_id:
         _set_kv(con, STATE_TABLE, "last_processed_revision_id", max_id_seen)
@@ -348,4 +451,38 @@ def autoload(AutonomousLoop):
     AutonomousLoop.cycle = managed_cycle
     AutonomousLoop.run = managed_run
     AutonomousLoop.stageb_fact_promotion_release = True
+    # BRAINSTEM_COMPASS_FACT_PROMOTION_FLAG_FIX_V1 (24 September 2026)
+    #
+    # This module is the sole, guarded writer that ever promotes a
+    # hypothesis into the facts table (see run_fact_promotion() above);
+    # it is therefore the correct, single authority for what the
+    # AutonomousLoop.fact_promotion compass flag should say. Previously
+    # this module never touched that flag at all, while roughly twenty
+    # other, unrelated phase modules each unconditionally hardcoded
+    # AutonomousLoop.fact_promotion = "disabled" in their own autoload().
+    # Because phase_registry.py's LOAD_ORDER runs every autoload() once,
+    # in a fixed sequence, whichever module happened to load LAST always
+    # silently won -- and the module that actually loads last
+    # (v8_stageb_gapflow_runtime_contract_release.py, the chain-top
+    # runtime-integrity contract) hardcoded "disabled" as well. The
+    # net effect, confirmed against a real production database with 36+
+    # already-promoted facts: the compass consistently reported
+    # "fact_promotion: disabled" even while facts were actively and
+    # correctly being promoted every cycle -- a purely cosmetic,
+    # zero-risk misreport (this flag is never read to gate any real
+    # write path; memory.py's own write guard was already separately and
+    # explicitly lifted, see BRAINSTEM_PURE_WRITE_GUARD_LIFTED_V1), but a
+    # real, user-facing inconsistency between actual and reported state.
+    #
+    # Fixed here, at the correct, owning module, by asserting the true
+    # current state explicitly. The matching stomp in
+    # v8_stageb_gapflow_runtime_contract_release.py (which runs after
+    # this module and would otherwise silently overwrite this assertion
+    # back to "disabled") has been corrected in the same delivery so this
+    # value survives to the end of the real load chain. direct_fact_writes
+    # and direct_relation_writes remain "disabled" -- correctly -- since
+    # no module in this codebase performs an ungated, non-consolidated
+    # direct write to facts or relations; only this guarded, Stage-B-
+    # graduation-gated promotion path is active.
+    AutonomousLoop.fact_promotion = "enabled"
     return AutonomousLoop
