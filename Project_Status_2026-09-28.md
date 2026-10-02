@@ -1,4 +1,4 @@
-# BrainStem — Project Status Report
+# BrainStem RNS-AI — Project Status Report
 
 **Date:** 28 September 2026
 **Document type:** Full architectural and functional status description
