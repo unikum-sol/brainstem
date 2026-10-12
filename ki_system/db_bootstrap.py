@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Tuple
 # the wrong column names before memory.py ever got to run its own (now
 # no-op) CREATE TABLE IF NOT EXISTS, breaking memory.py's own methods with
 # "no such column: value" style errors. Fixed by matching memory.py exactly.
+# Audit fix: central mirror of explicit module schemas; additive only.
 SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
            ('subject', 'TEXT'),
            ('relation', 'TEXT'),
@@ -38,19 +39,6 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
            ('confidence', 'REAL DEFAULT 0'),
            ('source_chunk_id', 'INTEGER'),
            ('created_at', 'INTEGER'),
-           # BRAINSTEM_SCHEMA_CENTRALIZATION_GAP_FIX_V1 (23.09.2026): this
-           # column was previously ONLY ever added by memory.py's own
-           # Memory._ensure_core_import_schema()/CORE_IMPORT_SCHEMA, never
-           # mirrored here in the central schema authority -- violating
-           # this project's own rule that every schema change must be
-           # tracked in db_bootstrap.py's SCHEMA_TABLES. On a database
-           # bootstrapped via ensure_database_exists() alone (no Memory()
-           # instantiated first), v8_stageb_fact_promotion_release.py's own
-           # schema self-check correctly detected the missing column and
-           # refused to write, exactly as designed -- but this masked a
-           # real central-schema gap rather than a bug in that module.
-           # Mirrored here now (memory.py's own ALTER TABLE ADD COLUMN
-           # remains additionally idempotent/harmless if it runs first).
            ('source_hypothesis_id', 'INTEGER')],
  'relations': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
                ('source', 'TEXT'),
@@ -59,14 +47,6 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                ('confidence', 'REAL DEFAULT 0'),
                ('source_chunk_id', 'INTEGER'),
                ('created_at', 'INTEGER'),
-               # BRAINSTEM_RELATIONS_EMERGENCE_SLICE1_V1 (25 September 2026):
-               # additive, nullable column linking a promoted relation back
-               # to the exact context_hypotheses row it was promoted from
-               # (see v8_stageb_relation_promotion_release.py), mirroring
-               # facts.source_hypothesis_id's existing role/rationale
-               # exactly. Required so a relation can be retracted again if
-               # its source hypothesis is later reversed by
-               # v8_stageb_hypothesis_revision_release.py.
                ('source_hypothesis_id', 'INTEGER')],
  'questions': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
                ('question', 'TEXT'),
@@ -74,15 +54,6 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                ('status', "TEXT DEFAULT 'open'"),
                ('created_at', 'INTEGER'),
                ('updated_at', 'INTEGER'),
-               # BRAINSTEM_QUESTIONS_EMERGENCE_SLICE3_V1 (25 September 2026):
-               # additive, nullable column linking a promoted question back
-               # to the exact internal_learning_gaps row it was promoted
-               # from (see v8_stageb_question_promotion_release.py),
-               # mirroring facts.source_hypothesis_id and relations.
-               # source_hypothesis_id's existing role/rationale exactly.
-               # Required so a question can be resolved again (status set
-               # to 'resolved', never deleted) if its source gap is later
-               # closed.
                ('source_gap_id', 'INTEGER')],
  'documents': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
                ('path', 'TEXT'),
@@ -107,24 +78,6 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
               ('confidence', 'REAL DEFAULT 0'),
               ('fact_id', 'INTEGER'),
               ('created_at', 'INTEGER'),
-              # BRAINSTEM_ONTOLOGY_EMERGENCE_SLICE2_V1 (25 September 2026):
-              # two additive, nullable columns for
-              # v8_stageb_ontology_promotion_release.py, per
-              # BrainStem_Relations_Ontology_Questions_Emergence_Concept.md,
-              # Abschnitt 3.2/10.2. source_cluster_key links a promoted
-              # ontology row back to the stable-cluster anchor (prototype
-              # node key) it was derived from, enabling retraction if the
-              # cluster later dissolves (see v8_stageb_ontology_cluster_
-              # observation_release.py). source_relation_ids is a JSON list
-              # of the contributing relations.id values -- a single foreign
-              # key (like facts.source_hypothesis_id) is not sufficient
-              # here because an ontology row derives from a GROUP of
-              # multiple relations (the edges connecting child to prototype
-              # within the stable cluster), not from one single hypothesis.
-              # fact_id remains unused by this module (Slice 2 clusters
-              # over `relations`, not `facts` -- see the module's own
-              # docstring for the full rationale) but is left in place,
-              # unremoved, for any future direct-fact-based clustering.
               ('source_cluster_key', 'TEXT'),
               ('source_relation_ids', 'TEXT')],
  'context_hypotheses': [('id', 'INTEGER PRIMARY KEY'),
@@ -187,207 +140,36 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                         ('phase5g_overlap_score', 'REAL DEFAULT 0'),
                         ('phase5g_last_selected_at', 'INTEGER DEFAULT 0'),
                         ('phase5g_reason', 'TEXT'),
-                        # BRAINSTEM_LEXICAL_LAYER_SCHEMA_V1: additive column
-                        # for the new v8_phase0_lexical_boundary_observation_
-                        # release.py module (autonomous lexical/word-boundary
-                        # discovery, see docs/lexical_emergence_concept.md).
-                        # context_hypotheses is a centrally-declared, shared
-                        # table used by many phases, so per this project's
-                        # own "alle Spalten vorab in SCHEMA_TABLES" rule, any
-                        # new column on it belongs here, not only in the
-                        # owning module's own schema helper. Nullable and
-                        # unused by every existing hypothesis role
-                        # (sentence-level hypotheses simply leave it NULL);
-                        # only rows with role='uncertain_lexical_boundary'
-                        # (or its graduated form 'stable_lexical_boundary')
-                        # populate it, with the character offset (within the
-                        # FIRST-seen chunk's normalized text) of that
-                        # boundary candidate.
                         ('lexical_offset', 'INTEGER'),
-                        # BRAINSTEM_RELATIONS_EMERGENCE_SLICE1_V1 (25
-                        # September 2026): additive column for the new
-                        # v8_phase0b_relational_binding_observation_release.py
-                        # module (see BrainStem_Relations_Ontology_
-                        # Questions_Emergence_Concept.md, Abschnitt 10.2).
-                        # Nullable and NULL for every existing hypothesis
-                        # role (sentence-level and lexical-boundary
-                        # hypotheses leave it NULL); only rows with
-                        # role='uncertain_relation_hypothesis' populate it,
-                        # marking that the row's subject/object direction
-                        # was assigned via the Positions-Heuristik (Signal
-                        # 1, Abschnitt 2.4.1) rather than a more certain
-                        # source. Per Abschnitt 2.4.5/6, hypotheses with
-                        # this origin receive increased revision tolerance
-                        # in contradiction/revision handling.
                         ('origin', 'TEXT')],
- # BRAINSTEM_RELATIONS_EMERGENCE_SLICE1_V1 (25 September 2026): pure
- # observation/counting table for
- # v8_phase0b_relational_binding_observation_release.py (Abschnitt 2.4/10.3
- # of the Emergence Concept). One row per ordered pair of stable elements
- # (subject_signature, object_signature) observed co-occurring within the
- # same sentence. pair_count/count_a/count_b are the raw frequency inputs
- # to the symmetric PMI existence gate (Abschnitt 2.4.2); first_as_a_count/
- # first_as_b_count are the raw inputs to the Positions-Heuristik direction
- # signal (Abschnitt 2.4.1). No confidence/uncertainty/neuromodulator
- # columns here deliberately -- this table is a pure frequency ledger, not
- # itself a hypothesis; the resulting uncertain_relation_hypothesis row in
- # context_hypotheses carries all of that via the existing, shared
- # machinery.
- 'relational_cooccurrence_counts': [
-     ('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
-     ('signature_a', 'TEXT'),
-     ('signature_b', 'TEXT'),
-     ('subject_a', 'TEXT'),
-     ('subject_b', 'TEXT'),
-     ('pair_count', 'INTEGER DEFAULT 0'),
-     ('count_a', 'INTEGER DEFAULT 0'),
-     ('count_b', 'INTEGER DEFAULT 0'),
-     ('first_as_a_count', 'INTEGER DEFAULT 0'),
-     ('first_as_b_count', 'INTEGER DEFAULT 0'),
-     ('first_seen_at', 'INTEGER'),
-     ('updated_at', 'INTEGER'),
- ],
+ 'relational_cooccurrence_counts': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                    ('signature_a', 'TEXT'),
+                                    ('signature_b', 'TEXT'),
+                                    ('subject_a', 'TEXT'),
+                                    ('subject_b', 'TEXT'),
+                                    ('pair_count', 'INTEGER DEFAULT 0'),
+                                    ('count_a', 'INTEGER DEFAULT 0'),
+                                    ('count_b', 'INTEGER DEFAULT 0'),
+                                    ('first_as_a_count', 'INTEGER DEFAULT 0'),
+                                    ('first_as_b_count', 'INTEGER DEFAULT 0'),
+                                    ('first_seen_at', 'INTEGER'),
+                                    ('updated_at', 'INTEGER')],
  'internal_learning_gaps': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
                             ('gap_key', 'TEXT'),
                             ('gap_type', 'TEXT'),
                             ('gap_reason', 'TEXT'),
                             ('role', 'TEXT'),
                             ('priority', 'REAL DEFAULT 0'),
-                            # BRAINSTEM_GAP_SCHEMA_COMPLETENESS_FIX_V1: severity,
-                            # hypothesis_id, uncertainty and pattern_key are all
-                            # referenced directly (unconditionally, without an
-                            # "in columns" existence guard) by real read queries
-                            # in v8_phase6a (severity), v8_phase5i and
-                            # v8_phase5e (hypothesis_id, uncertainty,
-                            # pattern_key). None of these columns were ever
-                            # declared anywhere, so a real learning cycle on a
-                            # freshly bootstrapped database reliably failed
-                            # with "no such column" as soon as those phases
-                            # ran. Declaring them here (matching the project's
-                            # own "alle Spalten vorab in SCHEMA_TABLES" rule)
-                            # fixes the crash without changing any query logic;
-                            # unpopulated columns simply read back as NULL,
-                            # which every one of these call sites already
-                            # treats as a valid fallback case via COALESCE.
                             ('severity', 'REAL DEFAULT 0'),
                             ('hypothesis_id', 'INTEGER'),
                             ('uncertainty', 'REAL DEFAULT 1'),
                             ('pattern_key', 'TEXT'),
                             ('status', "TEXT DEFAULT 'open'"),
                             ('resolution_score', 'REAL DEFAULT 0'),
-                            # BRAINSTEM_GAP_SCHEMA_COMPLETENESS_FIX_V2: same
-                            # class of defect as the severity/hypothesis_id/
-                            # uncertainty/pattern_key fix above --
-                            # resolution_attempts is referenced directly
-                            # (unconditionally, via COALESCE(resolution_
-                            # attempts,0), with no "in columns" existence
-                            # guard) by v8_phase5b_integrated_strategy_
-                            # refinement_release.py's real per-cycle
-                            # persistent-gap-strategy query. This column was
-                            # never declared anywhere, so on a real learning
-                            # cycle -- verified reproducible on every single
-                            # cycle, from cycle 1 onward, on both the
-                            # unmodified original codebase and this fixed
-                            # copy before this addition -- Phase 5b reliably
-                            # failed with "no such column: resolution_
-                            # attempts" as soon as the persistent-gap-
-                            # strategy branch ran (i.e. whenever
-                            # internal_learning_gaps is non-empty). Declaring
-                            # it here (matching the project's own "alle
-                            # Spalten vorab in SCHEMA_TABLES" rule) fixes the
-                            # crash without changing any query logic; the
-                            # unpopulated column simply reads back as 0 via
-                            # the existing COALESCE, which the call site
-                            # already treats as a valid fallback (an
-                            # as-yet-unattempted gap).
                             ('resolution_attempts', 'INTEGER DEFAULT 0'),
-                            # BRAINSTEM_GAP_SCHEMA_COMPLETENESS_FIX_V3: same
-                            # class of defect as the two fixes above --
-                            # revision_pressure is referenced directly
-                            # (unconditionally, via COALESCE(revision_
-                            # pressure,0) inside an ORDER BY clause, with no
-                            # "in columns" existence guard) by
-                            # v8_phase5e_context_expansion_and_gap_closure_
-                            # release.py's real per-cycle gap-selection
-                            # query. Verified via a project-wide, systematic
-                            # audit of every column referenced via
-                            # COALESCE(...) against internal_learning_gaps
-                            # across all ~68 modules (undertaken after two
-                            # similar missing-column crashes,
-                            # resolution_attempts and, before that,
-                            # severity/hypothesis_id/uncertainty/
-                            # pattern_key, were each independently
-                            # discovered one cycle at a time): every OTHER
-                            # candidate column found by that audit
-                            # (phase5e_expansion_attempts,
-                            # phase5f_experiment_count,
-                            # phase5g_experiment_count,
-                            # phase5i_experiment_count,
-                            # phase6a_sleep_replay_count,
-                            # strategy_refinement_count) was confirmed
-                            # already self-healed by its OWNER module's own
-                            # ensure_schema()/addcol() call, which always
-                            # runs before that module's own query in the
-                            # same function -- and resolution_status was
-                            # confirmed already safely guarded everywhere
-                            # via an explicit "in columns" check before use.
-                            # revision_pressure was the ONLY column in that
-                            # audit genuinely unowned by any module's own
-                            # schema extension, confirmed reproducible on
-                            # every single real cycle once
-                            # resolution_attempts was fixed (both on the
-                            # unmodified original codebase and this fixed
-                            # copy). Declaring it here (matching the
-                            # project's own "alle Spalten vorab in
-                            # SCHEMA_TABLES" rule) fixes the crash without
-                            # changing any query logic.
                             ('revision_pressure', 'REAL DEFAULT 0'),
                             ('strategy_effectiveness_score', 'REAL DEFAULT 0'),
                             ('evidence_count', 'INTEGER DEFAULT 0'),
-                            # BRAINSTEM_GAP_CLOSURE_AND_HABITUATION_V1 (25
-                            # September 2026): five additive columns, all
-                            # nullable/defaulted, needed to close two
-                            # gaps identified in the Questions Slice 3
-                            # audit -- (a) a gap whose own hypothesis_id
-                            # graduates into a fact/relation is never
-                            # marked resolved (status stayed 'open'
-                            # forever, making Slice 3's retraction path
-                            # permanently dead code in real operation),
-                            # and (b) resolution_attempts, once fixed to
-                            # actually increment, grows monotonically
-                            # forever with no decay, so a gap whose
-                            # underlying hypothesis is genuine, unresolvable
-                            # noise (e.g. a Phase-0 lexical-boundary
-                            # parsing artifact that keeps being
-                            # reobserved but never gains new evidence)
-                            # would stay at permanently maximal priority/
-                            # salience instead of habituating -- contrary
-                            # to the empirically well-established inverted-
-                            # U relationship between resolvability and
-                            # curiosity (Kang et al. 2009, Psychological
-                            # Science 20(8):963-973; synthesized further in
-                            # Ten/Oudeyer/Sakaki/Murayama 2025, Open Mind
-                            # 9:1763-1785) and to habituation as a real,
-                            # reversible neural process driven by absence
-                            # of new information gain, not by elapsed
-                            # attempts alone (Ueda/Sekoguchi/Yanagisawa
-                            # 2021, PLoS One 16(6):e0237278; Smart/
-                            # Shvartsman/Moennigmann 2026, Annual Review of
-                            # Control, Robotics and Autonomous Systems).
-                            # closed_at/closure_reason record a positive
-                            # resolution (hypothesis graduated); habituated_
-                            # at/stagnant_streak/evidence_count_at_last_gain
-                            # implement the separate, reversible decay path
-                            # (see v8_stageb_gap_detection_release.py's own
-                            # _upsert_gap() for the full mechanism). Both
-                            # paths are owned exclusively by
-                            # v8_stageb_gap_detection_release.py, which
-                            # remains the sole writer of internal_learning_
-                            # gaps' base lifecycle row; fact/relation
-                            # promotion only ever set status/closed_at/
-                            # closure_reason at their own existing
-                            # promotion/retraction write points, never any
-                            # of the stagnation/habituation columns.
                             ('closed_at', 'INTEGER'),
                             ('closure_reason', 'TEXT'),
                             ('habituated_at', 'INTEGER'),
@@ -468,21 +250,6 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                                      ('phase6a_last_replayed_at', 'INTEGER'),
                                      ('phase6a_replay_recommendation', 'TEXT')],
  'phase6a_sleep_replay_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
-                                 # BRAINSTEM_PHASE6A_CYCLES_SCHEMA_SYNC_FIX_V1:
-                                 # this central declaration used to be missing
-                                 # replay_mode/inhibition_bias/revision_bias/
-                                 # safety_ok/details even though phase6a's own
-                                 # authoritative CREATE TABLE IF NOT EXISTS
-                                 # (in ensure_phase6a_schema) and its INSERT
-                                 # statement both already used them. Because
-                                 # central bootstrap runs first and phase6a's
-                                 # own "IF NOT EXISTS" is then a no-op with no
-                                 # matching ALTER TABLE fallback for these
-                                 # specific columns, every real cycle failed
-                                 # with "table ... has no column named
-                                 # replay_mode" as soon as phase6a tried to
-                                 # record its first replay cycle. Synced to
-                                 # match phase6a's own full column list.
                                  ('replay_mode', 'TEXT'),
                                  ('candidate_count', 'INTEGER'),
                                  ('replay_events', 'INTEGER'),
@@ -498,42 +265,27 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                                  ('safety_ok', 'INTEGER DEFAULT 1'),
                                  ('details', 'TEXT'),
                                  ('created_at', 'INTEGER'),
-        ('population_available', 'INTEGER DEFAULT 0'),
-        ('outcome_observation_available', 'INTEGER DEFAULT 0'),
-        ('outcome_observation_count', 'INTEGER DEFAULT 0'),
-        ('evidence_state', 'TEXT'),
-        ('evidence_reason', 'TEXT')
-    ],
+                                 ('population_available', 'INTEGER DEFAULT 0'),
+                                 ('outcome_observation_available', 'INTEGER DEFAULT 0'),
+                                 ('outcome_observation_count', 'INTEGER DEFAULT 0'),
+                                 ('evidence_state', 'TEXT'),
+                                 ('evidence_reason', 'TEXT')],
  'phase6a_meta_plasticity_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
- 'phase6a_neuromodulated_sleep_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
- # BRAINSTEM_TONIC_PHASIC_INTEGRATION_V1 (23.09.2026): mirrored here per
- # project convention (every schema change is tracked in this central
- # SCHEMA_TABLES alongside its owning module's own ensure_schema()). See
- # v8_phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release.py
- # and v8_cooperative_core_neuromodulator_sleep_authority_release.py for
- # the full architecture note and column-level documentation.
- 'phase6a_neuromodulator_integration_events': [
-     ('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
-     ('created_at', 'INTEGER'),
-     ('parameter', 'TEXT'),
-     ('phasic_value', 'REAL DEFAULT 0'),
-     ('tonic_target', 'REAL DEFAULT 0'),
-     ('tonic_weight', 'REAL DEFAULT 0'),
-     ('phasic_contribution', 'REAL DEFAULT 0'),
-     ('tonic_contribution', 'REAL DEFAULT 0'),
-     ('final_value', 'REAL DEFAULT 0'),
-     ('driver_botenstoff', 'TEXT'),
-     ('driver_botenstoff_value', 'REAL DEFAULT 0'),
- ],
+ 'phase6a_neuromodulated_sleep_state': [('key', 'TEXT PRIMARY KEY'),
+                                        ('value', 'TEXT'),
+                                        ('updated_at', 'INTEGER')],
+ 'phase6a_neuromodulator_integration_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                               ('created_at', 'INTEGER'),
+                                               ('parameter', 'TEXT'),
+                                               ('phasic_value', 'REAL DEFAULT 0'),
+                                               ('tonic_target', 'REAL DEFAULT 0'),
+                                               ('tonic_weight', 'REAL DEFAULT 0'),
+                                               ('phasic_contribution', 'REAL DEFAULT 0'),
+                                               ('tonic_contribution', 'REAL DEFAULT 0'),
+                                               ('final_value', 'REAL DEFAULT 0'),
+                                               ('driver_botenstoff', 'TEXT'),
+                                               ('driver_botenstoff_value', 'REAL DEFAULT 0')],
  'cooperative_core_target_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
- # BRAINSTEM_SCHEMA_CENTRALIZATION_GAP_FIX_V1 (23.09.2026): this table was
- # previously ONLY ever created by memory.py's own Memory._init()
- # executescript(), never mirrored here in the central schema authority --
- # the same central-schema gap as facts.source_hypothesis_id above (see
- # that comment). Column list matches memory.py's own CREATE TABLE exactly
- # (id/subject/relation/value_a/value_b/status/details_json/created_at),
- # so both remain fully compatible; whichever authority runs first wins,
- # the other's CREATE TABLE IF NOT EXISTS becomes a no-op.
  'contradictions': [('id', 'INTEGER PRIMARY KEY'),
                     ('subject', 'TEXT'),
                     ('relation', 'TEXT'),
@@ -542,7 +294,9 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                     ('status', 'TEXT'),
                     ('details_json', 'TEXT'),
                     ('created_at', 'INTEGER')],
- 'attention_queue_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER DEFAULT 0')],
+ 'attention_queue_state': [('key', 'TEXT PRIMARY KEY'),
+                           ('value', 'TEXT'),
+                           ('updated_at', 'INTEGER DEFAULT 0')],
  'chunk_attention_scores': [('chunk_id', 'INTEGER PRIMARY KEY'),
                             ('attention_score', 'REAL DEFAULT 0'),
                             ('novelty_score', 'REAL DEFAULT 0'),
@@ -610,11 +364,6 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                             ('phase6a_meta_plasticity', 'REAL DEFAULT 0'),
                             ('phase6a_last_adjusted_at', 'INTEGER'),
                             ('phase6a_reason', 'TEXT'),
-                            # BRAINSTEM_QUESTION_CHUNK_FEEDBACK_V1 (25
-                            # September 2026): mirrors the identically-named
-                            # reading_queue columns above; see that
-                            # declaration's own comment for the full
-                            # rationale.
                             ('question_feedback_score', 'REAL DEFAULT 0'),
                             ('question_feedback_reason', 'TEXT'),
                             ('question_feedback_question_id', 'INTEGER'),
@@ -692,7 +441,9 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                                  ('evidence_count', 'INTEGER DEFAULT 0'),
                                  ('conflict_count', 'INTEGER DEFAULT 0'),
                                  ('last_reason', 'TEXT')],
- 'learning_strategy_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER DEFAULT 0')],
+ 'learning_strategy_state': [('key', 'TEXT PRIMARY KEY'),
+                             ('value', 'TEXT'),
+                             ('updated_at', 'INTEGER DEFAULT 0')],
  'neuromodulated_attention_events': [('id', 'INTEGER PRIMARY KEY'),
                                      ('chunk_id', 'INTEGER'),
                                      ('hypothesis_id', 'INTEGER'),
@@ -772,25 +523,16 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                    ('phase6a_meta_plasticity', 'REAL DEFAULT 0'),
                    ('phase6a_last_adjusted_at', 'INTEGER'),
                    ('phase6a_reason', 'TEXT'),
-                   # BRAINSTEM_QUESTION_CHUNK_FEEDBACK_V1 (25 September
-                   # 2026): additive columns for v8_stageb_question_
-                   # chunk_feedback_release.py, following this table's own
-                   # already-established per-phase column-triplet
-                   # convention (score/reason/last_adjusted_at, e.g.
-                   # phase5f_priority/phase5f_reason/phase5f_last_
-                   # adjusted_at above). Closes the Questions Slice 3
-                   # audit's "rein schreibender Blinddarm" finding: this is
-                   # the first and only module that ever reads the
-                   # questions table to influence real system behavior.
-                   # question_feedback_question_id records exactly which
-                   # still-open question caused the most recent boost, for
-                   # traceability/debugging.
                    ('question_feedback_priority', 'REAL DEFAULT 0'),
                    ('question_feedback_reason', 'TEXT'),
                    ('question_feedback_question_id', 'INTEGER'),
                    ('question_feedback_last_adjusted_at', 'INTEGER DEFAULT 0')],
- 'reading_strategy_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER DEFAULT 0')],
- 'rollback_safe_core_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER DEFAULT 0')],
+ 'reading_strategy_state': [('key', 'TEXT PRIMARY KEY'),
+                            ('value', 'TEXT'),
+                            ('updated_at', 'INTEGER DEFAULT 0')],
+ 'rollback_safe_core_state': [('key', 'TEXT PRIMARY KEY'),
+                              ('value', 'TEXT'),
+                              ('updated_at', 'INTEGER DEFAULT 0')],
  'phase5g_strategy_selection_memory': [('memory_key', 'TEXT PRIMARY KEY'),
                                        ('gap_type', 'TEXT'),
                                        ('role', 'TEXT'),
@@ -931,21 +673,520 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                                         ('details', 'TEXT'),
                                         ('created_at', 'INTEGER'),
                                         ('updated_at', 'INTEGER')],
- # BRAINSTEM_SHADOW_CASCADE_CLEANUP_V1 (24 September 2026): the six
- # 'modern_outcome_bridge_shadow[_cycles/_state]' and
- # 'modern_gap_candidate_shadow[_cycles/_state]' table declarations that
- # used to sit here have been removed together with every module that
- # ever wrote to them (v8_modern_gap_candidate_bridge_shadow_release,
- # v8_modern_gap_phase5f_shadow_observation[_v2]_release,
- # v8_modern_gap_phase5f_shadow_history_release,
- # v8_modern_outcome_bridge_shadow_release,
- # v8_stable_obs_content_fp_shadow_classifier_release). Removing the
- # declarations here only stops these tables from being (re-)created on a
- # fresh database; it does not touch any already-existing production
- # database. See the Legacy Report shipped with this cleanup for the
- # full verification trail and for an optional, separate, read-only-first
- # migration script to retire the tables in an existing database.
- }
+ 'cooperative_sleep_wake_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'cooperative_sleep_wake_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                   ('created_at', 'INTEGER'),
+                                   ('cycle_index', 'INTEGER'),
+                                   ('state', 'TEXT'),
+                                   ('previous_state', 'TEXT'),
+                                   ('transitioned', 'INTEGER'),
+                                   ('reason', 'TEXT'),
+                                   ('sleep_score', 'REAL'),
+                                   ('adenosine_pressure', 'REAL'),
+                                   ('arousal_release', 'REAL'),
+                                   ('inhibitory_readiness', 'REAL'),
+                                   ('consolidation_readiness', 'REAL'),
+                                   ('stress_block', 'REAL'),
+                                   ('core_before_json', 'TEXT'),
+                                   ('core_target_json', 'TEXT'),
+                                   ('core_after_json', 'TEXT')],
+ 'phase6b_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase6b_anchor_pool': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                         ('source_table', 'TEXT'),
+                         ('source_id', 'INTEGER'),
+                         ('anchor_key', 'TEXT'),
+                         ('stability_score', 'REAL DEFAULT 0.0'),
+                         ('replay_count', 'INTEGER DEFAULT 0'),
+                         ('last_replayed_at', 'INTEGER DEFAULT 0'),
+                         ('delta_variance', 'REAL DEFAULT 0.0'),
+                         ('overlap_score_avg', 'REAL DEFAULT 0.0'),
+                         ('outcome_score_avg', 'REAL DEFAULT 0.0'),
+                         ('promoted_from', 'TEXT'),
+                         ('active', 'INTEGER DEFAULT 1'),
+                         ('created_at', 'INTEGER'),
+                         ('updated_at', 'INTEGER')],
+ 'phase6b_critic_snapshot': [('snapshot_id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                             ('created_at', 'INTEGER'),
+                             ('reason', 'TEXT'),
+                             ('dopamine', 'REAL'),
+                             ('serotonin', 'REAL'),
+                             ('noradrenaline', 'REAL'),
+                             ('acetylcholine', 'REAL'),
+                             ('glutamate', 'REAL'),
+                             ('gaba', 'REAL'),
+                             ('plasticity_level', 'REAL'),
+                             ('exploration_bias', 'REAL'),
+                             ('consolidation_bias', 'REAL'),
+                             ('inhibition_bias', 'REAL'),
+                             ('revision_bias', 'REAL'),
+                             ('anchor_count', 'INTEGER'),
+                             ('effectiveness_avg', 'REAL'),
+                             ('state_json', 'TEXT'),
+                             ('active', 'INTEGER DEFAULT 1'),
+                             ('measurement_event_id', 'INTEGER'),
+                             ('evidence_state', 'TEXT'),
+                             ('snapshot_owner', 'TEXT')],
+ 'phase6b_effectiveness_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                  ('created_at', 'INTEGER'),
+                                  ('cycle_index', 'INTEGER'),
+                                  ('window_size', 'INTEGER'),
+                                  ('replay_batch_size', 'INTEGER'),
+                                  ('novel_count', 'INTEGER'),
+                                  ('anchor_count', 'INTEGER'),
+                                  ('pre_outcome_score', 'REAL'),
+                                  ('post_outcome_score', 'REAL'),
+                                  ('pre_closure_delta', 'REAL'),
+                                  ('post_closure_delta', 'REAL'),
+                                  ('pre_overlap_score', 'REAL'),
+                                  ('post_overlap_score', 'REAL'),
+                                  ('delta_outcome', 'REAL'),
+                                  ('delta_closure', 'REAL'),
+                                  ('delta_overlap', 'REAL'),
+                                  ('effectiveness_score', 'REAL'),
+                                  ('plateau_flag', 'INTEGER DEFAULT 0'),
+                                  ('critic_penalty', 'REAL DEFAULT 0.0'),
+                                  ('anchor_consistency', 'REAL DEFAULT 0.0'),
+                                  ('dopamine', 'REAL'),
+                                  ('serotonin', 'REAL'),
+                                  ('noradrenaline', 'REAL'),
+                                  ('acetylcholine', 'REAL'),
+                                  ('glutamate', 'REAL'),
+                                  ('gaba', 'REAL'),
+                                  ('notes', 'TEXT'),
+                                  ('measurement_owner', 'TEXT'),
+                                  ('population_available', 'INTEGER DEFAULT 0'),
+                                  ('outcome_observation_available', 'INTEGER DEFAULT 0'),
+                                  ('comparison_window_available', 'INTEGER DEFAULT 0'),
+                                  ('evidence_state', 'TEXT'),
+                                  ('evidence_reason', 'TEXT'),
+                                  ('source_phase6a_cycle_id', 'INTEGER'),
+                                  ('source_phase6a_created_at', 'INTEGER'),
+                                  ('source_phase6a_fresh', 'INTEGER DEFAULT 0')],
+ 'phase6b_plasticity_adjustments': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                    ('created_at', 'INTEGER'),
+                                    ('cycle_index', 'INTEGER'),
+                                    ('adjustment_type', 'TEXT'),
+                                    ('reason', 'TEXT'),
+                                    ('scale_factor', 'REAL'),
+                                    ('window_size', 'INTEGER'),
+                                    ('pre_plasticity_level', 'REAL'),
+                                    ('post_plasticity_level', 'REAL'),
+                                    ('pre_exploration_bias', 'REAL'),
+                                    ('post_exploration_bias', 'REAL'),
+                                    ('pre_consolidation_bias', 'REAL'),
+                                    ('post_consolidation_bias', 'REAL'),
+                                    ('pre_inhibition_bias', 'REAL'),
+                                    ('post_inhibition_bias', 'REAL'),
+                                    ('pre_revision_bias', 'REAL'),
+                                    ('post_revision_bias', 'REAL'),
+                                    ('dopamine', 'REAL'),
+                                    ('serotonin', 'REAL'),
+                                    ('noradrenaline', 'REAL'),
+                                    ('acetylcholine', 'REAL'),
+                                    ('glutamate', 'REAL'),
+                                    ('gaba', 'REAL'),
+                                    ('critic_gate_result', 'TEXT'),
+                                    ('notes', 'TEXT'),
+                                    ('measurement_event_id', 'INTEGER'),
+                                    ('evidence_state', 'TEXT'),
+                                    ('state_change_allowed', 'INTEGER DEFAULT 0')],
+ 'phase6b_distilled_knowledge': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                 ('created_at', 'INTEGER'),
+                                 ('cycle_index', 'INTEGER'),
+                                 ('source_kind', 'TEXT'),
+                                 ('source_ref', 'TEXT'),
+                                 ('knowledge_key', 'TEXT'),
+                                 ('stability_score', 'REAL'),
+                                 ('effectiveness_score', 'REAL'),
+                                 ('anchor_alignment', 'REAL'),
+                                 ('confidence', 'REAL'),
+                                 ('distilled_from_count', 'INTEGER'),
+                                 ('notes', 'TEXT')],
+ 'phase6b_l2m_metrics': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                         ('created_at', 'INTEGER'),
+                         ('cycle_index', 'INTEGER'),
+                         ('performance_maintenance', 'REAL'),
+                         ('forward_transfer', 'REAL'),
+                         ('backward_transfer', 'REAL'),
+                         ('sample_efficiency', 'REAL'),
+                         ('performance_recovery', 'REAL'),
+                         ('anchor_stability', 'REAL'),
+                         ('alert_flag', 'INTEGER DEFAULT 0'),
+                         ('alert_reason', 'TEXT'),
+                         ('measurement_event_id', 'INTEGER'),
+                         ('evidence_state', 'TEXT')],
+ 'phase6c_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase6c_meta_control_parameters': [('parameter_key', 'TEXT PRIMARY KEY'),
+                                     ('current_value', 'REAL'),
+                                     ('default_value', 'REAL'),
+                                     ('min_value', 'REAL'),
+                                     ('max_value', 'REAL'),
+                                     ('learning_rate', 'REAL'),
+                                     ('driver_botenstoff', 'TEXT'),
+                                     ('driver_metric', 'TEXT'),
+                                     ('description', 'TEXT'),
+                                     ('created_at', 'INTEGER'),
+                                     ('updated_at', 'INTEGER')],
+ 'phase6c_target_bias_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase6c_regulation_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                               ('created_at', 'INTEGER'),
+                               ('cycle_index', 'INTEGER'),
+                               ('parameter_key', 'TEXT'),
+                               ('pre_value', 'REAL'),
+                               ('post_value', 'REAL'),
+                               ('delta', 'REAL'),
+                               ('driver_botenstoff', 'TEXT'),
+                               ('driver_botenstoff_value', 'REAL'),
+                               ('driver_metric', 'TEXT'),
+                               ('driver_value', 'REAL'),
+                               ('reason', 'TEXT')],
+ 'phase6d_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase6d_meta_metaplasticity_state': [('parameter_key', 'TEXT PRIMARY KEY'),
+                                       ('kind', 'TEXT'),
+                                       ('current_lr', 'REAL'),
+                                       ('default_lr', 'REAL'),
+                                       ('min_lr', 'REAL'),
+                                       ('max_lr', 'REAL'),
+                                       ('direction_bias', 'REAL'),
+                                       ('saturation_count', 'INTEGER DEFAULT 0'),
+                                       ('last_direction', 'TEXT'),
+                                       ('last_value', 'REAL'),
+                                       ('description', 'TEXT'),
+                                       ('created_at', 'INTEGER'),
+                                       ('updated_at', 'INTEGER')],
+ 'phase6d_saturation_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                               ('created_at', 'INTEGER'),
+                               ('cycle_index', 'INTEGER'),
+                               ('target_kind', 'TEXT'),
+                               ('target_key', 'TEXT'),
+                               ('value', 'REAL'),
+                               ('threshold_side', 'TEXT'),
+                               ('saturation_streak', 'INTEGER'),
+                               ('action_taken', 'TEXT'),
+                               ('reason', 'TEXT'),
+                               ('driver_botenstoff', 'TEXT'),
+                               ('driver_botenstoff_value', 'REAL')],
+ 'phase6d_bias_reset_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                               ('created_at', 'INTEGER'),
+                               ('cycle_index', 'INTEGER'),
+                               ('bias_key', 'TEXT'),
+                               ('pre_value', 'REAL'),
+                               ('post_value', 'REAL'),
+                               ('scale_factor', 'REAL'),
+                               ('reason', 'TEXT'),
+                               ('driver_botenstoff', 'TEXT'),
+                               ('driver_botenstoff_value', 'REAL')],
+ 'phase7a_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase7a_adenosine_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase7a_adenosine_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                              ('created_at', 'INTEGER'),
+                              ('cycle_index', 'INTEGER'),
+                              ('event_type', 'TEXT'),
+                              ('adenosine_level', 'REAL'),
+                              ('sleep_pressure', 'REAL'),
+                              ('downscale_factor', 'REAL'),
+                              ('action_taken', 'TEXT'),
+                              ('targets_affected', 'TEXT'),
+                              ('reason', 'TEXT'),
+                              ('driver_botenstoff', 'TEXT'),
+                              ('driver_botenstoff_value', 'REAL')],
+ 'phase7a_sleep_pressure_history': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                    ('created_at', 'INTEGER'),
+                                    ('cycle_index', 'INTEGER'),
+                                    ('adenosine_level', 'REAL'),
+                                    ('wake_activity_since', 'REAL'),
+                                    ('downscale_applied', 'REAL'),
+                                    ('effectiveness_before', 'REAL'),
+                                    ('effectiveness_after', 'REAL'),
+                                    ('recovery_delta', 'REAL'),
+                                    ('anchor_stability_before', 'REAL'),
+                                    ('anchor_stability_after', 'REAL'),
+                                    ('notes', 'TEXT')],
+ 'phase7b_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase7b_endocannabinoid_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase7b_retrograde_signals': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                ('created_at', 'INTEGER'),
+                                ('cycle_index', 'INTEGER'),
+                                ('signal_type', 'TEXT'),
+                                ('source', 'TEXT'),
+                                ('magnitude', 'REAL'),
+                                ('target_key', 'TEXT'),
+                                ('pre_value', 'REAL'),
+                                ('post_value', 'REAL'),
+                                ('reason', 'TEXT'),
+                                ('driver_botenstoff', 'TEXT'),
+                                ('driver_botenstoff_value', 'REAL')],
+ 'phase7b_gain_control_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                 ('created_at', 'INTEGER'),
+                                 ('cycle_index', 'INTEGER'),
+                                 ('event_type', 'TEXT'),
+                                 ('trigger_reason', 'TEXT'),
+                                 ('action_taken', 'TEXT'),
+                                 ('anandamide_level', 'REAL'),
+                                 ('two_ag_level', 'REAL'),
+                                 ('targets_affected', 'TEXT'),
+                                 ('dampening_applied', 'REAL'),
+                                 ('notes', 'TEXT')],
+ 'phase7b_adenosine_override_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                       ('created_at', 'INTEGER'),
+                                       ('cycle_index', 'INTEGER'),
+                                       ('adenosine_level', 'REAL'),
+                                       ('override_type', 'TEXT'),
+                                       ('targets_restored', 'TEXT'),
+                                       ('dampening_factor', 'REAL'),
+                                       ('pre_state_json', 'TEXT'),
+                                       ('post_state_json', 'TEXT'),
+                                       ('reason', 'TEXT')],
+ 'phase7c_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase7c_boundary_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase7c_parameter_streaks': [('parameter_key', 'TEXT PRIMARY KEY'),
+                               ('min_streak', 'INTEGER DEFAULT 0'),
+                               ('max_streak', 'INTEGER DEFAULT 0'),
+                               ('mid_streak', 'INTEGER DEFAULT 0'),
+                               ('last_value', 'REAL DEFAULT 0'),
+                               ('updated_at', 'INTEGER')],
+ 'phase7c_boundary_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                             ('created_at', 'INTEGER'),
+                             ('cycle_index', 'INTEGER'),
+                             ('parameter_key', 'TEXT'),
+                             ('boundary', 'TEXT'),
+                             ('pre_min', 'REAL'),
+                             ('post_min', 'REAL'),
+                             ('pre_max', 'REAL'),
+                             ('post_max', 'REAL'),
+                             ('delta', 'REAL'),
+                             ('driver_botenstoff', 'TEXT'),
+                             ('driver_botenstoff_value', 'REAL'),
+                             ('reason', 'TEXT')],
+ 'phase7c_ei_balance_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                               ('created_at', 'INTEGER'),
+                               ('cycle_index', 'INTEGER'),
+                               ('glu_pre', 'REAL'),
+                               ('glu_post', 'REAL'),
+                               ('gaba_pre', 'REAL'),
+                               ('gaba_post', 'REAL'),
+                               ('gamma', 'REAL'),
+                               ('alpha', 'REAL'),
+                               ('reason', 'TEXT')],
+ 'phase7c_ei_shadow_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                              ('created_at', 'INTEGER'),
+                              ('cycle_index', 'INTEGER'),
+                              ('drive_glutamate', 'REAL'),
+                              ('drive_gaba', 'REAL'),
+                              ('active_glu_pre', 'REAL'),
+                              ('active_glu_post', 'REAL'),
+                              ('active_gaba_pre', 'REAL'),
+                              ('active_gaba_post', 'REAL'),
+                              ('shadow_glu_pre', 'REAL'),
+                              ('shadow_glu_post', 'REAL'),
+                              ('shadow_gaba_pre', 'REAL'),
+                              ('shadow_gaba_post', 'REAL'),
+                              ('gamma', 'REAL'),
+                              ('alpha', 'REAL'),
+                              ('applied', 'INTEGER DEFAULT 0'),
+                              ('reason', 'TEXT')],
+ 'cortisol_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'stability_watch_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                            ('created_at', 'INTEGER'),
+                            ('cycle_index', 'INTEGER'),
+                            ('allostatic_load', 'REAL'),
+                            ('cortisol_level', 'REAL'),
+                            ('regime', 'TEXT'),
+                            ('dominant_signal', 'TEXT'),
+                            ('threshold_drift', 'REAL'),
+                            ('survivor_ratio', 'REAL'),
+                            ('survivor_ratio_recent', 'REAL'),
+                            ('effectiveness', 'REAL'),
+                            ('bias_oscillation', 'REAL'),
+                            ('ei_saturation', 'REAL'),
+                            ('elevated', 'INTEGER'),
+                            ('recommended_json', 'TEXT'),
+                            ('note', 'TEXT')],
+ 'phase7d_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase7d_slow_wave_params': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase7d_slow_wave_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                              ('created_at', 'INTEGER'),
+                              ('cycle_index', 'INTEGER'),
+                              ('n_oscillations', 'INTEGER'),
+                              ('adenosine_level', 'REAL'),
+                              ('up_state_avg_activity', 'REAL'),
+                              ('down_state_scale', 'REAL'),
+                              ('candidates_reactivated', 'INTEGER'),
+                              ('candidates_survived', 'INTEGER'),
+                              ('anchors_interleaved', 'INTEGER'),
+                              ('reinforced', 'INTEGER'),
+                              ('weakened', 'INTEGER'),
+                              ('reason', 'TEXT'),
+                              ('selection_pressure', 'REAL'),
+                              ('adaptive_threshold_avg', 'REAL'),
+                              ('pool_size', 'INTEGER'),
+                              ('candidates_participated', 'INTEGER')],
+ 'phase7d_up_state_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                             ('created_at', 'INTEGER'),
+                             ('cycle_index', 'INTEGER'),
+                             ('oscillation_index', 'INTEGER'),
+                             ('source_table', 'TEXT'),
+                             ('source_id', 'INTEGER'),
+                             ('activity_score', 'REAL'),
+                             ('is_anchor', 'INTEGER'),
+                             ('active_flag', 'INTEGER')],
+ 'phase7d_consolidation_survivors': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                     ('created_at', 'INTEGER'),
+                                     ('cycle_index', 'INTEGER'),
+                                     ('source_table', 'TEXT'),
+                                     ('source_id', 'INTEGER'),
+                                     ('up_states_survived', 'INTEGER'),
+                                     ('final_consistency', 'REAL'),
+                                     ('reinforced', 'INTEGER')],
+ 'phase7e_histamine_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase7e_histamine_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                              ('created_at', 'INTEGER'),
+                              ('cycle_index', 'INTEGER'),
+                              ('histamine_level', 'REAL'),
+                              ('histamine_target', 'REAL'),
+                              ('adenosine_level', 'REAL'),
+                              ('wake_activity', 'REAL'),
+                              ('wake_drive', 'REAL'),
+                              ('sleep_pressure', 'REAL'),
+                              ('reciprocal_gate', 'REAL'),
+                              ('regime', 'TEXT'),
+                              ('note', 'TEXT')],
+ 'phase7f_orexin_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase7f_orexin_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                           ('created_at', 'INTEGER'),
+                           ('cycle_index', 'INTEGER'),
+                           ('orexin_level', 'REAL'),
+                           ('orexin_target', 'REAL'),
+                           ('unread_fraction', 'REAL'),
+                           ('marginal_progress', 'REAL'),
+                           ('histamine_level', 'REAL'),
+                           ('regime', 'TEXT'),
+                           ('note', 'TEXT')],
+ 'phase7g_bdnf_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase7g_bdnf_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                         ('created_at', 'INTEGER'),
+                         ('cycle_index', 'INTEGER'),
+                         ('bdnf_level', 'REAL'),
+                         ('bdnf_target', 'REAL'),
+                         ('consolidation_consistency', 'REAL'),
+                         ('marginal_progress', 'REAL'),
+                         ('activity_level', 'REAL'),
+                         ('regime', 'TEXT'),
+                         ('note', 'TEXT')],
+ 'deprivation_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'phase5g_neuromodulator_strategy_profiles': [('profile_key', 'TEXT PRIMARY KEY'),
+                                              ('strategy', 'TEXT'),
+                                              ('gap_type', 'TEXT'),
+                                              ('role', 'TEXT'),
+                                              ('observations', 'INTEGER DEFAULT 0'),
+                                              ('avg_learning_rate', 'REAL DEFAULT 0'),
+                                              ('avg_error_weight', 'REAL DEFAULT 0'),
+                                              ('avg_revision_pressure', 'REAL DEFAULT 0'),
+                                              ('avg_exploration_pressure', 'REAL DEFAULT 0'),
+                                              ('avg_inhibition_level', 'REAL DEFAULT 0'),
+                                              ('avg_consolidation_gain', 'REAL DEFAULT 0'),
+                                              ('avg_closure_delta', 'REAL DEFAULT 0'),
+                                              ('avg_effectiveness', 'REAL DEFAULT 0'),
+                                              ('avg_outcome_score', 'REAL DEFAULT 0'),
+                                              ('avg_no_candidate_rate', 'REAL DEFAULT 0'),
+                                              ('avg_overlap_score', 'REAL DEFAULT 0'),
+                                              ('recommendation', 'TEXT'),
+                                              ('updated_at', 'INTEGER'),
+                                              ('phase5h_last_updated_at', 'INTEGER'),
+                                              ('phase5h_recommendation', 'TEXT')],
+ 'stageb_runtime_contract_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'stageb_runtime_contract_cycles': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                    ('created_at', 'INTEGER'),
+                                    ('backend_cycle', 'INTEGER'),
+                                    ('outcome_source_rows', 'INTEGER'),
+                                    ('gap_source_rows', 'INTEGER'),
+                                    ('phase5f_source_rows', 'INTEGER'),
+                                    ('phase5f_observations', 'INTEGER'),
+                                    ('candidate_flow_state', 'TEXT'),
+                                    ('protected_before', 'TEXT'),
+                                    ('protected_after', 'TEXT'),
+                                    ('safety_ok', 'INTEGER'),
+                                    ('errors', 'TEXT')],
+ 'stageb_graduation_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'stageb_graduation_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                              ('created_at', 'INTEGER'),
+                              ('cycle_index', 'INTEGER'),
+                              ('hypothesis_id', 'INTEGER'),
+                              ('old_role', 'TEXT'),
+                              ('new_role', 'TEXT'),
+                              ('survival_cycles', 'INTEGER'),
+                              ('critic_allowed', 'INTEGER'),
+                              ('critic_penalty', 'REAL'),
+                              ('critic_reason', 'TEXT'),
+                              ('decision', 'TEXT'),
+                              ('details', 'TEXT'),
+                              ('facts_before', 'INTEGER'),
+                              ('facts_after', 'INTEGER'),
+                              ('relations_before', 'INTEGER'),
+                              ('relations_after', 'INTEGER'),
+                              ('questions_before', 'INTEGER'),
+                              ('questions_after', 'INTEGER')],
+ 'wal_maintenance_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
+ 'wal_maintenance_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                            ('created_at', 'INTEGER'),
+                            ('mode', 'TEXT'),
+                            ('busy', 'INTEGER'),
+                            ('log_frames', 'INTEGER'),
+                            ('checkpointed_frames', 'INTEGER'),
+                            ('status', 'TEXT'),
+                            ('error', 'TEXT'),
+                            ('wal_file_size_bytes_before', 'INTEGER'),
+                            ('wal_file_size_bytes_after', 'INTEGER')],
+ 'phase7d_workpoint_observer_state': [('key', 'TEXT PRIMARY KEY'),
+                                      ('value', 'TEXT'),
+                                      ('updated_at', 'INTEGER DEFAULT 0')],
+ 'phase7d_workpoint_observer_events': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                       ('created_at', 'INTEGER DEFAULT 0'),
+                                       ('cycle_index', 'INTEGER DEFAULT 0'),
+                                       ('phase7d_event_id', 'INTEGER DEFAULT 0'),
+                                       ('glutamate', 'REAL DEFAULT 0'),
+                                       ('gaba', 'REAL DEFAULT 0'),
+                                       ('selection_pressure', 'REAL DEFAULT 0'),
+                                       ('adaptive_threshold', 'REAL DEFAULT 0'),
+                                       ('up_state_activity', 'REAL DEFAULT 0'),
+                                       ('survivor_ratio', 'REAL DEFAULT 0'),
+                                       ('candidates_participated', 'INTEGER DEFAULT 0'),
+                                       ('candidates_survived', 'INTEGER DEFAULT 0'),
+                                       ('pressure_reference', 'REAL DEFAULT 0'),
+                                       ('glutamate_reference', 'REAL DEFAULT 0'),
+                                       ('gaba_reference', 'REAL DEFAULT 0'),
+                                       ('activity_reference', 'REAL DEFAULT 0'),
+                                       ('survivor_reference', 'REAL DEFAULT 0'),
+                                       ('raw_signal', 'REAL DEFAULT 0'),
+                                       ('bounded_signal', 'REAL DEFAULT 0'),
+                                       ('persistent_signal', 'REAL DEFAULT 0'),
+                                       ('virtual_down_pressure', 'REAL DEFAULT 0'),
+                                       ('virtual_hold_pressure', 'REAL DEFAULT 0'),
+                                       ('virtual_up_pressure', 'REAL DEFAULT 0'),
+                                       ('limited_proposal', 'REAL DEFAULT 0'),
+                                       ('limited_delta', 'REAL DEFAULT 0'),
+                                       ('stable_reference_candidate', 'INTEGER DEFAULT 0'),
+                                       ('reference_updated', 'INTEGER DEFAULT 0'),
+                                       ('reference_freeze_reason', 'TEXT'),
+                                       ('cortisol_regime', 'TEXT'),
+                                       ('allostatic_load', 'REAL DEFAULT 0'),
+                                       ('stability_regime', 'TEXT'),
+                                       ('dominant_signal', 'TEXT'),
+                                       ('ei_saturation', 'REAL DEFAULT 0'),
+                                       ('applied', 'INTEGER DEFAULT 0'),
+                                       ('details', 'TEXT')],
+ 'phase7d_workpoint_virtual_outcomes': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                                        ('created_at', 'INTEGER DEFAULT 0'),
+                                        ('source_event_id', 'INTEGER DEFAULT 0'),
+                                        ('target_event_id', 'INTEGER DEFAULT 0'),
+                                        ('proposal_kind', 'TEXT'),
+                                        ('proposed_pressure', 'REAL DEFAULT 0'),
+                                        ('predicted_direction', 'REAL DEFAULT 0'),
+                                        ('observed_activity_delta', 'REAL DEFAULT 0'),
+                                        ('observed_survivor_delta', 'REAL DEFAULT 0'),
+                                        ('prediction_alignment', 'REAL DEFAULT 0'),
+                                        ('causal_claim', 'INTEGER DEFAULT 0'),
+                                        ('details', 'TEXT')]}
 BASE_SCHEMA = SCHEMA_TABLES
 
 PHASE_REGISTRY: List[Tuple[str, str]] = [

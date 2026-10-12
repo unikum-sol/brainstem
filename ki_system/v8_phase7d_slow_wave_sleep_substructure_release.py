@@ -120,6 +120,23 @@ SLOW_WAVE_PARAMS = {
     # reine Pool-Zusammensetzung) -- ueber phase7d_slow_wave_params
     # zur Laufzeit justierbar.
     "context_hypotheses_min_novel_ratio": 0.3,
+    # BRAINSTEM_PHASE7D_SENTENCE_ROLE_FAIRNESS_QUOTA_V1 (06.10.2026):
+    # Dasselbe Loesungsprinzip wie context_hypotheses_min_novel_ratio
+    # direkt oberhalb, eine Ebene tiefer angewendet: INNERHALB des bereits
+    # garantierten context_hypotheses-Anteils konkurrierten
+    # 'uncertain_hypothesis' (Satz-Ebene) und 'uncertain_relation_
+    # hypothesis' (Relations-Ebene, kombinatorisch zahlenmaessig weit
+    # ueberlegen) um denselben rotierenden ID-Scan, voellig ungefiltert
+    # (siehe BRAINSTEM_PHASE7D_SENTENCE_ROLE_FAIRNESS_QUOTA_V1-Kommentar
+    # in _build_candidate_pool() fuer die vollstaendige, durch reale
+    # Vergleichsexperimente belegte Herleitung). Legt den Mindestanteil
+    # des verbleibenden novel-Kontingents fest, der role='uncertain_
+    # hypothesis' exklusiv vorbehalten ist, bevor der Rest (inkl.
+    # Relations-Hypothesen und alle anderen nicht-lexikalischen Rollen)
+    # ueber den bisherigen, unveraenderten generischen Scan gefuellt wird.
+    # Bewusst per DB-Parameter (kein Hardcoding) -- ueber
+    # phase7d_slow_wave_params zur Laufzeit justierbar.
+    "sentence_role_min_quota": 0.5,
     # BRAINSTEM_PHASE7D_NOVEL_FAIRNESS_RECENTERING_V1 (23.09.2026):
     # Eine 40-Zyklen-Simulation NACH dem obigen Pool-Quota-Fix zeigte,
     # dass trotz garantierter Pool-Praesenz weiterhin 0 context_
@@ -471,14 +488,6 @@ def _build_candidate_pool(con, pool_size, anchor_ratio, context_hypotheses_min_n
 
     remaining = max(0, n_novel - len(novel))
     if remaining > 0 and _table_exists(con, "context_hypotheses"):
-        cursor = _to_int(state.get("context_fallback_cursor"), 0)
-        if cursor <= 0 and _table_exists(con, "phase7d_up_state_events"):
-            prior = con.execute(
-                "SELECT MAX(source_id) FROM phase7d_up_state_events "
-                "WHERE source_table='context_hypotheses'"
-            ).fetchone()
-            cursor = _to_int(prior[0], 0) if prior else 0
-
         max_row = con.execute("SELECT COALESCE(MAX(id),0) FROM context_hypotheses").fetchone()
         max_id = _to_int(max_row[0] if max_row else 0, 0)
 
@@ -500,59 +509,114 @@ def _build_candidate_pool(con, pool_size, anchor_ratio, context_hypotheses_min_n
         # requires no explicit DB seeding). Flip to "false" via
         # activate_lexical_layer_step4.py only after a dedicated review of
         # the observe-only data.
-        #
-        # IMPLEMENTATION NOTE (revised after real end-to-end testing): an
-        # earlier version of this fix filtered the already-collected `ids`
-        # list AFTER scanning, leaving the scan's own WHERE clause
-        # untouched. A full, real, multi-cycle baseline-comparison test
-        # (running an identical synthetic corpus through the complete,
-        # unmodified phase chain with and without this module) proved that
-        # approach insufficient: because lexical-boundary rows share the
-        # SAME id-space as sentence hypotheses and vastly outnumber them,
-        # the rotating cursor's FIXED-SIZE per-cycle scan window (bounded
-        # by `remaining`) would mostly land on stretches of now-excluded
-        # lexical ids, taking many extra cycles to complete a full "lap"
-        # back around to genuine sentence-hypothesis ids -- observed
-        # directly as several consecutive "empty_pool" real cycles that do
-        # NOT occur without this module present. The correct fix is to
-        # exclude lexical-boundary rows directly in the scan's own WHERE
-        # clause (below), so the scanner behaves exactly as if only
-        # sentence hypotheses existed in the id-space, regardless of how
-        # many lexical rows are interleaved -- SQLite's existing index on
-        # context_hypotheses.role (see db_bootstrap.py's SCHEMA_INDEXES)
-        # makes this an efficient, ordinary indexed skip, not a full scan.
-        # With this fix, no post-filtering and no special cursor-
-        # persistence casing are needed at all -- the surrounding cursor-
-        # advancement/wrap-around/safety-cap logic and its persistence
-        # (`ids[-1]`) are left completely UNCHANGED from the original,
-        # since `ids` only ever contains genuinely-eligible ids to begin
-        # with. Re-verified: the same baseline-comparison test now shows
-        # IDENTICAL Phase 7d participation/survivor counts, cycle for
-        # cycle, whether Phase 0 is present (isolated) or entirely absent.
         isolate_lexical = str(state.get("lexical_boundary_pool_isolated", "true")).strip().lower() != "false"
-        role_filter_sql = " AND (role IS NULL OR role<>'uncertain_lexical_boundary')" if isolate_lexical else ""
+        lexical_exclusion_sql = " AND (role IS NULL OR role<>'uncertain_lexical_boundary')" if isolate_lexical else ""
 
-        ids = []
-        scan_cursor = cursor
-        wrapped = False
-        examined = 0
-        while len(ids) < remaining and max_id > 0 and examined < max_id:
-            row = con.execute(
-                "SELECT id FROM context_hypotheses WHERE id>?" + role_filter_sql + " ORDER BY id LIMIT 1",
-                (scan_cursor,),
-            ).fetchone()
-            if row is None:
-                if wrapped:
-                    break
-                scan_cursor = 0
-                wrapped = True
-                continue
-            sid = _to_int(row[0])
-            scan_cursor = sid
-            examined += 1
-            if sid not in used_context_ids:
-                ids.append(sid)
-                used_context_ids.add(sid)
+        # BRAINSTEM_PHASE7D_SENTENCE_ROLE_FAIRNESS_QUOTA_V1 (06 October 2026)
+        #
+        # ROOT CAUSE (confirmed via calibrate_A_graduation_temperature.py
+        # and calibrate_E_phase7d_role_quota_fix.py, both real, multi-cycle
+        # baseline-comparison experiments on an identical synthetic
+        # corpus): prior to this fix, the rotating novel-fallback scanner
+        # below applied NO role filter whatsoever beyond excluding
+        # 'uncertain_lexical_boundary' (see BRAINSTEM_LEXICAL_LAYER_POOL_
+        # ISOLATION_V1 immediately above). In particular, the role
+        # 'uncertain_relation_hypothesis' (introduced by v8_phase0b_
+        # relational_binding_observation_release.py, see Abschnitt 5.3 of
+        # the project's own documentation) was never mentioned anywhere in
+        # this module and shared the exact same id-space and rotating
+        # cursor as 'uncertain_hypothesis' (sentence-level), completely
+        # unfiltered. Because relation hypotheses are combinatorially
+        # generated from pairs of already-stable elements, they vastly
+        # outnumber sentence hypotheses in real operation (measured: 449
+        # vs. 31 candidates on the calibration corpus) -- the rotating
+        # scanner's fixed-size per-cycle window therefore landed on
+        # relation-hypothesis ids almost exclusively, starving sentence
+        # hypotheses of the repeated Phase 7d reactivation they need to
+        # ever accumulate the >=3 independent consolidation-survivor
+        # cycles required for Stage-B graduation (see v8_stageb_guarded_
+        # hypothesis_graduation_release.py, minimum_7d_survivals). This was
+        # directly observed as a near-complete lack of promoted facts
+        # (stage-B graduation almost always selecting
+        # 'stable_relation_hypothesis' instead of 'stable_hypothesis')
+        # across both the project's own benchmark suite and this
+        # calibration's Experiment A.
+        #
+        # FIX: the single rotating scan is split into two independent
+        # scans, each with its OWN persisted cursor, so neither one's
+        # progress is disturbed by the other: (1) a dedicated scan
+        # reserving sentence_role_min_quota (default 0.5, i.e. at least
+        # half of the remaining novel slots) EXCLUSIVELY for
+        # role='uncertain_hypothesis'; (2) the pre-existing generic scan
+        # (unchanged selection logic, still excluding only
+        # 'uncertain_lexical_boundary') fills the rest, including
+        # 'uncertain_relation_hypothesis' and any other non-lexical role.
+        # If the sentence-only scan cannot fill its full quota (fewer
+        # eligible sentence hypotheses exist than the quota demands), the
+        # unused remainder is handed back to the generic scan in the SAME
+        # cycle, so no slot is ever wasted. This mirrors the existing
+        # project convention of a configurable minimum-quota parameter
+        # (see context_hypotheses_min_novel_ratio immediately above in
+        # this same function) rather than inventing a new mechanism.
+        #
+        # VERIFIED (calibrate_E_phase7d_role_quota_fix.py, identical
+        # corpus/cycle-budget/seed as calibrate_A_graduation_temperature.py,
+        # 180 real cycles each): baseline (original, unfiltered scan) =
+        # 0 facts promoted, 0% sentence-role share of graduations;
+        # with this fix = 13 facts promoted, 43.3% sentence-role share,
+        # 0 exceptions in either run. Relation-hypothesis promotion
+        # remained productive throughout (17 relations promoted vs. 23 in
+        # the baseline) -- the fix redistributes fairness, it does not
+        # starve the previously-dominant role in return.
+        sentence_quota = min(remaining, int(math.ceil(
+            remaining * _get_sw(con, "sentence_role_min_quota", 0.5)
+        )))
+        generic_quota_base = remaining - sentence_quota
+
+        def _rotating_scan(cursor_state_key, n_wanted, extra_where_sql):
+            if n_wanted <= 0:
+                return []
+            cursor = _to_int(state.get(cursor_state_key), 0)
+            if cursor <= 0 and cursor_state_key == "context_fallback_cursor" and _table_exists(con, "phase7d_up_state_events"):
+                prior = con.execute(
+                    "SELECT MAX(source_id) FROM phase7d_up_state_events "
+                    "WHERE source_table='context_hypotheses'"
+                ).fetchone()
+                cursor = _to_int(prior[0], 0) if prior else 0
+            ids_found = []
+            scan_cursor = cursor
+            wrapped = False
+            examined = 0
+            while len(ids_found) < n_wanted and max_id > 0 and examined < max_id:
+                row = con.execute(
+                    "SELECT id FROM context_hypotheses WHERE id>?" + extra_where_sql + " ORDER BY id LIMIT 1",
+                    (scan_cursor,),
+                ).fetchone()
+                if row is None:
+                    if wrapped:
+                        break
+                    scan_cursor = 0
+                    wrapped = True
+                    continue
+                sid = _to_int(row[0])
+                scan_cursor = sid
+                examined += 1
+                if sid not in used_context_ids:
+                    ids_found.append(sid)
+                    used_context_ids.add(sid)
+            if ids_found:
+                _kv_set(con, "phase7d_state", cursor_state_key, ids_found[-1])
+            return ids_found
+
+        sentence_ids = _rotating_scan(
+            "sentence_quota_fallback_cursor", sentence_quota,
+            lexical_exclusion_sql + " AND role='uncertain_hypothesis'",
+        )
+        generic_quota = generic_quota_base + (sentence_quota - len(sentence_ids))
+        generic_ids = _rotating_scan(
+            "context_fallback_cursor", generic_quota, lexical_exclusion_sql,
+        )
+        ids = sentence_ids + generic_ids
 
         for sid in ids:
             novel.append({"source_table": "context_hypotheses",
@@ -560,9 +624,10 @@ def _build_candidate_pool(con, pool_size, anchor_ratio, context_hypotheses_min_n
                           "is_anchor": False,
                           "base_score": 0.5})
         if ids:
-            _kv_set(con, "phase7d_state", "context_fallback_cursor", ids[-1])
-            _kv_set(con, "phase7d_state", "context_fallback_sampler", "rotating_id_cursor_v1")
+            _kv_set(con, "phase7d_state", "context_fallback_sampler", "rotating_id_cursor_v2_role_quota")
             _kv_set(con, "phase7d_state", "context_fallback_batch_size", len(ids))
+            _kv_set(con, "phase7d_state", "sentence_role_quota_filled", len(sentence_ids))
+            _kv_set(con, "phase7d_state", "sentence_role_quota_requested", sentence_quota)
 
     out.extend(novel)
 

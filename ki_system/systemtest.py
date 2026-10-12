@@ -1,25 +1,8 @@
 # -*- coding: utf-8 -*-
-"""BrainStem-Systemtest fuer frische und bereits gelaufene Installationen.
+"""BrainStem system checks on an isolated WAL-consistent database snapshot.
 
-BRAINSTEM_SYSTEMTEST_REAL_CYCLE_FIX_V1: the previous version of this test
-only ever checked schema/bootstrap/registry state and explicitly never ran a
-real learning cycle ("Er startet keinen Lernzyklus"). That meant a fully
-broken runtime cycle (for example the historically observed
-"no such column: gap_type" schema bug, or the E/I kernel-guard crash at
-neuromodulator boundary values) could exist in a build that this systemtest
-still reported as fully green, because nothing here ever actually executed
-AutonomousLoop.cycle().
-
-This version keeps every previous check unchanged and ADDITIONALLY executes
-one real cycle. To stay safe:
-  - If no database existed before this run, the freshly bootstrapped DB
-    (created by this same test) is used directly.
-  - If a database already existed, the real cycle runs against a throwaway
-    TEMPORARY COPY of it instead, so a systemtest run can never mutate a
-    live/production database.
-The recursive cycle-diagnostics summarizer (v8_cycle_diagnostics_release) is
-used to detect failures that are nested deep inside the cycle's own return
-value and would otherwise look like a normal "status": "ok" result.
+Bootstrap, migrations and the real learning cycle run on a temporary copy.
+An absent production database is not created by this diagnostic command.
 """
 from __future__ import annotations
 
@@ -111,7 +94,18 @@ def _mark(ok):
 
 
 def main():
+    # Snapshot BEFORE bootstrap: schema checks must not migrate the original DB.
+    from ki_system.db_runtime import sqlite_snapshot
     existed_before = DB.exists()
+    with tempfile.TemporaryDirectory(prefix="brainstem_systemtest_") as tmp:
+        test_db = Path(tmp) / "ki_memory_systemtest_copy.sqlite3"
+        if existed_before:
+            sqlite_snapshot(DB, test_db)
+        return _run_checks(test_db, existed_before)
+
+
+def _run_checks(db_path, existed_before):
+    DB = Path(db_path)
 
     from ki_system.db_bootstrap import ensure_database_exists
     bootstrap = ensure_database_exists(str(DB))
@@ -305,22 +299,14 @@ def main():
     cycle_status = "skipped"
     cycle_findings = []
     cycle_db_path = None
-    tmp_dir = None
+    mem = None
     try:
         from ki_system.memory import Memory
         from ki_system.autonomous import AutonomousLoop as CycleLoop
         from ki_system import v8_cycle_diagnostics_release as diag
 
-        if not existed_before:
-            cycle_db_path = str(DB)
-            print("  Verwende frisch gebootstrappte Datenbank direkt:", cycle_db_path)
-        else:
-            tmp_dir = tempfile.mkdtemp(prefix="brainstem_systemtest_")
-            cycle_db_path = str(Path(tmp_dir) / "ki_memory_systemtest_copy.sqlite3")
-            shutil.copy2(str(DB), cycle_db_path)
-            print("  Bereits vorhandene Datenbank erkannt -> Test laeuft auf einer TEMPORAEREN KOPIE:")
-            print("   ", cycle_db_path)
-            print("  Die produktive Datenbank wird von diesem Test nicht veraendert.")
+        cycle_db_path = str(DB)
+        print("  Lernzyklus auf isolierter Testdatenbank:", cycle_db_path)
 
         mem = Memory(cycle_db_path)
         loop = CycleLoop(mem)
@@ -342,8 +328,8 @@ def main():
         cycle_findings = [{"phase": "systemtest_real_cycle_runner", "error": repr(exc)}]
         print("  FEHLER beim Ausfuehren des echten Testzyklus:", repr(exc))
     finally:
-        if tmp_dir is not None:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+        if mem is not None:
+            mem.db.close()
     real_cycle_ok = cycle_status in ("ok", "degraded")
 
     print("\n" + "=" * 68)
@@ -363,7 +349,7 @@ def main():
     else:
         print("  [i] Botenstoffwerte: frischer Zustand / noch nicht vollstaendig initialisiert")
     if not existed_before:
-        print("  [i] Frischer Takeout: Datenbank wurde durch den Systemtest gebootstrapt")
+        print("  [i] Frischer Takeout: nur temporaere Testdatenbank gebootstrapt")
     elif total_chunks == 0:
         print("  [i] Datenbank vorhanden, aber noch kein Corpus importiert")
     print("=" * 68)

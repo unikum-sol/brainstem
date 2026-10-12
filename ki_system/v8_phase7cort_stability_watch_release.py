@@ -49,19 +49,8 @@ def _columns(con, t):
     return [r[1] for r in con.execute("PRAGMA table_info(" + t + ")").fetchall()]
 
 def resolve_db(obj=None):
-    if obj is None:
-        path = "ki_memory.sqlite3"
-        if not os.path.exists(path):
-            cand = Path(__file__).resolve().parent.parent / "ki_memory.sqlite3"
-            if cand.exists(): path = str(cand)
-        con = sqlite3.connect(path, timeout=30.0); con.row_factory = sqlite3.Row; return con
-    if isinstance(obj, sqlite3.Connection):
-        obj.row_factory = sqlite3.Row; return obj
-    for a in ("db", "connection", "conn", "memory"):
-        inner = getattr(obj, a, None)
-        if isinstance(inner, sqlite3.Connection):
-            inner.row_factory = sqlite3.Row; return inner
-    return resolve_db(None)
+    from ki_system.db_runtime import resolve_connection
+    return resolve_connection(obj)
 
 def ensure_schema(con):
     rep = {"created_tables": [], "added_columns": [], "created_indexes": []}

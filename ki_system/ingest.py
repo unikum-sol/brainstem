@@ -68,87 +68,76 @@ def show_zim_article(path,title):
                 rc,out,err=_run(exe,args,timeout=15)
                 if rc==0 and out.strip(): return strip_html(out)
             except Exception: pass
-    return ''
+    raise IngestError('ZIM article could not be read: ' + str(title))
+def _import_document(memory, path, kind):
+    # Reuse the original identity; never delete or merge historical rows.
+    rows = memory.rows('SELECT id FROM documents WHERE path=? AND kind=? ORDER BY id LIMIT 1', (str(path), kind))
+    if rows:
+        return rows[0]['id']
+    return memory.add_document(path, path.stem, kind, {'suffix': path.suffix})
+
+
 def import_file(path,memory,max_articles=2000,progress=None,cancel=None,resume=True):
-    p=Path(path); kind=p.suffix.lower().lstrip('.'); total=0; doc=memory.add_document(p,p.stem,kind,{'suffix':p.suffix})
-    if p.suffix.lower()=='.txt': articles=[(p.stem,read_text(p),0)]
-    elif p.suffix.lower()=='.pdf': articles=[(p.stem,read_pdf(p),0)]
-    elif p.suffix.lower()=='.zim':
-        titles=list_zim_titles(p,max_articles,progress,cancel)
-        # BRAINSTEM_INGEST_RESUME_AND_DUPLICATE_COUNT_FIX_V1
-        #
-        # Root cause 1 (duplicate counting): total+=1 previously ran
-        # unconditionally after every memory.add_chunk() call, regardless
-        # of whether a chunk was actually newly inserted. add_chunk() uses
-        # "INSERT OR IGNORE" keyed on a unique import_key and returns None
-        # when the row already existed (a silent duplicate skip) or the
-        # new row's id otherwise. Re-importing the same source (e.g. after
-        # a cancelled run, or the same file twice) therefore inflated the
-        # reported "chunks" count with chunks that were never actually
-        # written. Fixed by only counting when add_chunk() returns a
-        # non-None id.
-        #
-        # Root cause 2 (resume unused): the "resume" parameter was declared
-        # with a default of True but never referenced anywhere in this
-        # function body -- a large, potentially multi-hour ZIM import
-        # (this project's own real corpus reached 167,661 chunks) had no
-        # way to skip already-fully-processed articles after a cancel or
-        # crash, despite Memory already providing fully-implemented
-        # get_import_state()/set_import_state() persistence for exactly
-        # this purpose (path, last_article, last_chunk, status), which was
-        # simply never called from here. Fixed by wiring resume into the
-        # ZIM branch: when resume=True (the default) and a prior,
-        # not-yet-"complete" import_state row exists for this exact path,
-        # processing continues from the persisted article index and chunk
-        # index instead of starting over from article 1 / chunk 0. The
-        # chunk-index counter (ci) is resumed too (not merely the article
-        # position), so chunk_index values remain a consistent, gap-free,
-        # non-duplicated sequence across a resumed run instead of
-        # restarting at 0 for the first article processed after resuming.
-        # When resume=False, any prior state is ignored and the import
-        # starts fresh from article 1 / chunk 0, exactly matching the
-        # previous (only) behavior.
-        #
-        # Scope note: mid-article (sub-article) resume is intentionally
-        # not implemented -- resume operates at whole-article granularity,
-        # which is the realistic, high-impact case for a large ZIM corpus
-        # with many articles, without the added complexity of tracking a
-        # partial position within a single article's chunk stream.
-        start_index = 0
-        ci = 0
-        if resume:
-            prior = memory.get_import_state(str(p))
-            if prior and str(prior.get('status') or '') != 'complete':
-                start_index = max(0, min(int(prior.get('last_article') or 0), len(titles)))
-                ci = max(0, int(prior.get('last_chunk') or 0))
-        # BRAINSTEM_INGEST_RESUME_LAST_DONE_TRACKING_FIX_V1: track the last
-        # FULLY-processed article index separately from the raw loop
-        # counter "n". Without this, breaking out of the loop right after
-        # the cancel-check (before an article's chunks were actually
-        # written) would still leave "n" pointing at that not-yet-started
-        # article, and persisting that value would cause a subsequent
-        # resume to silently skip an article that was never actually
-        # imported. last_done is only ever advanced immediately after an
-        # article's chunks have been fully written, so a resumed run always
-        # continues from the correct, genuinely-completed position.
-        last_done = start_index
-        for n,t in enumerate(titles,1):
-            if n <= start_index: continue
-            if cancel and cancel(): break
-            if progress: progress(n,len(titles),f'ZIM {n}/{len(titles)} {t[:60]}')
-            txt=show_zim_article(p,t)
-            for ch in chunk_text(txt):
-                if memory.add_chunk(doc,ci,ch,{'article':t},f'{p}::{t}::{ci}') is not None: total+=1
-                ci+=1
-            last_done = n
-            memory.set_import_state(str(p), last_done, ci, 'in_progress')
-        memory.set_import_state(str(p), last_done, ci, 'cancelled' if (cancel and cancel()) else 'complete')
-        return {'document_id':doc,'chunks':total,'kind':kind,'title':p.stem}
-    else: raise IngestError('Nicht unterstütztes Format: '+p.suffix)
-    ci=0
-    for title,txt,idx in articles:
-        for ch in chunk_text(txt):
-            if memory.add_chunk(doc,ci,ch,{'article':title},f'{p}::{title}::{ci}') is not None: total+=1
-            ci+=1
-    memory.set_import_state(str(p), len(articles), ci, 'complete')
-    return {'document_id':doc,'chunks':total,'kind':kind,'title':p.stem}
+    p = Path(path)
+    kind = p.suffix.lower().lstrip('.')
+    total = 0
+    if p.suffix.lower() not in ('.txt', '.pdf', '.zim'):
+        raise IngestError('Unsupported format: ' + p.suffix)
+    if not p.is_file():
+        raise IngestError('Source file not found: ' + str(p))
+    if kind in ('txt', 'pdf'):
+        text = read_text(p) if kind == 'txt' else read_pdf(p)
+        chunks = chunk_text(text)
+        if not chunks:
+            raise IngestError('Source contains no readable text: ' + str(p))
+        doc = _import_document(memory, p, kind)
+        for ci, ch in enumerate(chunks):
+            if cancel and cancel():
+                return {'document_id': doc, 'chunks': total, 'kind': kind, 'title': p.stem, 'status': 'cancelled'}
+            if memory.add_chunk(doc,ci,ch,{'article':p.stem},f'{p}::{p.stem}::{ci}') is not None:
+                total += 1
+        return {'document_id': doc, 'chunks': total, 'kind': kind, 'title': p.stem, 'status': 'complete'}
+
+    titles = list_zim_titles(p,max_articles,progress,cancel)
+    if not titles and not (cancel and cancel()):
+        raise IngestError("ZIM listing contains no readable articles: " + str(p))
+    prior_row = memory.get_import_state(str(p)) if resume else None
+    prior = dict(prior_row) if prior_row is not None else None
+    start_index = 0
+    ci = 0
+    if prior and str(prior.get('status') or '') != 'complete':
+        start_index = max(0, min(int(prior.get('last_article') or 0), len(titles)))
+        ci = max(0, int(prior.get('last_chunk') or 0))
+    last_done = start_index
+    doc = None
+    cancelled = False
+    for n, title in enumerate(titles, 1):
+        if n <= start_index:
+            continue
+        if cancel and cancel():
+            cancelled = True
+            break
+        if progress:
+            progress(n, len(titles), f'ZIM {n}/{len(titles)} {title[:60]}')
+        try:
+            text = show_zim_article(p, title)
+            chunks = chunk_text(text)
+            if not chunks:
+                raise IngestError('ZIM article contains no readable text: ' + str(title))
+        except Exception as exc:
+            # Stop at the first failed article: the next resume retries it.
+            memory.set_import_state(str(p), last_done, ci, 'failed')
+            raise IngestError('ZIM import stopped at article ' + str(title)) from exc
+        if doc is None:
+            doc = _import_document(memory, p, kind)
+        for ch in chunks:
+            if memory.add_chunk(doc,ci,ch,{'article':title},f'{p}::{title}::{ci}') is not None:
+                total += 1
+            ci += 1
+        last_done = n
+        memory.set_import_state(str(p), last_done, ci, 'in_progress')
+    if cancel and cancel():
+        cancelled = True
+    status = 'cancelled' if cancelled else 'complete'
+    memory.set_import_state(str(p), last_done, ci, status)
+    return {'document_id': doc, 'chunks': total, 'kind': kind, 'title': p.stem, 'status': status}

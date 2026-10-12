@@ -148,15 +148,7 @@ def apply_all(con):
 
 
 def autoload(AutonomousLoop):
-    # Pure accelerator: does NOT override cycle/run.
+    # Registration must not open or tune a default database at import time.
+    # PERF3 configures actual runtime connections; apply_all remains explicit.
     AutonomousLoop.perf0_runtime_acceleration = True
-    try:
-        db = resolve_db(AutonomousLoop.memory if hasattr(AutonomousLoop, "memory") else None)
-    except Exception:
-        db = None
-    if db is not None:
-        try:
-            apply_fast_pragmas(db)
-        except Exception:
-            pass
     return AutonomousLoop

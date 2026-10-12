@@ -300,6 +300,33 @@ class NeuromodulatorBars(ttk.Frame):
         self.tooltip.hide()
 
 class App(tk.Tk):
+    # BRAINSTEM_GUI_CSV_LOGGER_CHANGES_ONLY_V1 (07 October 2026)
+    #
+    # Problem (user report): the CSV logger wrote one complete row on EVERY
+    # 2-second GUI refresh tick, whether or not any value had changed. A
+    # session with only 7 real value changes/cycles produced a ~700 KB file,
+    # because each row is ~45 columns plus the long Stage-B summary text and
+    # was repeated unchanged hundreds of times.
+    #
+    # Fix: in the (default) "changes only" mode a row is written only when
+    # at least one logged value differs from the LAST WRITTEN row.
+    #   - ints/counters, flags and text: any difference counts.
+    #   - decimal values (floats and decimal strings such as the sleep
+    #     score): a difference counts once it reaches LOGGER_FLOAT_DEADBAND,
+    #     measured against the last written row (so slow drift is still
+    #     captured as soon as it adds up to the deadband; nothing is lost
+    #     beyond that resolution).
+    #   - a heartbeat row is written after LOGGER_HEARTBEAT_SECONDS without
+    #     any change, so the log shows the logger was alive and a viewer has
+    #     no unexplained gaps.
+    #   - the file name, the column names and their order are UNCHANGED, so
+    #     the standalone CSV viewer keeps reading the files as before. Only
+    #     the NUMBER of rows differs.
+    # The old behaviour (one row per tick) stays available via the
+    # "Nur bei Aenderung loggen" checkbox next to "Logger aktiv".
+    LOGGER_FLOAT_DEADBAND = 0.0005
+    LOGGER_HEARTBEAT_SECONDS = 600.0
+
     def __init__(self, db_path="ki_memory.sqlite3"):
         super().__init__()
         self.title("Brainstem V8 Admin")
@@ -329,6 +356,15 @@ class App(tk.Tk):
         self._logger_file = None
         self._logger_writer = None
         self._logger_path = None
+        # BRAINSTEM_GUI_CSV_LOGGER_CHANGES_ONLY_V1 (07 October 2026):
+        # bookkeeping for the "write only on change" mode, see
+        # _logger_write_row_if_enabled() and _logger_row_changed().
+        self._logger_fields = None
+        self._logger_last_written = None
+        self._logger_last_seen = None
+        self._logger_last_write_ts = 0.0
+        self._logger_rows_written = 0
+        self._logger_rows_skipped = 0
         self._cov_cache = None
         self._cov_ts = 0.0
         # BRAINSTEM_GUI_STATS_CACHE_FIX_V1 (11 September 2026): see _cached_stats()
@@ -341,10 +377,13 @@ class App(tk.Tk):
         self._gui_pending_lock = threading.Lock()
         self._gui_pump_scheduled = True
         self._refresh_running = False
+        # BRAINSTEM_GUI_REFRESH_SINGLE_TIMER_FIX_V1 (07 October 2026): see refresh()
+        self._refresh_requested = False
+        self._refresh_timer_id = None
         self.after(50, self._gui_pump)  # GUI_MAINLOOP_STABILIZATION_V1_1
         self._create_floating_head()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.refresh()
+        self._refresh_timer_start()
     def _ui(self):
         nb = ttk.Notebook(self)
         nb.pack(fill=tk.BOTH, expand=True)
@@ -452,6 +491,11 @@ class App(tk.Tk):
         self.gui_logger_enabled = tk.BooleanVar(value=False)
         ttk.Checkbutton(logger_row, text="Logger aktiv", variable=self.gui_logger_enabled,
                         command=self._logger_toggle).pack(side=tk.LEFT)
+        # BRAINSTEM_GUI_CSV_LOGGER_CHANGES_ONLY_V1: default ON; switching it
+        # off restores the previous one-row-per-tick behaviour immediately.
+        self.gui_logger_changes_only = tk.BooleanVar(value=True)
+        ttk.Checkbutton(logger_row, text="Nur bei Aenderung loggen",
+                        variable=self.gui_logger_changes_only).pack(side=tk.LEFT, padx=(12, 0))
         self.logger_status = ttk.Label(left, text="Logger inaktiv")
         self.logger_status.pack(anchor=tk.W, pady=(2, 4))
         self.log = tk.Text(f, wrap=tk.WORD)
@@ -623,6 +667,18 @@ class App(tk.Tk):
                 except Exception:
                     pass
                 setattr(self, name, None)
+        # BRAINSTEM_GUI_CSV_LOGGER_CHANGES_ONLY_V1: closing the window while
+        # the logger is active used to leave the file open (rows were
+        # flushed per write, so nothing was lost). In changes-only mode the
+        # latest skipped sample would be missing, so write it and close the
+        # file cleanly here. No widget access, safe during shutdown.
+        try:
+            if getattr(self, "_logger_file", None) is not None:
+                self._logger_flush_pending()
+                self._logger_file.close()
+                self._logger_file = None
+        except Exception:
+            pass
         try:
             db = getattr(self.mem, "db", None)
             if db is not None:
@@ -1183,21 +1239,104 @@ class App(tk.Tk):
             self._logger_file = open(filename, "w", newline="", encoding="utf-8")
             self._logger_writer = None
             self._logger_path = filename
+            # BRAINSTEM_GUI_CSV_LOGGER_CHANGES_ONLY_V1: fresh bookkeeping per
+            # logging session.
+            self._logger_fields = None
+            self._logger_last_written = None
+            self._logger_last_seen = None
+            self._logger_last_write_ts = 0.0
+            self._logger_rows_written = 0
+            self._logger_rows_skipped = 0
             self.logger_status.configure(text="Logger AKTIV -> " + filename)
         except Exception as exc:
             self.gui_logger_enabled.set(False)
             self.logger_status.configure(text="Logger-Fehler: " + str(exc))
 
     def _logger_stop(self):
+        # BRAINSTEM_GUI_CSV_LOGGER_CHANGES_ONLY_V1: if ticks were skipped
+        # after the last written row, write the most recent sample as a
+        # final row first, so the file ends at the real stop time.
+        self._logger_flush_pending()
         if getattr(self, "_logger_file", None) is not None:
             try:
                 self._logger_file.close()
             except Exception:
                 pass
         path = getattr(self, "_logger_path", None)
+        n_rows = getattr(self, "_logger_rows_written", 0)
         self._logger_file = None
         self._logger_writer = None
-        self.logger_status.configure(text=("Logger gestoppt (zuletzt: %s)" % path) if path else "Logger inaktiv")
+        self.logger_status.configure(
+            text=("Logger gestoppt (zuletzt: %s, %d Zeilen)" % (path, n_rows)) if path else "Logger inaktiv")
+
+    @staticmethod
+    def _logger_numeric(value):
+        """Return a float for real-valued measurements (a float, or a string
+        holding a decimal number such as the sleep score '0.5123'); return
+        None for everything that must be compared exactly: ints/counters,
+        bools, plain text, empty values, NaN/inf."""
+        if isinstance(value, bool):
+            return None
+        number = None
+        if isinstance(value, float):
+            number = value
+        elif isinstance(value, str):
+            text = value.strip()
+            if "." in text or "e" in text.lower():
+                try:
+                    number = float(text)
+                except ValueError:
+                    number = None
+        if number is None or number != number or number in (float("inf"), float("-inf")):
+            return None
+        return number
+
+    def _logger_row_changed(self, values, last):
+        """True if `values` differs materially from the LAST WRITTEN row.
+        timestamp_iso never counts as a change (it differs on every tick)."""
+        if last is None:
+            return True
+        fields = self._logger_fields or list(values.keys())
+        # A different set of columns (e.g. an extra "error" key after a failed
+        # database read) is never "unchanged": let it reach the writer so it
+        # is reported exactly as before instead of being skipped silently.
+        if set(values.keys()) != set(fields):
+            return True
+        for key in fields:
+            if key == "timestamp_iso":
+                continue
+            new = values.get(key, "")
+            old = last.get(key, "")
+            new_num = self._logger_numeric(new)
+            old_num = self._logger_numeric(old)
+            if new_num is not None and old_num is not None:
+                if abs(new_num - old_num) >= self.LOGGER_FLOAT_DEADBAND:
+                    return True
+            elif str(new) != str(old):
+                return True
+        return False
+
+    def _logger_flush_pending(self):
+        """Write the latest skipped sample (if any) as a final row."""
+        try:
+            if (getattr(self, "_logger_file", None) is not None
+                    and self._logger_writer is not None
+                    and self._logger_last_seen is not None):
+                self._logger_writer.writerow(self._logger_last_seen)
+                self._logger_file.flush()
+                self._logger_rows_written += 1
+                self._logger_last_written = self._logger_last_seen
+                self._logger_last_seen = None
+        except Exception:
+            pass
+
+    def _logger_update_status(self):
+        try:
+            self.logger_status.configure(
+                text="Logger AKTIV -> %s | Zeilen: %d geschrieben, %d unveraendert uebersprungen" % (
+                    self._logger_path, self._logger_rows_written, self._logger_rows_skipped))
+        except Exception:
+            pass
 
     def _logger_write_row_if_enabled(self):
         if not self.gui_logger_enabled.get():
@@ -1207,10 +1346,28 @@ class App(tk.Tk):
         try:
             values = self._collect_all_gui_values()
             if self._logger_writer is None:
-                self._logger_writer = csv.DictWriter(self._logger_file, fieldnames=list(values.keys()))
+                self._logger_fields = list(values.keys())
+                self._logger_writer = csv.DictWriter(self._logger_file, fieldnames=self._logger_fields)
                 self._logger_writer.writeheader()
+            now = time.time()
+            changes_only_var = getattr(self, "gui_logger_changes_only", None)
+            changes_only = bool(changes_only_var.get()) if changes_only_var is not None else True
+            if changes_only:
+                due = self._logger_row_changed(values, self._logger_last_written)
+                if not due and (now - self._logger_last_write_ts) >= self.LOGGER_HEARTBEAT_SECONDS:
+                    due = True  # heartbeat: nothing changed for a long time
+                if not due:
+                    self._logger_last_seen = values
+                    self._logger_rows_skipped += 1
+                    self._logger_update_status()
+                    return
             self._logger_writer.writerow(values)
             self._logger_file.flush()
+            self._logger_last_written = values
+            self._logger_last_seen = None
+            self._logger_last_write_ts = now
+            self._logger_rows_written += 1
+            self._logger_update_status()
         except Exception as exc:
             self.logger_status.configure(text="Logger-Schreibfehler: " + str(exc))
 
@@ -1260,8 +1417,56 @@ class App(tk.Tk):
         if self.mood_name is not None:
             self.mood_name.configure(text=name)
         self.neuro_bars.draw(vals)
+    # BRAINSTEM_GUI_REFRESH_SINGLE_TIMER_FIX_V1 (07 October 2026)
+    #
+    # Problem (found in a real GUI CSV log of 07 Oct 2026): the dashboard
+    # refresh re-armed ITSELF in the finally block of _refresh()
+    # (self.after(2000, self._refresh)), and refresh() simply queued
+    # _refresh(). Every refresh() call -- the autonomous worker calls it
+    # after EVERY backend step, plus tab changes, import end, drift end,
+    # reset end -- therefore started one more, permanent 2-second timer
+    # chain that was never stopped. The number of chains grew with every
+    # learning step. Measured by replaying this file's scheduling on a
+    # virtual clock (backend step every 17 s): refresh runs per second in
+    # minute 1/5/10/20/30 = 1.2 / 8.2 / 17 / 35 / 52, instead of a constant
+    # 0.5. Each run does database reads (corpus stats, neuromodulators,
+    # Stage-B summary) and, when active, the CSV logger -- which is why the
+    # CSV got several rows within the same second and grew so large.
+    #
+    # Fix: exactly ONE periodic timer (_refresh_timer_start(), called once
+    # from __init__; calling it again restarts that single timer instead of
+    # adding another). refresh() no longer re-arms anything: it asks for ONE
+    # additional immediate update, and requests that arrive before it has
+    # run are merged into one. _refresh_once() is the old _refresh() body
+    # without the self-re-arming, and never runs twice at the same time.
+    REFRESH_INTERVAL_MS = 2000
+
     def refresh(self):
-        self._gui_enqueue(self._refresh)
+        """Request one immediate dashboard update. Thread-safe (workers call
+        it). Does NOT start a timer; requests made before the pending update
+        has run are merged into that single update."""
+        if getattr(self, "_refresh_requested", False):
+            return
+        self._refresh_requested = True
+        self._gui_enqueue(self._refresh_once)
+    def _refresh_timer_start(self):
+        """Start (or restart) THE single periodic dashboard timer."""
+        old = getattr(self, "_refresh_timer_id", None)
+        if old is not None:
+            try:
+                self.after_cancel(old)
+            except Exception:
+                pass
+        self._refresh_timer_id = self.after(50, self._refresh_tick)
+    def _refresh_tick(self):
+        self._refresh_timer_id = None
+        try:
+            self._refresh_once()
+        finally:
+            try:
+                self._refresh_timer_id = self.after(self.REFRESH_INTERVAL_MS, self._refresh_tick)
+            except Exception:
+                pass
     def _drift_tab(self):
         f = self.tabs["Drift-Report"]
         self.drift_running = False
@@ -1322,7 +1527,7 @@ class App(tk.Tk):
             runner = _load("v8_deprivation_runner.py", "v8_deprivation_runner")
             sd = _load("v8_sensory_deprivation.py", "v8_sensory_deprivation")
         except Exception as e:
-            self.after(0, lambda: self.drift_status.configure(text="Modul-Fehler: " + str(e)))
+            self.after(0, lambda message=str(e): self.drift_status.configure(text="Modul-Fehler: " + message))
             self._drift_finish()
             return
         con = sqlite3.connect(self.db_path, timeout=60.0)
@@ -1355,7 +1560,7 @@ class App(tk.Tk):
             self.after(0, lambda: (self.drift_report.insert(tk.END, text + "\n\nCSV: " + csv_path + "\n"),
                                    self.drift_status.configure(text="Fertig: %d Zyklen | GESAMT: %s" % (rep["cycles"], overall))))
         except Exception as e:
-            self.after(0, lambda: self.drift_status.configure(text="Drift-Fehler: " + str(e)))
+            self.after(0, lambda message=str(e): self.drift_status.configure(text="Drift-Fehler: " + message))
         finally:
             try: sd.set_deprivation(con, False)
             except Exception: pass
@@ -1411,7 +1616,11 @@ class App(tk.Tk):
             self.drift_report.see(tk.END)
         except Exception:
             pass
-    def _refresh(self):
+    def _refresh_once(self):
+        if self._refresh_running:
+            return  # never run two refreshes at the same time
+        self._refresh_running = True
+        self._refresh_requested = False
         try:
             covered, total, hypo = self._corpus_stats()
             pct = (100.0 * covered / total) if total else 0.0
@@ -1431,9 +1640,11 @@ class App(tk.Tk):
                     self._update_neuro_dashboard()
                 except Exception as exc:
                     self.neuro_text.configure(text="Neuromodulatoren: nicht verfuegbar: " + str(exc))
-            # BRAINSTEM_GUI_CSV_LOGGER_V1: writes one row per refresh tick
-            # (this method already runs on the existing 2-second timer,
-            # see self.after(2000, self._refresh) below) whenever the
+            # BRAINSTEM_GUI_CSV_LOGGER_V1: may write one row per refresh tick
+            # -- since BRAINSTEM_GUI_CSV_LOGGER_CHANGES_ONLY_V1 only when a
+            # value changed (see App.LOGGER_FLOAT_DEADBAND).
+            # (this method runs on the single 2-second timer, see
+            # _refresh_timer_start(), plus on-demand via refresh()) whenever the
             # logger has been enabled via the checkbox. No-ops instantly
             # and safely if the logger was never enabled (checked first
             # thing inside _logger_write_row_if_enabled() itself).
@@ -1448,10 +1659,7 @@ class App(tk.Tk):
                 for f in self.mem.rows("SELECT * FROM facts ORDER BY created_at DESC LIMIT 2000"):
                     self.facts.insert("", tk.END, values=(f["subject"], f["relation"], f["value"], round(f["confidence"], 2)))
         finally:
-            try:
-                self.after(2000, self._refresh)
-            except Exception:
-                pass
+            self._refresh_running = False
 
 
     def _gui_enqueue(self, callback):

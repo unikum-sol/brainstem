@@ -86,6 +86,11 @@ def _unique(db: sqlite3.Connection, table: str, col: str, changes: List[str]) ->
 
 
 PHASE5H_REQUIRED_SCHEMA = {
+    "phase5g_neuromodulator_strategy_profiles": (
+        "profile_key", "strategy", "gap_type", "role", "avg_outcome_score",
+        "avg_closure_delta", "avg_no_candidate_rate", "avg_overlap_score",
+        "phase5h_last_updated_at", "phase5h_recommendation",
+    ),
     "phase5h_experiment_outcome_cycles": (
         "id", "phase", "experiments_seen", "outcomes_written", "memory_updates",
         "avg_outcome_score", "avg_closure_delta", "avg_no_candidate_rate",
@@ -128,6 +133,10 @@ def _self_check_schema(db: sqlite3.Connection) -> bool:
 
 def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
     db = _get_db(mem_or_conn)
+    from ki_system.db_bootstrap import SCHEMA_TABLES as central_schema
+    profile = "phase5g_neuromodulator_strategy_profiles"
+    db.execute("CREATE TABLE IF NOT EXISTS " + profile + " (" + ", ".join(name + " " + spec for name, spec in central_schema[profile]) + ")")
+
     cur = db.cursor()
     changes: List[str] = []
     # New / canonical Phase5h tables
@@ -554,9 +563,9 @@ def evaluate_strategy_experiment_outcomes(mem_or_conn: Any = None, limit: int = 
             # Update neuromodulator strategy profiles if available
             if _table_exists(db, 'phase5g_neuromodulator_strategy_profiles'):
                 try:
-                    db.execute("UPDATE phase5g_neuromodulator_strategy_profiles SET avg_outcome_score=?, avg_closure_delta=?, avg_no_candidate_rate=?, avg_overlap_score=?, phase5h_last_updated_at=?, phase5h_recommendation=? WHERE COALESCE(selected_strategy, strategy, '')=? AND COALESCE(gap_type,'unknown_gap')=? AND COALESCE(role,'unknown_role')=?", (_clamp(avg_out), _clamp(avg_cl), _clamp(avg_no), _clamp(avg_ov), now, rec, strategy, gap_type, role))
-                except Exception:
-                    pass
+                    db.execute("UPDATE phase5g_neuromodulator_strategy_profiles SET avg_outcome_score=?, avg_closure_delta=?, avg_no_candidate_rate=?, avg_overlap_score=?, phase5h_last_updated_at=?, phase5h_recommendation=? WHERE COALESCE(strategy, '')=? AND COALESCE(gap_type,'unknown_gap')=? AND COALESCE(role,'unknown_role')=?", (_clamp(avg_out), _clamp(avg_cl), _clamp(avg_no), _clamp(avg_ov), now, rec, strategy, gap_type, role))
+                except Exception as exc:
+                    raise RuntimeError("Phase5h strategy profile feedback failed") from exc
     avg_out = sum(outcome_scores)/len(outcome_scores) if outcome_scores else 0.0
     avg_cl = sum(closure_scores)/len(closure_scores) if closure_scores else 0.0
     avg_no = sum(no_cand_scores)/len(no_cand_scores) if no_cand_scores else 0.0

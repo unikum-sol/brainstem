@@ -11,18 +11,26 @@ def _phrase(q): return ' '.join(_terms(q)).lower().strip()
 def _clean(t):
     return re.sub(r'\s+', ' ', clean_wikipedia_text(t or '')).strip()
 def semantic_search(memory,query,limit=20,kind=None):
-    query=(query or '').strip(); hits=[]; seen=set(); terms=_terms(query); fts=' OR '.join(terms[:12])
+    query=(query or '').strip(); limit=max(0,int(limit)); hits=[]; seen=set(); terms=_terms(query); fts=' OR '.join(chr(34)+t.replace(chr(34),chr(34)*2)+chr(34) for t in terms[:12])
+    if not query or not limit: return []
     if fts:
         try:
-            for r in memory.fts_search(fts,limit*3):
-                h=Hit(r['rowid'],r['title'],r['path'],1/(1+abs(float(r['score'] or 0))),_clean(r['text']),'fts')
+            for r in memory.fts_search(fts,limit*3,kind=kind):
+                h=Hit(r['rowid'],r['title'],r['path'],(-float(r['score'] or 0))/(1+abs(float(r['score'] or 0))),_clean(r['text']),'fts')
                 hits.append(h); seen.add(h.chunk_id)
         except Exception: pass
     qph=_phrase(query)
     if qph:
         like=f'%{qph}%'
         try:
-            rows=memory.rows('SELECT chunks.id AS id,chunks.text AS text,chunks.metadata_json AS metadata_json,documents.title AS title,documents.path AS path FROM chunks JOIN documents ON documents.id=chunks.document_id WHERE lower(chunks.text) LIKE ? OR lower(chunks.metadata_json) LIKE ? LIMIT ?',(like,like,limit*3))
+            sql = 'SELECT chunks.id AS id,chunks.text AS text,chunks.metadata_json AS metadata_json,documents.title AS title,documents.path AS path FROM chunks JOIN documents ON documents.id=chunks.document_id WHERE (lower(chunks.text) LIKE ? OR lower(chunks.metadata_json) LIKE ?)'
+            params = [like, like]
+            if kind is not None:
+                sql += ' AND documents.kind=?'
+                params.append(kind)
+            sql += ' ORDER BY chunks.id LIMIT ?'
+            params.append(limit*3)
+            rows = memory.rows(sql, tuple(params))
             for r in rows:
                 if r['id'] in seen: continue
                 try: meta=json.loads(r['metadata_json'] or '{}')
@@ -32,7 +40,7 @@ def semantic_search(memory,query,limit=20,kind=None):
         except Exception: pass
     if len(hits)<limit:
         qc=Counter(terms)
-        for r in memory.iter_chunks():
+        for r in memory.iter_chunks(kind=kind):
             if r['id'] in seen: continue
             txt=_clean(r['text']); sim=cosine(qc,Counter(tokenize(txt)))
             if sim>0: hits.append(Hit(r['id'],r['title'],r['path'],sim,txt,'semantic'))

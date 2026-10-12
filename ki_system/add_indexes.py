@@ -85,7 +85,8 @@ def _main():
     con.close()
     bak = db + ".bak_idx_" + str(int(time.time()))
     print("\nErstelle Backup (kann bei grossen Datenbanken einen Moment dauern) ...")
-    shutil.copy2(db, bak)
+    from ki_system.db_runtime import sqlite_snapshot
+    sqlite_snapshot(db, bak)
     print("Backup:", bak)
     con = sqlite3.connect(db, timeout=120)
     print("\nLege Indizes an:")
