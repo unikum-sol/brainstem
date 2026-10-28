@@ -131,7 +131,9 @@ One coupling — noradrenaline's effect on the ontology layer's minimum cluster 
 <tr><td>**Symbolic reasoning plugin** (deterministic, non-LLM rule engine)</td><td>Concept documented, not scheduled</td><td>Gated behind Stage-B graduation and the write-lock roadmap; a validated symbolic rule becoming productive is itself a new class of productive write and must be gated at least as strictly as fact promotion</td></tr>
 <tr><td>**Multi-core / multi-process learning**</td><td>Explicitly out of scope for now</td><td>Not currently planned</td></tr>
 </table>
+
 ---
+
 ### Core Philosophy
 
 Traditional semantic systems often focus on the **what**: storing and retrieving content. BrainStem focuses on the **how**: learning how context, uncertainty, evidence, contradiction, revision, and consolidation interact over time — extended to a character-level layer that learns how recurring units emerge from raw text, a relational layer that learns how those units connect to each other, a categorical layer that learns how connected units group into categories, and a curiosity layer that learns which of its own unresolved gaps are durable enough to motivate further reading. A corpus is treated as training substrate rather than as a static knowledge base.
