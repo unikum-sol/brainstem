@@ -341,6 +341,18 @@ def run_gap_detection_cycle(con) -> Dict[str, Any]:
     contested = _detect_contested_pairs(con, scan_limit, now, habituation_max,
                                         acetylcholine=neuromod.get("acetylcholine", 0.5))
 
+    # resolution_score is the gap's outcome as read by the strategy phases
+    # (5b, 5e, 5f, 5g, 5i) and by Phase 6a, whose dopamine and noradrenaline
+    # depend on how many gaps get resolved. A gap is resolved exactly when it
+    # is closed (graduation, fact promotion or a decided competition); open
+    # and habituated gaps are unresolved.
+    if "resolution_score" in _columns(con, "internal_learning_gaps"):
+        con.execute(
+            "UPDATE internal_learning_gaps SET resolution_score = "
+            "CASE WHEN status='closed' THEN 1.0 ELSE 0.0 END "
+            "WHERE COALESCE(resolution_score,-1) <> (CASE WHEN status='closed' THEN 1.0 ELSE 0.0 END)"
+        )
+
     created = stalled["created"] + contested["created"]
     reobserved = stalled["reobserved"] + contested["reobserved"]
 
