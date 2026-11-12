@@ -46,6 +46,8 @@ YouTube - AI conversation about BrainStem Project
 - **Self-correction works:** consolidated hypotheses compete with alternative completions of the same learned cue. A decisively stronger competitor is treated as a prediction error: the stored hypothesis is reverted to uncertain, its fact is retracted and the hypothesis has to be consolidated again. This happens without any external trigger (example from a test run: cue "April 20", stored evidence 1 vs. competitor evidence 3).
 - **Speed:** about 1.3 to 1.6 s per learning cycle on the full production database (5.6 GB, 167,661 chunks, 937,552 hypotheses), about 0.9 s on a small corpus.
 - **Stability:** system test fully green; repeated multi-hundred-cycle runs without exceptions or hidden error states in the nested cycle results.
+- **Reading strategies use live state:** phases 5b to 5i take their learning controls (learning rate, error weight, revision, exploration, inhibition, consolidation) and the six core neuromodulators from the live state of Phases 6a and 7c, cluster the real curiosity questions, and read gap resolution from the actual gap status. Phase 5b's exploration and inhibition recommendations act back on the persistent bias state with a damped step (top-down strategy control), counterbalanced by saturation homeostasis (6d) and the endocannabinoid pull (7b).
+- **One sleep trigger, developmental sleep share:** a single sleep/wake switch decides when the system sleeps. Adenosine (Process S) rises with the encoding load of each cycle and falls during sleep; sleep starts at an upper and ends at a lower threshold. Like a newborn, the immature system builds up sleep pressure faster and sleeps about two thirds of the time; as consolidated knowledge grows, wake episodes lengthen toward the adult rhythm of about 55 wake and 22 sleep cycles (about 28% sleep). In a 400-cycle run from a fresh database the system slept 62% of the time and graduated 231 hypotheses (103 with a fixed adult rhythm); only 3 of 275 tagged survivors expired before consolidation.
 - **Cortisol Stage 2** is active (guarded soft regulator; per-value cap 0.01, per-cycle budget 0.03, 3-cycle cooldown).
 
 #### Production database
@@ -59,7 +61,7 @@ A full read-through of the corpus and more than 11,500 learning cycles ran witho
 ---
 ### Next Major Steps
 - Run the new replay, cue competition and reconsolidation mechanisms over a long period on the full production corpus and observe how quality develops.
-- Couple phases 5f and 5h to the real neuromodulator state; they currently use fixed control values.
+- Observe the exploration bias: with many unresolved gaps it currently sits at the upper bound of Phase 5b's strategy control.
 - Observe whether the neuromodulators leave their current high-noradrenaline state once more gaps are closed by the new correction path.
 - Catastrophic-forgetting test (Tadros/Bazhenov motivated): import a second, topically distinct corpus and measure whether already consolidated knowledge is protected, degraded or reinforced.
 
@@ -70,6 +72,7 @@ A full read-through of the corpus and more than 11,500 learning cycles ran witho
 <tr><th>Stage</th><th>Status</th><th>Gating condition to proceed</th></tr>
 <tr><td>**Stage A: Core stability**</td><td>Complete: full corpus read-through, 11,500+ cycles, 1,500-cycle drift run "konvergiert"</td><td>Complete</td></tr>
 <tr><td>**Stage B: Guarded graduation**</td><td>Active for all three eligible roles (sentence, lexical boundary, relation), neuromodulator-coupled role selection</td><td>Ongoing observation</td></tr>
+<tr><td>**Sleep/wake switch**</td><td>Active: one switch with hysteresis, adenosine driven by encoding load, thresholds shifted by arousal and inhibition</td><td>Long-run observation on the production corpus</td></tr>
 <tr><td>**Prioritized sleep replay**</td><td>Active: three replay tracks with neuromodulated capacity, tagged and random sampling, per-population down-selection</td><td>Long-run observation on the production corpus</td></tr>
 <tr><td>**Self-correction (cue competition)**</td><td>Active: learned partial cues, evidence-decided competition, revision, fact retraction, reconsolidation requirement</td><td>Long-run observation on the production corpus</td></tr>
 <tr><td>**Lexical emergence (Phase 0)**</td><td>Active, takes part in consolidation and graduation with its own replay quota</td><td>Calibration of context length and entropy threshold</td></tr>
@@ -148,6 +151,16 @@ The Stage B chain is ordered so that a competition decided in a cycle already ca
 
 ---
 ### Sleep, Replay and Consolidation
+
+#### One sleep/wake switch
+
+The decision between wake and sleep is made in exactly one place, the sleep/wake switch in the cooperative core. Every other module (Phase 7a adenosine, Phase 7d slow-wave consolidation, Phase 7e histamine) and the GUI read its state from `cooperative_sleep_wake_state`.
+
+- **Sleep pressure (Process S, Phase 7a).** Adenosine rises during wake as a saturating exponential, `S = 1 - (1 - S) * exp(-k_wake)`, and decays during sleep exponentially, `S = S * exp(-k_sleep)`. The ratio of the two rates follows the two-process fits (rise time constant 18.2 h, decay time constant 4.2 h), scaled so that a wake episode at typical load lasts about 60 cycles.
+- **What drives the rise.** The wake rate scales with encoding load: the new hypotheses and experiment outcomes of the cycle relative to the system's own running novelty level, `load = n / (n + reference)`. A burst of new material brings sleep forward, a quiet phase delays it. Glutamatergic activity scales the rise further, and GABAergic inhibition deepens the decay during sleep.
+- **Switch with hysteresis.** Sleep starts when adenosine reaches the upper threshold (0.67) and ends when it has dissipated to the lower threshold (0.17). The gap between the two thresholds keeps transitions rare and complete, like the mutually inhibiting flip-flop between the sleep-active preoptic area and the arousal system. The arousal side (histamine, orexin, noradrenaline, acetylcholine, cortisol) and the GABAergic sleep side shift both thresholds together by at most 0.1, the role the circadian process plays in the two-process model. During sleep the switch suppresses histamine, which in turn stabilizes sleep.
+- **Developmental sleep share.** The wake rate is multiplied by `1 + 4 * (1 - maturity)`, with `maturity = knowledge / (knowledge + 1000)` and knowledge being the net number of hypotheses in a stable role (a revision counts back down). A fresh system therefore builds up sleep pressure five times faster and sleeps about two thirds of the time, as newborns do; with growing consolidated knowledge the share falls toward the adult value. Only the rise changes with maturation, the decay stays the same, matching the finding that sleep pressure builds up faster in younger children while its dissipation is stable across development.
+- **Not too early, not too late.** Depending on maturity, load and glutamate, a wake episode lasts between roughly 7 cycles (newborn, high load) and 150 cycles (mature, no new material), and a sleep episode about 20 to 23 cycles. Wake always ends inside the dopamine-modulated synaptic tag window of Phase 7d (225 to 375 cycles), so tagged traces are consolidated before they decay, while enough new material accumulates between two sleep episodes to make replay worthwhile. At sleep onset, saturated meta-plasticity biases are pulled back toward their mid values.
 
 #### Prioritized replay (Phase 7d)
 
@@ -260,6 +273,7 @@ Each coupling uses the same symmetric gain and equals the calibrated value at th
 | Question priority | Dopamine, Acetylcholine | Gap-closure and curiosity roles |
 | Question-chunk feedback boost | inherits question priority | Consistency with the upstream signal |
 | Phase 7d consolidation gate | Acetylcholine | Gais & Born (2004); Hasselmo & McGaughy (2004) |
+| Learning controls of the reading-strategy phases 5b to 5i | Meta-plasticity state of Phase 6a; error weight from noradrenaline | Yu & Dayan (2005); Nassar et al. (2012) |
 
 The noradrenaline coupling of the ontology minimum cluster size is deliberately not hardcoded in either direction. Two plausible findings disagree on its sign, so the system learns the sign from its own promotion and retraction outcomes once both outcome groups hold enough evidence.
 
@@ -323,7 +337,11 @@ System check on an isolated snapshot of the database: `python -m ki_system.syste
 - Drift Report
 - Live 12-neuromodulator display, corpus-coverage and cycle-progress indicators, bounded logs and graphs, cooperative worker shutdown
 
-The GUI is an experimental testing interface. A separate CSV viewer application is available for offline analysis of logged sessions.
+The GUI is an experimental testing interface.
+
+#### CSV logger and BrainStem CSV Viewer
+
+The "Logger aktiv" switch in Import and Jobs writes every value the GUI displays to `gui_log_YYYY-MM-DD_HHMMSS.csv` (neuromodulators, sleep state and thresholds, developmental maturity, learning progress), by default only when a value changes. These logs can be analyzed offline with the companion application **[BrainStem CSV Viewer](https://github.com/unikum-sol/BrainStem-CSV-Viewer)**: a standalone desktop tool (PySide6, pyqtgraph) that plots any number of curves over time, with one Y axis per curve, a normalized overlay or a shared axis, and a value readout under the cursor. It reads only the CSV files and needs neither the `ki_system` package nor the database.
 
 ---
 ### ZIM Import
@@ -353,6 +371,24 @@ A Windows `zimdump.exe` build and its DLL files must be placed in the project ro
 - **Tononi, Giulio; Cirelli, Chiara** (2014) _Sleep and the price of plasticity: from synaptic and cellular homeostasis to memory consolidation and integration_. Neuron.
 - **Gais, Steffen; Born, Jan** (2004) _Low acetylcholine during slow-wave sleep is critical for declarative memory consolidation_. PNAS.
 
+**Sleep regulation**
+- **Borbély, Alexander A.** (1982) _A two process model of sleep regulation_. Human Neurobiology.
+- **Daan, Serge; Beersma, Domien G. M.; Borbély, Alexander A.** (1984) _Timing of human sleep: recovery process gated by a circadian pacemaker_. American Journal of Physiology.
+- **Skeldon, Anne C.; Dijk, Derk-Jan; Derks, Gianne** (2014) _Mathematical models for sleep-wake dynamics: comparison of the two-process model and a mutual inhibition neuronal model_. PLoS ONE.
+- **Porkka-Heiskanen, Tarja; Strecker, Robert E.; Thakkar, Mahesh; Bjørkum, Alvhild A.; Greene, Robert W.; McCarley, Robert W.** (1997) _Adenosine: a mediator of the sleep-inducing effects of prolonged wakefulness_. Science.
+- **Brambilla, Dario; Chapman, David; Greene, Robert** (2005) _Adenosine mediation of presynaptic feedback inhibition of glutamate release_. Neuron.
+- **Tononi, Giulio; Cirelli, Chiara** (2006) _Sleep function and synaptic homeostasis_. Sleep Medicine Reviews.
+- **Huber, Reto; Ghilardi, M. Felice; Massimini, Marcello; Tononi, Giulio** (2004) _Local sleep and learning_. Nature.
+- **Saper, Clifford B.; Chou, Thomas C.; Scammell, Thomas E.** (2001) _The sleep switch: hypothalamic control of sleep and wakefulness_. Trends in Neurosciences.
+- **Saper, Clifford B.; Scammell, Thomas E.; Lu, Jun** (2005) _Hypothalamic regulation of sleep and circadian rhythms_. Nature.
+- **Sherin, Jonathan E.; Elmquist, Joel K.; Torrealba, Fernando; Saper, Clifford B.** (1998) _Innervation of histaminergic tuberomammillary neurons by GABAergic and galaninergic neurons in the ventrolateral preoptic nucleus of the rat_. Journal of Neuroscience.
+- **Takahashi, Kazumi; Lin, Jian-Sheng; Sakai, Kazuya** (2006) _Neuronal activity of histaminergic tuberomammillary neurons during wake-sleep states in the mouse_. Journal of Neuroscience.
+- **Roffwarg, Howard P.; Muzio, Joseph N.; Dement, William C.** (1966) _Ontogenetic development of the human sleep-dream cycle_. Science.
+- **Jenni, Oskar G.; Achermann, Peter; Carskadon, Mary A.** (2005) _Homeostatic sleep regulation in adolescents_. Sleep.
+- **Tarokh, Leila; Carskadon, Mary A.; Achermann, Peter** (2012) _Dissipation of sleep pressure is stable across adolescence_. Neuroscience.
+- **Feinberg, Irwin; Campbell, Ian G.** (2010) _Sleep EEG changes during adolescence: an index of a fundamental brain reorganization_. Brain and Cognition.
+- **Walsh, James K.; et al.** (2008) _Slow wave sleep enhancement with gaboxadol reduces daytime sleepiness during sleep restriction_. Sleep.
+
 **Retrieval competition, prediction error and reconsolidation**
 - **Anderson, Michael C.; Bjork, Robert A.; Bjork, Elizabeth L.** (1994) _Remembering can cause forgetting: Retrieval dynamics in long-term memory_. Journal of Experimental Psychology: Learning, Memory, and Cognition.
 - **Sevenster, Dieuwke; Beckers, Tom; Kindt, Merel** (2013) _Prediction error governs pharmacologically induced amnesia for learned fear_. Science.
@@ -362,6 +398,8 @@ A Windows `zimdump.exe` build and its DLL files must be placed in the project ro
 
 **Acetylcholine, noradrenaline and uncertainty**
 - **Yu, Angela J.; Dayan, Peter** (2005) _Uncertainty, neuromodulation, and attention_. Neuron.
+- **Cohen, Jonathan D.; McClure, Samuel M.; Yu, Angela J.** (2007) _Should I stay or should I go? How the human brain manages the trade-off between exploitation and exploration_. Philosophical Transactions of the Royal Society B.
+- **Nassar, Matthew R.; Rumsey, Katherine M.; Wilson, Robert C.; Parikh, Kinjal; Heasly, Benjamin; Gold, Joshua I.** (2012) _Rational regulation of learning dynamics by pupil-linked arousal systems_. Nature Neuroscience.
 - **Hasselmo, Michael E.** (2006) _The role of acetylcholine in learning and memory_. Current Opinion in Neurobiology.
 - **Hasselmo, Michael E.; McGaughy, Jill** (2004) _High acetylcholine levels set circuit dynamics for attention and encoding and low acetylcholine levels set dynamics for consolidation_. Progress in Brain Research.
 - **Aston-Jones, Gary; Cohen, Jonathan D.** (2005) _An Integrative Theory of Locus Coeruleus-Norepinephrine Function: Adaptive Gain and Optimal Performance_. Annual Review of Neuroscience.
@@ -436,10 +474,95 @@ A Windows `zimdump.exe` build and its DLL files must be placed in the project ro
   author={Yu, Angela J. and Dayan, Peter},
   journal={Neuron}, volume={46}, pages={681--692}, year={2005}
 }
+@article{nassar2012rational,
+  title={Rational regulation of learning dynamics by pupil-linked arousal systems},
+  author={Nassar, Matthew R. and Rumsey, Katherine M. and Wilson, Robert C. and Parikh, Kinjal and Heasly, Benjamin and Gold, Joshua I.},
+  journal={Nature Neuroscience}, volume={15}, number={7}, pages={1040--1046}, year={2012}
+}
 @article{sevenster2013prediction,
   title={Prediction error governs pharmacologically induced amnesia for learned fear},
   author={Sevenster, Dieuwke and Beckers, Tom and Kindt, Merel},
   journal={Science}, volume={339}, pages={830--833}, year={2013}
+}
+@article{borbely1982two,
+  title={A two process model of sleep regulation},
+  author={Borb{\'e}ly, Alexander A.},
+  journal={Human Neurobiology}, volume={1}, pages={195--204}, year={1982}
+}
+@article{daan1984timing,
+  title={Timing of human sleep: recovery process gated by a circadian pacemaker},
+  author={Daan, Serge and Beersma, Domien G. M. and Borb{\'e}ly, Alexander A.},
+  journal={American Journal of Physiology}, volume={246}, pages={R161--R178}, year={1984}
+}
+@article{skeldon2014mathematical,
+  title={Mathematical models for sleep-wake dynamics: comparison of the two-process model and a mutual inhibition neuronal model},
+  author={Skeldon, Anne C. and Dijk, Derk-Jan and Derks, Gianne},
+  journal={PLoS ONE}, volume={9}, number={8}, pages={e103877}, year={2014}
+}
+@article{porkkaheiskanen1997adenosine,
+  title={Adenosine: a mediator of the sleep-inducing effects of prolonged wakefulness},
+  author={Porkka-Heiskanen, Tarja and Strecker, Robert E. and Thakkar, Mahesh and Bj{\o}rkum, Alvhild A. and Greene, Robert W. and McCarley, Robert W.},
+  journal={Science}, volume={276}, pages={1265--1268}, year={1997}
+}
+@article{brambilla2005adenosine,
+  title={Adenosine mediation of presynaptic feedback inhibition of glutamate release},
+  author={Brambilla, Dario and Chapman, David and Greene, Robert},
+  journal={Neuron}, volume={46}, number={2}, pages={275--283}, year={2005}
+}
+@article{tononi2006sleep,
+  title={Sleep function and synaptic homeostasis},
+  author={Tononi, Giulio and Cirelli, Chiara},
+  journal={Sleep Medicine Reviews}, volume={10}, number={1}, pages={49--62}, year={2006}
+}
+@article{huber2004local,
+  title={Local sleep and learning},
+  author={Huber, Reto and Ghilardi, M. Felice and Massimini, Marcello and Tononi, Giulio},
+  journal={Nature}, volume={430}, pages={78--81}, year={2004}
+}
+@article{saper2001sleep,
+  title={The sleep switch: hypothalamic control of sleep and wakefulness},
+  author={Saper, Clifford B. and Chou, Thomas C. and Scammell, Thomas E.},
+  journal={Trends in Neurosciences}, volume={24}, number={12}, pages={726--731}, year={2001}
+}
+@article{saper2005hypothalamic,
+  title={Hypothalamic regulation of sleep and circadian rhythms},
+  author={Saper, Clifford B. and Scammell, Thomas E. and Lu, Jun},
+  journal={Nature}, volume={437}, pages={1257--1263}, year={2005}
+}
+@article{sherin1998innervation,
+  title={Innervation of histaminergic tuberomammillary neurons by GABAergic and galaninergic neurons in the ventrolateral preoptic nucleus of the rat},
+  author={Sherin, Jonathan E. and Elmquist, Joel K. and Torrealba, Fernando and Saper, Clifford B.},
+  journal={Journal of Neuroscience}, volume={18}, number={12}, pages={4705--4721}, year={1998}
+}
+@article{takahashi2006neuronal,
+  title={Neuronal activity of histaminergic tuberomammillary neurons during wake-sleep states in the mouse},
+  author={Takahashi, Kazumi and Lin, Jian-Sheng and Sakai, Kazuya},
+  journal={Journal of Neuroscience}, volume={26}, number={40}, pages={10292--10298}, year={2006}
+}
+@article{roffwarg1966ontogenetic,
+  title={Ontogenetic development of the human sleep-dream cycle},
+  author={Roffwarg, Howard P. and Muzio, Joseph N. and Dement, William C.},
+  journal={Science}, volume={152}, number={3722}, pages={604--619}, year={1966}
+}
+@article{jenni2005homeostatic,
+  title={Homeostatic sleep regulation in adolescents},
+  author={Jenni, Oskar G. and Achermann, Peter and Carskadon, Mary A.},
+  journal={Sleep}, volume={28}, number={11}, pages={1446--1454}, year={2005}
+}
+@article{tarokh2012dissipation,
+  title={Dissipation of sleep pressure is stable across adolescence},
+  author={Tarokh, Leila and Carskadon, Mary A. and Achermann, Peter},
+  journal={Neuroscience}, volume={216}, pages={167--177}, year={2012}
+}
+@article{feinberg2010sleep,
+  title={Sleep EEG changes during adolescence: an index of a fundamental brain reorganization},
+  author={Feinberg, Irwin and Campbell, Ian G.},
+  journal={Brain and Cognition}, volume={72}, number={1}, pages={56--65}, year={2010}
+}
+@article{walsh2008slow,
+  title={Slow wave sleep enhancement with gaboxadol reduces daytime sleepiness during sleep restriction},
+  author={Walsh, James K. and others},
+  journal={Sleep}, volume={31}, number={5}, pages={659--672}, year={2008}
 }
 @article{anderson1994remembering,
   title={Remembering can cause forgetting: Retrieval dynamics in long-term memory},
@@ -526,13 +649,14 @@ A Windows `zimdump.exe` build and its DLL files must be placed in the project ro
 
 ---
 ### Development Notes
-- **Python package:** ki_system (59 modules)
+- **Python package:** ki_system (60 modules)
 - **Local project folder:** BrainStem
 - **Primary runtime:** Python 3.11 on Windows with SQLite
 - **Documentation language:** English, German
 - **Status:** highly experimental, under mathematical and architectural validation, with the productive write paths open as an experiment
 - **Engineering discipline:** backup, compile check, schema self-check, smoke test and rollback planning for structural changes
 - **Project and function status:** see the time-stamped status reports in `Audits/`
+- **Companion tool:** [BrainStem CSV Viewer](https://github.com/unikum-sol/BrainStem-CSV-Viewer) for offline analysis of the GUI logs
 - **AI-assisted engineering:** concept elaboration with ChatGPT; code generation with Claude Opus/Sonnet and ChatGPT Deep Thinking; code review with NotebookLM, Gemini and Copilot as critics (no sugarcoat mode)
 
 ---
