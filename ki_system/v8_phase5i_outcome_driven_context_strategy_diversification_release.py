@@ -55,7 +55,7 @@ def ensure_schema(obj=None):
             for col,decl in mp.items(): add(db,t,col,decl,changes)
         for t,col in [('phase5i_diversification_state','key'),('phase5i_strategy_diversification_memory','memory_key'),('phase5g_experiment_outcomes','outcome_key'),('phase5g_strategy_selection_memory','memory_key'),('internal_learning_gaps','gap_key'),('reading_queue','chunk_id'),('chunk_attention_scores','chunk_id')]: uidx(db,t,col,changes)
         ts=n()
-        for k,v in {'phase':PHASE,'no_word_blacklists':'true','learning_mode':'context_hypotheses_with_neuromodulators','fact_promotion':'disabled','direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'internal_learning_questions_only'}.items(): db.execute('INSERT OR REPLACE INTO phase5i_diversification_state VALUES(?,?,?)',(k,v,ts))
+        for k,v in {'phase':PHASE,'no_word_blacklists':'true','learning_mode':'context_hypotheses_with_neuromodulators','fact_promotion':'disabled','direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'stageb_promoted_questions'}.items(): db.execute('INSERT OR REPLACE INTO phase5i_diversification_state VALUES(?,?,?)',(k,v,ts))
         db.commit(); return {'status':'ok','phase':PHASE,'changes':changes,'no_word_blacklists':True,'fact_promotion':'disabled'}
     finally:
         if close: db.close()
@@ -65,7 +65,9 @@ def maxchunk(db):
         r=db.execute('SELECT MAX(id) FROM chunks').fetchone();
         if r and r[0]: return int(r[0])
     r=db.execute('SELECT MAX(chunk_id) FROM reading_queue').fetchone(); return int((r and r[0]) or 100000)
-def ctrls(db): return {'learning_rate':0.234,'error_weight':0.407,'revision_pressure':0.312,'exploration_pressure':0.31,'inhibition_level':0.349,'consolidation_gain':0.297}
+def ctrls(db):
+    from ki_system.v8_learning_controls import current_controls
+    return current_controls(db)
 def build_memory(db):
     vals=ctrls(db); updates=0; total=0; ao=ac=av=an=0.0
     if ex(db,'phase5g_experiment_outcomes') and {'gap_type','role'}.issubset(set(cols(db,'phase5g_experiment_outcomes'))):
@@ -122,7 +124,7 @@ def apply_diversification(obj=None,limit_gaps=120):
             db.execute('UPDATE internal_learning_gaps SET phase5i_selected_strategy=?,phase5i_strategy_score=?,phase5i_expected_outcome_score=?,phase5i_expected_closure_delta=?,phase5i_expected_overlap_score=?,phase5i_expected_no_candidate_rate=?,phase5i_last_selected_at=?,phase5i_reason=?,phase5i_memory_key=?,phase5i_diversification_pressure=?,phase5i_outcome_memory_score=?,phase5i_experiment_count=COALESCE(phase5i_experiment_count,0)+1 WHERE id=?',(strat,score,out,clo,mov,mno,ts,'phase5i_outcome_driven_strategy_diversification',f'{gt}:{role}:{strat}',c01(1-msu),msu,gid))
         safety=count(db,'facts')==0 and count(db,'relations')==0 and count(db,'questions')==0; main=dist.most_common(1)[0][0] if dist else 'none'
         db.execute('INSERT INTO phase5i_strategy_diversification_cycles(phase,experiments_seen,outcome_memory_rows,gaps_considered,experiments_created,queue_updates,avg_outcome_score,avg_closure_delta,avg_overlap_score,avg_no_candidate_rate,selected_main_strategy,safety_ok,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(PHASE,total,mem,len(gaps),created,q,ao,ac,av,an,main,1 if safety else 0,ts))
-        state={'phase':PHASE,'no_word_blacklists':'true','learning_mode':'context_hypotheses_with_neuromodulators','fact_promotion':'disabled','direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'internal_learning_questions_only','last_experiments_seen':str(total),'last_memory_updates':str(mem),'last_gaps_considered':str(len(gaps)),'last_experiments_created':str(created),'last_queue_updates':str(q),'last_avg_outcome_score':str(round(ao,6)),'last_avg_closure_delta':str(round(ac,6)),'last_avg_overlap_score':str(round(av,6)),'last_avg_no_candidate_rate':str(round(an,6)),'last_selected_main_strategy':main,'last_strategy_distribution':j(dist),'last_safety_ok':str(bool(safety)).lower()}
+        state={'phase':PHASE,'no_word_blacklists':'true','learning_mode':'context_hypotheses_with_neuromodulators','fact_promotion':'disabled','direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'stageb_promoted_questions','last_experiments_seen':str(total),'last_memory_updates':str(mem),'last_gaps_considered':str(len(gaps)),'last_experiments_created':str(created),'last_queue_updates':str(q),'last_avg_outcome_score':str(round(ao,6)),'last_avg_closure_delta':str(round(ac,6)),'last_avg_overlap_score':str(round(av,6)),'last_avg_no_candidate_rate':str(round(an,6)),'last_selected_main_strategy':main,'last_strategy_distribution':j(dist),'last_safety_ok':str(bool(safety)).lower()}
         for k,v in state.items(): db.execute('INSERT OR REPLACE INTO phase5i_diversification_state VALUES(?,?,?)',(k,v,ts))
         db.commit(); return {'status':'phase5i_outcome_driven_strategy_diversification_complete','phase':PHASE,'experiments_seen':total,'memory_updates':mem,'gaps_considered':len(gaps),'experiments_created':created,'queue_updates':q,'avg_outcome_score':round(ao,6),'avg_closure_delta':round(ac,6),'avg_overlap_score':round(av,6),'avg_no_candidate_rate':round(an,6),'selected_main_strategy':main,'strategy_distribution':dict(dist),'facts':count(db,'facts'),'relations':count(db,'relations'),'questions':count(db,'questions'),'no_word_blacklists':True,'fact_promotion':'disabled'}
     finally:

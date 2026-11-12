@@ -344,7 +344,7 @@ def ensure_schema(mem_or_conn: Any = None) -> Dict[str, Any]:
         'fact_promotion': 'disabled',
         'direct_fact_writes': 'disabled',
         'direct_relation_writes': 'disabled',
-        'question_generation': 'internal_learning_questions_only'
+        'question_generation': 'stageb_promoted_questions'
     }.items():
         db.execute("INSERT INTO phase5h_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at", (k, str(v), now))
     db.commit()
@@ -363,12 +363,8 @@ def _first(d: Dict[str, Any], names: List[str], default: Any = None) -> Any:
 
 
 def _current_controls(db: sqlite3.Connection) -> Dict[str, float]:
-    defaults = {
-        'learning_rate':0.234, 'error_weight':0.407, 'revision_pressure':0.312,
-        'exploration_pressure':0.31, 'inhibition_level':0.349, 'consolidation_gain':0.297,
-        'dopamine':0.5, 'serotonin':0.4, 'glutamate':0.31, 'gaba':0.349, 'noradrenaline':0.407, 'acetylcholine':0.312
-    }
-    return defaults
+    from ki_system.v8_learning_controls import current_controls
+    return current_controls(db)
 
 
 def _read_status(db: sqlite3.Connection, chunk_id: Optional[int]) -> str:
@@ -561,7 +557,7 @@ def evaluate_strategy_experiment_outcomes(mem_or_conn: Any = None, limit: int = 
     db.execute("INSERT INTO phase5h_experiment_outcome_cycles(phase,experiments_seen,outcomes_written,memory_updates,avg_outcome_score,avg_closure_delta,avg_no_candidate_rate,avg_overlap_score,recommendation,safety_ok,no_word_blacklists,fact_promotion,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", (PHASE,len(experiments),outcomes_written,memory_updates,avg_out,avg_cl,avg_no,avg_ov,recommendation,1,'true','disabled',now))
     state = {
         'phase':PHASE,'learning_mode':LEARNING_MODE,'no_word_blacklists':'true','fact_promotion':'disabled',
-        'direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'internal_learning_questions_only',
+        'direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'stageb_promoted_questions',
         'last_experiments_seen':str(len(experiments)),'last_outcomes_written':str(outcomes_written),'last_memory_updates':str(memory_updates),
         'last_avg_outcome_score':str(round(avg_out,6)),'last_avg_closure_delta':str(round(avg_cl,6)),
         'last_avg_no_candidate_rate':str(round(avg_no,6)),'last_avg_overlap_score':str(round(avg_ov,6)),'last_recommendation':recommendation

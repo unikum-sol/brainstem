@@ -44,7 +44,7 @@ def ensure_schema(mem=None):
     cur.execute('CREATE TABLE IF NOT EXISTS internal_learning_gaps(id INTEGER PRIMARY KEY AUTOINCREMENT,gap_key TEXT,gap_type TEXT,role TEXT,status TEXT DEFAULT "open",priority REAL DEFAULT 0,resolution_score REAL DEFAULT 0,strategy_effectiveness_score REAL DEFAULT 0,evidence_count INTEGER DEFAULT 0,updated_at INTEGER)')
     cur.execute('CREATE TABLE IF NOT EXISTS reading_queue(chunk_id INTEGER PRIMARY KEY,priority REAL DEFAULT 0,reason TEXT,attention_score REAL DEFAULT 0,read_count INTEGER DEFAULT 0,status TEXT DEFAULT "pending",last_read INTEGER DEFAULT 0,updated_at INTEGER DEFAULT 0)')
     cur.execute('CREATE TABLE IF NOT EXISTS chunk_attention_scores(chunk_id INTEGER PRIMARY KEY,attention_score REAL DEFAULT 0,novelty_score REAL DEFAULT 0,uncertainty_score REAL DEFAULT 0,reward_score REAL DEFAULT 0,fatigue_score REAL DEFAULT 0,last_reason TEXT,updated_at INTEGER DEFAULT 0)')
-    for t in ('internal_learning_gaps','internal_learning_questions'):
+    for t in ('internal_learning_gaps',):
         if _exists(cur,t):
             for c,typ in [('phase5g_selected_strategy','TEXT'),('phase5g_strategy_score','REAL DEFAULT 0'),('phase5g_experiment_count','INTEGER DEFAULT 0'),('phase5g_last_experiment_at','INTEGER DEFAULT 0'),('phase5g_outcome_score','REAL DEFAULT 0'),('phase5g_closure_delta','REAL DEFAULT 0'),('phase5g_no_candidate_rate','REAL DEFAULT 0'),('phase5g_overlap_score','REAL DEFAULT 0'),('phase5g_reason','TEXT'),('priority','REAL DEFAULT 0'),('resolution_score','REAL DEFAULT 0'),('strategy_effectiveness_score','REAL DEFAULT 0'),('learning_outcome_score','REAL DEFAULT 0')]: _add(cur,t,c,typ,changes)
     for t in ('reading_queue','chunk_attention_scores','context_hypotheses'):
@@ -59,18 +59,11 @@ def ensure_schema(mem=None):
             if cand in cols: fallback=cand; break
         cur.execute(f'UPDATE internal_learning_gaps SET priority=COALESCE(priority,{fallback},0.5)')
         changes.append('backfill:internal_learning_gaps.priority')
-    for t,c in [('phase5g_context_strategy_state','key'),('phase5g_strategy_selection_memory','memory_key'),('phase5g_neuromodulator_strategy_profiles','profile_key'),('internal_learning_gaps','gap_key'),('internal_learning_questions','question_key'),('reading_queue','chunk_id'),('chunk_attention_scores','chunk_id')]: _unique(cur,t,c,changes)
-    for k,v in {'phase':PHASE,'learning_mode':LEARNING_MODE,'no_word_blacklists':'true','fact_promotion':'disabled','direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'internal_learning_questions_only'}.items(): cur.execute('INSERT OR REPLACE INTO phase5g_context_strategy_state(key,value,updated_at) VALUES(?,?,?)',(k,str(v),now))
+    for t,c in [('phase5g_context_strategy_state','key'),('phase5g_strategy_selection_memory','memory_key'),('phase5g_neuromodulator_strategy_profiles','profile_key'),('internal_learning_gaps','gap_key'),('reading_queue','chunk_id'),('chunk_attention_scores','chunk_id')]: _unique(cur,t,c,changes)
+    for k,v in {'phase':PHASE,'learning_mode':LEARNING_MODE,'no_word_blacklists':'true','fact_promotion':'disabled','direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'stageb_promoted_questions'}.items(): cur.execute('INSERT OR REPLACE INTO phase5g_context_strategy_state(key,value,updated_at) VALUES(?,?,?)',(k,str(v),now))
     con.commit();
     if close: con.close()
     return {'status':'ok','phase':PHASE,'changes':changes,'no_word_blacklists':True,'fact_promotion':'disabled'}
-
-def _state_float(cur,t,k,d):
-    if not _exists(cur,t): return d
-    try:
-        r=cur.execute(f'SELECT value FROM {t} WHERE key=?',(k,)).fetchone()
-        return float(str(r[0]).strip("'\"")) if r and r[0] is not None else d
-    except Exception: return d
 
 def _choose(gt,role,closure,no_cand,overlap,eff):
     if eff>0.58 and closure>0.08: return 'reinforce_effective_window','reinforce_effective_strategy'
@@ -124,7 +117,9 @@ def _load_window_memory(cur):
 
 def apply_context_strategy_selection(mem=None):
     con,close=_db(mem); cur=con.cursor(); ensure_schema(con); now=_now()
-    lr=_state_float(cur,'active_learning_loop_state','last_learning_rate',0.234); ew=_state_float(cur,'active_learning_loop_state','last_error_weight',0.407); rp=_state_float(cur,'active_learning_loop_state','last_revision_pressure',0.312); ep=_state_float(cur,'active_learning_loop_state','last_exploration_pressure',0.31); ih=_state_float(cur,'active_learning_loop_state','last_inhibition_level',0.349); cg=_state_float(cur,'active_learning_loop_state','last_consolidation_gain',0.297)
+    from ki_system.v8_learning_controls import current_controls
+    ctl=current_controls(cur)
+    lr=ctl['learning_rate']; ew=ctl['error_weight']; rp=ctl['revision_pressure']; ep=ctl['exploration_pressure']; ih=ctl['inhibition_level']; cg=ctl['consolidation_gain']
     mem_updates=0
     for strategy,gt,role,closure,nc,ov,eff,obs in _load_window_memory(cur):
         key=f'{strategy}:{gt}:{role}'; rec='observe'
@@ -168,7 +163,7 @@ def apply_context_strategy_selection(mem=None):
         pkey=f'{strategy}:{gt}:{role}'
         cur.execute('INSERT INTO phase5g_neuromodulator_strategy_profiles(profile_key,strategy,gap_type,role,observations,avg_learning_rate,avg_error_weight,avg_revision_pressure,avg_exploration_pressure,avg_inhibition_level,avg_consolidation_gain,avg_closure_delta,avg_effectiveness,recommendation,updated_at) VALUES(?,?,?,?,1,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(profile_key) DO UPDATE SET observations=observations+1,avg_learning_rate=(avg_learning_rate*0.85)+excluded.avg_learning_rate*0.15,avg_error_weight=(avg_error_weight*0.85)+excluded.avg_error_weight*0.15,avg_revision_pressure=(avg_revision_pressure*0.85)+excluded.avg_revision_pressure*0.15,avg_exploration_pressure=(avg_exploration_pressure*0.85)+excluded.avg_exploration_pressure*0.15,avg_inhibition_level=(avg_inhibition_level*0.85)+excluded.avg_inhibition_level*0.15,avg_consolidation_gain=(avg_consolidation_gain*0.85)+excluded.avg_consolidation_gain*0.15,avg_closure_delta=(avg_closure_delta*0.85)+excluded.avg_closure_delta*0.15,avg_effectiveness=(avg_effectiveness*0.85)+excluded.avg_effectiveness*0.15,recommendation=excluded.recommendation,updated_at=excluded.updated_at',(pkey,strategy,gt,role,lr,ew,rp,ep,ih,cg,float(closure or 0),pred,reason,now))
     top=max(dist.items(), key=lambda x:x[1])[0] if dist else 'observe'
-    state={'phase':PHASE,'learning_mode':LEARNING_MODE,'no_word_blacklists':'true','fact_promotion':'disabled','direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'internal_learning_questions_only','last_gaps_considered':str(selected),'last_experiments_created':str(experiments),'last_queue_updates':str(queue_updates),'last_memory_updates':str(mem_updates),'last_recommended_strategy':top,'last_strategy_distribution':_json(dict(dist))}
+    state={'phase':PHASE,'learning_mode':LEARNING_MODE,'no_word_blacklists':'true','fact_promotion':'disabled','direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'stageb_promoted_questions','last_gaps_considered':str(selected),'last_experiments_created':str(experiments),'last_queue_updates':str(queue_updates),'last_memory_updates':str(mem_updates),'last_recommended_strategy':top,'last_strategy_distribution':_json(dict(dist))}
     for k,v in state.items(): cur.execute('INSERT OR REPLACE INTO phase5g_context_strategy_state(key,value,updated_at) VALUES(?,?,?)',(k,v,now))
     con.commit(); result={'status':'phase5g_context_strategy_selection_complete','phase':PHASE,'gaps_considered':selected,'experiments_created':experiments,'queue_updates':queue_updates,'memory_updates':mem_updates,'recommended_strategy':top,'strategy_distribution':dict(dist),'facts':_count(cur,'facts'),'relations':_count(cur,'relations'),'questions':_count(cur,'questions'),'no_word_blacklists':True,'fact_promotion':'disabled'}
     if close: con.close()

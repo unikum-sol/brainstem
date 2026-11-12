@@ -81,6 +81,13 @@ def _set_state(cur: sqlite3.Cursor, table: str, key: str, value: Any) -> None:
     now = _now()
     cur.execute(f"INSERT INTO {table}(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at", (key, str(value), now))
 
+def _state_float(cur: sqlite3.Cursor, table: str, key: str, default: float) -> float:
+    try:
+        row = cur.execute(f"SELECT value FROM {table} WHERE key=?", (key,)).fetchone()
+        return float(str(row[0]).strip("'\"")) if row and row[0] is not None else default
+    except Exception:
+        return default
+
 def ensure_phase5b_schema(memory: Any = None) -> Dict[str, Any]:
     con, close = _connect_from_memory(memory)
     cur = con.cursor()
@@ -169,21 +176,12 @@ def ensure_phase5b_schema(memory: Any = None) -> Dict[str, Any]:
             "phase5b_strategy":"TEXT", "phase5b_strategy_reason":"TEXT", "phase5b_last_refined_at":"INTEGER",
             "persistence_score":"REAL", "diversity_need":"REAL", "strategy_refinement_count":"INTEGER"
         },
-        "internal_learning_questions": {
-            "cluster_key":"TEXT", "phase5b_clustered_at":"INTEGER", "phase5b_recommended_action":"TEXT", "phase5b_priority":"REAL"
-        },
         "reading_queue": {
             "phase5b_priority":"REAL", "phase5b_reason":"TEXT", "phase5b_last_adjusted_at":"INTEGER", "cooldown_until":"INTEGER"
         },
         "chunk_attention_scores": {
             "phase5b_score":"REAL", "phase5b_reason":"TEXT", "phase5b_last_adjusted_at":"INTEGER", "diversity_score":"REAL"
         },
-        "strategy_outcome_memory": {
-            "phase5b_effectiveness_score":"REAL", "phase5b_last_refined_at":"INTEGER", "phase5b_recommendation":"TEXT"
-        },
-        "strategy_effectiveness_feedback_state": {
-            "updated_at":"INTEGER"
-        }
     }
     for table, cols in existing_specs.items():
         if _table_exists(cur, table):
@@ -198,7 +196,6 @@ def ensure_phase5b_schema(memory: Any = None) -> Dict[str, Any]:
         ("phase5b_persistent_gap_strategy", "gap_id"),
         ("phase5b_internal_question_clusters", "cluster_key"),
         ("internal_learning_gaps", "gap_key"),
-        ("internal_learning_questions", "question_key"),
         ("reading_queue", "chunk_id"),
         ("chunk_attention_scores", "chunk_id"),
     ]:
@@ -206,12 +203,13 @@ def ensure_phase5b_schema(memory: Any = None) -> Dict[str, Any]:
             _ensure_unique(cur, table, col, changes)
 
     _set_state(cur, "phase5b_strategy_refinement_state", "phase", PHASE)
+    cur.execute("INSERT OR IGNORE INTO phase5b_strategy_refinement_state(key,value,updated_at) VALUES('bias_feedback_gain','0.5',?)", (_now(),))
     _set_state(cur, "phase5b_strategy_refinement_state", "no_word_blacklists", "true")
     _set_state(cur, "phase5b_strategy_refinement_state", "learning_mode", LEARNING_MODE)
     _set_state(cur, "phase5b_strategy_refinement_state", "fact_promotion", "disabled")
     _set_state(cur, "phase5b_strategy_refinement_state", "direct_fact_writes", "disabled")
     _set_state(cur, "phase5b_strategy_refinement_state", "direct_relation_writes", "disabled")
-    _set_state(cur, "phase5b_strategy_refinement_state", "question_generation", "internal_learning_questions_only")
+    _set_state(cur, "phase5b_strategy_refinement_state", "question_generation", "stageb_promoted_questions")
 
     con.commit()
     if close:
@@ -231,26 +229,8 @@ def _avg(cur: sqlite3.Cursor, table: str, col: str, default: float = 0.0, where:
     return float(val or default)
 
 def _current_control(cur: sqlite3.Cursor) -> Dict[str, float]:
-    # Defaults are intentionally conservative.
-    d = {
-        "learning_rate": 0.234,
-        "error_weight": 0.407,
-        "revision_pressure": 0.312,
-        "exploration_pressure": 0.31,
-        "inhibition_level": 0.349,
-        "consolidation_gain": 0.297,
-    }
-    if _table_exists(cur, "active_learning_loop_state"):
-        try:
-            rows = cur.execute("SELECT key,value FROM active_learning_loop_state WHERE key LIKE 'last_%'").fetchall()
-            for k, v in rows:
-                kk = k.replace("last_", "")
-                if kk in d:
-                    try: d[kk] = float(str(v).strip('"\''))
-                    except Exception: pass
-        except Exception:
-            pass
-    return d
+    from ki_system.v8_learning_controls import current_controls
+    return current_controls(cur)
 
 def apply_strategy_refinement(memory: Any = None, limit_gaps: int = 240, limit_chunks: int = 600) -> Dict[str, Any]:
     """Refine strategy using outcomes, persistent gaps, clusters and neuromodulated controls."""
@@ -269,8 +249,8 @@ def apply_strategy_refinement(memory: Any = None, limit_gaps: int = 240, limit_c
     avg_eff = _avg(cur, "internal_learning_gaps", "strategy_effectiveness_score", 0.0)
     avg_pri = _avg(cur, "internal_learning_gaps", "priority", 0.0)
     persistent = 0
-    if _table_exists(cur, "internal_learning_gaps") and "resolution_status" in _columns(cur, "internal_learning_gaps"):
-        persistent = int(cur.execute("SELECT COUNT(*) FROM internal_learning_gaps WHERE COALESCE(resolution_status,'open') IN ('open','persistent_gap')").fetchone()[0] or 0)
+    if _table_exists(cur, "internal_learning_gaps") and "status" in _columns(cur, "internal_learning_gaps"):
+        persistent = int(cur.execute("SELECT COUNT(*) FROM internal_learning_gaps WHERE status='open'").fetchone()[0] or 0)
 
     # Strategy recommendation based on persistent gaps and outcome.
     if avg_res < 0.12 and persistent > 100:
@@ -286,6 +266,26 @@ def apply_strategy_refinement(memory: Any = None, limit_gaps: int = 240, limit_c
         new_exploration = min(0.70, ctrl["exploration_pressure"] + 0.015)
         new_inhibition = ctrl["inhibition_level"]
 
+    # Top-down strategy control: many persistent, unresolved gaps push toward
+    # exploration, success toward exploitation (Cohen, McClure & Yu 2007).
+    # The recommendation moves the persistent bias target (restored by Phase
+    # 6c every cycle) by a damped step; Phases 6d (saturation homeostasis)
+    # and 7b (anandamide pull toward mid-range) counteract extremes.
+    feedback_gain = max(0.0, min(1.0, _state_float(cur, "phase5b_strategy_refinement_state", "bias_feedback_gain", 0.5)))
+    applied = {}
+    if feedback_gain > 0 and _table_exists(cur, "phase6c_target_bias_state"):
+        for key, old, new in (("last_exploration_bias", ctrl["exploration_pressure"], new_exploration),
+                              ("last_inhibition_bias", ctrl["inhibition_level"], new_inhibition)):
+            value = round(max(0.0, min(1.0, old + feedback_gain * (new - old))), 6)
+            if abs(value - old) < 1e-9:
+                continue
+            for table in ("phase6c_target_bias_state", "phase6a_meta_plasticity_state", "phase6a_neuromodulated_sleep_state"):
+                if _table_exists(cur, table):
+                    cur.execute("INSERT INTO " + table + "(key,value,updated_at) VALUES(?,?,?) "
+                                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                                (key, str(value), now))
+            applied[key] = value
+
     # Persist neuromodulator adaptation events.
     adaptations = [
         ("exploration_pressure", ctrl["exploration_pressure"], new_exploration, recommendation),
@@ -295,8 +295,9 @@ def apply_strategy_refinement(memory: Any = None, limit_gaps: int = 240, limit_c
         cur.execute("""INSERT INTO phase5b_neuromodulator_adaptation_events(
             adaptation_key,target,old_value,new_value,reason,dopamine,serotonin,glutamate,gaba,noradrenaline,acetylcholine,details,created_at)
             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (f"{target}:{now}", target, old, new, reason, 0.5, 0.4, new_exploration, new_inhibition, ctrl["error_weight"], ctrl["revision_pressure"],
-             _json({"avg_resolution_score": avg_res, "avg_strategy_effectiveness": avg_eff, "persistent_gaps": persistent}), now))
+            (f"{target}:{now}", target, old, new, reason, ctrl["dopamine"], ctrl["serotonin"], ctrl["glutamate"], ctrl["gaba"], ctrl["noradrenaline"], ctrl["acetylcholine"],
+             _json({"avg_resolution_score": avg_res, "avg_strategy_effectiveness": avg_eff, "persistent_gaps": persistent,
+                    "applied_to_bias_target": applied, "feedback_gain": feedback_gain}), now))
 
     # Persistent gap strategies.
     updated_gaps = 0
@@ -352,36 +353,33 @@ def apply_strategy_refinement(memory: Any = None, limit_gaps: int = 240, limit_c
                         (strat, reason, now, round(after_priority,6), round(diversity,6), round(persistence,6), gid))
             updated_gaps += 1
 
-    # Cluster internal learning questions.
+    # Cluster the open curiosity questions (Stage-B question promotion) by the
+    # type and role of the gap each question came from.
     clustered = 0
-    if _table_exists(cur, "internal_learning_questions"):
-        qcols = _columns(cur, "internal_learning_questions")
-        if "question_type" in qcols:
-            rows = cur.execute("""SELECT COALESCE(question_type,'unknown'), COALESCE(role,'unknown'), COUNT(*),
-                   AVG(COALESCE(priority, phase5b_priority, 0.5)), AVG(COALESCE(resolution_score,0))
-                   FROM internal_learning_questions
-                   GROUP BY COALESCE(question_type,'unknown'), COALESCE(role,'unknown')
-                   ORDER BY COUNT(*) DESC LIMIT 50""").fetchall()
-            for qtype, role, size, avgp, avgres in rows:
-                key = f"{qtype}:{role}"
-                if (avgres or 0) < 0.15 and (avgp or 0) > 0.55:
-                    action = "seek_broader_context_and_compare_patterns"
-                elif size and size > 20:
-                    action = "cluster_review_and_sampling"
-                else:
-                    action = "observe_more_evidence"
-                cur.execute("""INSERT INTO phase5b_internal_question_clusters(
-                    cluster_key,question_type,role,size,avg_priority,avg_resolution_score,representative_question,recommended_action,status,updated_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?)
-                    ON CONFLICT(cluster_key) DO UPDATE SET
-                        size=excluded.size, avg_priority=excluded.avg_priority, avg_resolution_score=excluded.avg_resolution_score,
-                        recommended_action=excluded.recommended_action, status=excluded.status, updated_at=excluded.updated_at""",
-                    (key, qtype, role, int(size or 0), round(float(avgp or 0),6), round(float(avgres or 0),6), None, action, "open", now))
-                # backfill question cluster if columns exist
-                if "cluster_key" in qcols:
-                    cur.execute("UPDATE internal_learning_questions SET cluster_key=?, phase5b_clustered_at=?, phase5b_recommended_action=?, phase5b_priority=COALESCE(priority, phase5b_priority, 0.5) WHERE COALESCE(question_type,'unknown')=? AND COALESCE(role,'unknown')=?",
-                                (key, now, action, qtype, role))
-                clustered += int(size or 0)
+    if _table_exists(cur, "questions") and _table_exists(cur, "internal_learning_gaps")             and "source_gap_id" in _columns(cur, "questions"):
+        rows = cur.execute("""SELECT COALESCE(g.gap_type,'unknown'), COALESCE(g.role,'unknown'), COUNT(*),
+               AVG(COALESCE(q.priority,0.5)), AVG(CASE WHEN q.status='open' THEN 0.0 ELSE 1.0 END),
+               MAX(q.question)
+               FROM questions q LEFT JOIN internal_learning_gaps g ON g.id=q.source_gap_id
+               GROUP BY 1,2 ORDER BY COUNT(*) DESC LIMIT 50""").fetchall()
+        for qtype, role, size, avgp, avgres, sample in rows:
+            key = f"{qtype}:{role}"
+            if (avgres or 0) < 0.15 and (avgp or 0) > 0.55:
+                action = "seek_broader_context_and_compare_patterns"
+            elif size and size > 20:
+                action = "cluster_review_and_sampling"
+            else:
+                action = "observe_more_evidence"
+            cur.execute("""INSERT INTO phase5b_internal_question_clusters(
+                cluster_key,question_type,role,size,avg_priority,avg_resolution_score,representative_question,recommended_action,status,updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(cluster_key) DO UPDATE SET
+                    size=excluded.size, avg_priority=excluded.avg_priority, avg_resolution_score=excluded.avg_resolution_score,
+                    representative_question=excluded.representative_question,
+                    recommended_action=excluded.recommended_action, status=excluded.status, updated_at=excluded.updated_at""",
+                (key, qtype, role, int(size or 0), round(float(avgp or 0),6), round(float(avgres or 0),6),
+                 (sample or "")[:500], action, "open", now))
+            clustered += int(size or 0)
 
     # Diversify chunks: down-weight repeated high-priority read_candidate chunks slightly; lift under-read pending chunks.
     diversity_events = 0
@@ -437,7 +435,7 @@ def apply_strategy_refinement(memory: Any = None, limit_gaps: int = 240, limit_c
         "last_inhibition_level": round(new_inhibition,6),
         "direct_fact_writes": "disabled",
         "direct_relation_writes": "disabled",
-        "question_generation": "internal_learning_questions_only",
+        "question_generation": "stageb_promoted_questions",
     }.items():
         _set_state(cur, "phase5b_strategy_refinement_state", k, v)
 

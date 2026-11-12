@@ -35,7 +35,7 @@ SLOW_WAVE_PARAMS = {
     "n_oscillations": 5, "up_state_reactivation_size": 30, "down_state_scale": 0.9,
     "survival_threshold": 3, "anchor_interleave_ratio": 0.3, "activity_threshold": 0.5,
     "slow_wave_freq_hz": 0.8, "reinforce_delta": 0.02, "weaken_delta": 0.01,
-    "adenosine_sleep_threshold": 0.5, "total_slow_wave_sleeps": 0,
+    "total_slow_wave_sleeps": 0,
     "total_reinforced": 0, "total_weakened": 0,
     "reactivation_pool_factor": 4.0, "survival_consistency_ratio": 0.6,
     "min_participation_ratio": 0.4, "activity_threshold_floor": 0.15,
@@ -170,6 +170,7 @@ def initialize_slow_wave_parameters(con):
     for k, v in SLOW_WAVE_PARAMS.items():
         if con.execute("SELECT value FROM phase7d_slow_wave_params WHERE key=?", (k,)).fetchone() is None:
             _kv_set(con, "phase7d_slow_wave_params", k, v); ins.append(k)
+    con.execute("DELETE FROM phase7d_slow_wave_params WHERE key='adenosine_sleep_threshold'")
     con.commit(); return {"inserted": ins, "total": len(SLOW_WAVE_PARAMS)}
 
 def _get_sw(con, key, d=0.0):
@@ -543,16 +544,12 @@ def run_phase7d_cycle(db_or_obj=None, cycle_index=None):
     if cycle_index is None:
         cycle_index = _to_int(_read_kv(con, "phase7d_state").get("cycle_count"), 0) + 1
     neuromod = _read_neuromod(con); ade = _get_adenosine_level(con)
-    phase7a_state = _read_kv(con, "phase7a_adenosine_state") if _table_exists(con, "phase7a_adenosine_state") else {}
-    canonical_mode = str(phase7a_state.get("homeostat_mode", "wake")).strip().lower()
-    cooperative_state = _read_kv(con, "cooperative_sleep_wake_state") if _table_exists(con, "cooperative_sleep_wake_state") else {}
-    cooperative_mode = str(cooperative_state.get("state", "wake")).strip().lower()
-    if canonical_mode == "sleep" or cooperative_mode == "sleep":
+    switch = _read_kv(con, "cooperative_sleep_wake_state") if _table_exists(con, "cooperative_sleep_wake_state") else {}
+    sleep_state = "sleep" if str(switch.get("state", "wake")).strip().lower() == "sleep" else "wake"
+    if sleep_state == "sleep":
         sw = _run_slow_wave_sleep(con, cycle_index, neuromod, ade); status = "slow_wave_sleep_executed"
-        sw["entry_authority"] = "cooperative" if cooperative_mode == "sleep" else "adenosine_homeostat"
     else:
-        sw = {"skipped": True, "reason": "canonical_and_cooperative_modes_are_wake", "adenosine": ade,
-              "canonical_homeostat_mode": canonical_mode, "cooperative_mode": cooperative_mode}; status = "awake_no_slow_wave"
+        sw = {"skipped": True, "reason": "sleep_switch_is_wake", "adenosine": ade}; status = "awake_no_slow_wave"
     for k, v in [("cycle_count", cycle_index), ("last_cycle_at", _now()), ("phase", PHASE), ("phase_version", PHASE_VERSION),
                  ("learning_mode", LEARNING_MODE), ("no_word_blacklists", True), ("direct_fact_writes", "disabled"),
                  ("direct_relation_writes", "disabled"), ("fact_promotion", "disabled"), ("slow_wave_sleep", True)]:

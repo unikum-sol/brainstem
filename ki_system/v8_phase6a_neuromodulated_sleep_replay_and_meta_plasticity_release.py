@@ -333,7 +333,7 @@ def ensure_phase6a_schema(db: sqlite3.Connection) -> Dict[str, Any]:
         kv_set(db, t, "fact_promotion", "disabled", now)
         kv_set(db, t, "direct_fact_writes", "disabled", now)
         kv_set(db, t, "direct_relation_writes", "disabled", now)
-        kv_set(db, t, "question_generation", "internal_learning_questions_only", now)
+        kv_set(db, t, "question_generation", "stageb_promoted_questions", now)
     return {"status": "ok", "phase": PHASE, "changes": changes, "no_word_blacklists": True, "fact_promotion": "disabled"}
 
 
@@ -686,7 +686,7 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
         "fact_promotion": "disabled",
         "direct_fact_writes": "disabled",
         "direct_relation_writes": "disabled",
-        "question_generation": "internal_learning_questions_only",
+        "question_generation": "stageb_promoted_questions",
     }
     for k, v in state_vals.items():
         kv_set(db, "phase6a_meta_plasticity_state", k, v, now)

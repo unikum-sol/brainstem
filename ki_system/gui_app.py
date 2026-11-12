@@ -130,31 +130,19 @@ def read_all_neuromods(con):
         "cortisol": _kv(con, "cortisol_state").get("last_regime", "n/a"),
         "histamine": _kv(con, "phase7e_histamine_state").get("last_regime", "n/a"),
     }
-    cooperative = _kv(con, "cooperative_sleep_wake_state")
-    cooperative_mode = str(cooperative.get("state", "")).strip().lower()
-    cooperative_asleep = (cooperative_mode == "sleep")
-    phase7a_state = _kv(con, "phase7a_adenosine_state")
-    phase7a_mode = str(phase7a_state.get("homeostat_mode", "wake")).strip().lower()
-    phase7a_asleep = (phase7a_mode == "sleep")
-    if cooperative_mode in ("wake", "sleep"):
-        asleep = cooperative_asleep or phase7a_asleep
-        if cooperative_asleep and phase7a_asleep:
-            sleep_authority = "cooperative+phase7a"
-        elif cooperative_asleep:
-            sleep_authority = "cooperative"
-        elif phase7a_asleep:
-            sleep_authority = "phase7a"
-        else:
-            sleep_authority = "none"
-    else:
-        legacy_asleep = ((vals["adenosine"] >= 0.6 and vals["histamine"] <= 0.45) or regimes["histamine"] == "sleep_permissive")
-        asleep = legacy_asleep or phase7a_asleep
-        sleep_authority = "legacy_fallback+phase7a" if phase7a_asleep else ("legacy_fallback" if legacy_asleep else "none")
-    regimes["_asleep"] = bool(asleep)
-    regimes["sleep_authority"] = sleep_authority
-    regimes["sleep_score"] = cooperative.get("sleep_score", "n/a")
-    regimes["phase7a_mode"] = phase7a_mode
-    regimes["cooperative_mode"] = cooperative_mode or "n/a"
+    switch = _kv(con, "cooperative_sleep_wake_state")
+    sleep_state = str(switch.get("state", "")).strip().lower()
+    regimes["_asleep"] = (sleep_state == "sleep")
+    regimes["sleep_state"] = sleep_state if sleep_state in ("wake", "sleep") else "n/a"
+    regimes["sleep_upper"] = _clamp01(switch.get("upper_threshold", 0.0))
+    regimes["sleep_lower"] = _clamp01(switch.get("lower_threshold", 0.0))
+    regimes["sleep_position"] = _clamp01(switch.get("pressure_position", 0.0))
+    try:
+        regimes["sleep_dwell"] = int(float(switch.get("dwell_cycles", 0)))
+    except (TypeError, ValueError):
+        regimes["sleep_dwell"] = 0
+    regimes["sleep_reason"] = str(switch.get("transition_reason", "n/a"))
+    regimes["maturity"] = _clamp01(_kv(con, "phase7a_adenosine_state").get("developmental_maturity", 0.0))
     return vals, regimes
 
 def compute_mood(vals, regimes):
@@ -167,13 +155,10 @@ def compute_mood(vals, regimes):
     asleep = regimes.get("_asleep", False)
     if cortisol >= 0.6:
         return ("(>_<)", "Gestresst")
-    if asleep or adeno >= 0.75:
-        authority = regimes.get("sleep_authority", "")
-        if authority == "phase7a":
-            return ("(-_-) zzz", "Konsolidiert (Phase7a)")
-        if authority in ("cooperative", "cooperative+phase7a"):
-            return ("(-_-) zzz", "Schlaeft")
-        return ("(-_-) zzz", "Schlaeft")
+    if asleep:
+        return ("(-_-) zzz", "Schlaeft und konsolidiert")
+    if adeno >= regimes.get("sleep_upper", 1.0) - 0.05 and regimes.get("sleep_upper", 0.0) > 0.0:
+        return ("(-.-)", "Muede")
     if regimes.get("orexin") == "curious_drive" and regimes.get("bdnf") == "growth":
         return ("(^o^)/", "Wissbegierig")
     if regimes.get("bdnf") == "growth":
@@ -739,10 +724,10 @@ class App(tk.Tk):
                 lines.append("Regime -> Orexin: %s | BDNF: %s | Cortisol: %s | Histamin: %s" % (
                     regimes.get("orexin", "n/a"), regimes.get("bdnf", "n/a"),
                     regimes.get("cortisol", "n/a"), regimes.get("histamine", "n/a")))
-                lines.append("Schlaf -> Kooperativ: %s (Score %s) | Phase7a: %s | Aktiv: %s (%s)" % (
-                    regimes.get("cooperative_mode", "n/a"), regimes.get("sleep_score", "n/a"),
-                    regimes.get("phase7a_mode", "n/a"),
-                    "JA" if regimes.get("_asleep") else "nein", regimes.get("sleep_authority", "none")))
+                lines.append("Schlaf -> Zustand: %s seit %d Zyklen | Adenosin %.3f (Schlaf ab %.3f, Wachen ab %.3f) | Reife %.1f%% | Letzter Wechsel: %s" % (
+                    regimes.get("sleep_state", "n/a"), regimes.get("sleep_dwell", 0), vals.get("adenosine", 0.0),
+                    regimes.get("sleep_upper", 0.0), regimes.get("sleep_lower", 0.0), 100.0 * regimes.get("maturity", 0.0),
+                    regimes.get("sleep_reason", "n/a")))
                 lines.append("7d Slow-Wave -> Survivors %s | Participated %s | Weakened %s | Schwelle %.3f" % (surv, part, weak, float(thr)))
                 lines.append("SAFETY facts/relations/questions: %s" % safe)
                 try:
@@ -959,11 +944,14 @@ class App(tk.Tk):
             out["regime_bdnf"] = regimes.get("bdnf", "n/a")
             out["regime_cortisol"] = regimes.get("cortisol", "n/a")
             out["regime_histamine"] = regimes.get("histamine", "n/a")
-            out["sleep_cooperative_mode"] = regimes.get("cooperative_mode", "n/a")
-            out["sleep_cooperative_score"] = regimes.get("sleep_score", "n/a")
-            out["sleep_phase7a_mode"] = regimes.get("phase7a_mode", "n/a")
+            out["sleep_state"] = regimes.get("sleep_state", "n/a")
             out["sleep_active"] = bool(regimes.get("_asleep"))
-            out["sleep_authority"] = regimes.get("sleep_authority", "none")
+            out["sleep_dwell_cycles"] = regimes.get("sleep_dwell", 0)
+            out["sleep_upper_threshold"] = regimes.get("sleep_upper", 0.0)
+            out["sleep_lower_threshold"] = regimes.get("sleep_lower", 0.0)
+            out["sleep_pressure_position"] = regimes.get("sleep_position", 0.0)
+            out["sleep_transition_reason"] = regimes.get("sleep_reason", "n/a")
+            out["developmental_maturity"] = regimes.get("maturity", 0.0)
             mood_emoji, mood_name = compute_mood(vals, regimes)
             out["mood_name"] = mood_name
 
@@ -1163,11 +1151,12 @@ class App(tk.Tk):
                     pass
         core_line = " | ".join("%s %.2f" % (NEURO_LABELS[k], vals.get(k, 0.0)) for k in NEURO_CORE)
         self.neuro_text.configure(text="Neuromodulatoren: " + core_line)
-        self.behavior_text.configure(text="Regime: Orexin %s (%.2f) | BDNF %s (%.2f) | Cortisol %s (%.2f) | Schlaf: koop=%s/phase7a=%s" % (
+        self.behavior_text.configure(text="Regime: Orexin %s (%.2f) | BDNF %s (%.2f) | Cortisol %s (%.2f) | Schlaf: %s (%d Zyklen, Druck %d%%, Reife %d%%)" % (
             regimes.get("orexin", "n/a"), vals.get("orexin", 0.0),
             regimes.get("bdnf", "n/a"), vals.get("bdnf", 0.0),
             regimes.get("cortisol", "n/a"), vals.get("cortisol", 0.0),
-            regimes.get("cooperative_mode", "n/a"), regimes.get("phase7a_mode", "n/a")))
+            regimes.get("sleep_state", "n/a"), regimes.get("sleep_dwell", 0),
+            int(round(100 * regimes.get("sleep_position", 0.0))), int(round(100 * regimes.get("maturity", 0.0)))))
         self.trend_text.configure(text="Homeostase: ADE %.2f | ECB %.2f | HIS %.2f" % (
             vals.get("adenosine", 0.0), vals.get("endocannabinoid", 0.0), vals.get("histamine", 0.0)))
         con2, should_close2 = self._neuro_con()

@@ -91,8 +91,6 @@ def ensure_schema(db=None):
         last_reason TEXT, updated_at INTEGER DEFAULT 0)""")
     for t in ("internal_learning_gaps",):
         for c,typ in [("phase5f_window_radius","INTEGER DEFAULT 3"),("phase5f_window_strategy","TEXT"),("phase5f_window_effectiveness","REAL DEFAULT 0"),("phase5f_closure_delta","REAL DEFAULT 0"),("phase5f_no_candidate_rate","REAL DEFAULT 0"),("phase5f_overlap_score","REAL DEFAULT 0"),("phase5f_last_windowed_at","INTEGER DEFAULT 0"),("phase5f_window_reason","TEXT"),("phase5f_strategy_recommendation","TEXT"),("phase5f_experiment_count","INTEGER DEFAULT 0"),("priority","REAL DEFAULT 0"),("resolution_score","REAL DEFAULT 0"),("strategy_effectiveness_score","REAL DEFAULT 0"),("phase5e_closure_delta","REAL DEFAULT 0"),("phase5e_expected_gain","REAL DEFAULT 0")]: addcol(cur,t,c,typ,changes)
-    for t in ("internal_learning_questions",):
-        for c,typ in [("phase5f_window_strategy","TEXT"),("phase5f_window_radius","INTEGER DEFAULT 3"),("phase5f_resolution_score","REAL DEFAULT 0"),("phase5f_last_evaluated_at","INTEGER DEFAULT 0"),("phase5f_reason","TEXT"),("priority","REAL DEFAULT 0"),("resolution_score","REAL DEFAULT 0"),("cluster_key","TEXT")]: addcol(cur,t,c,typ,changes)
     for t in ("reading_queue",):
         for c,typ in [("phase5f_priority","REAL DEFAULT 0"),("phase5f_reason","TEXT"),("phase5f_last_adjusted_at","INTEGER DEFAULT 0"),("phase5f_window_strategy","TEXT"),("phase5f_window_radius","INTEGER DEFAULT 0"),("phase5f_no_candidate_penalty","REAL DEFAULT 0"),("active_learning_priority","REAL DEFAULT 0"),("cooldown_until","INTEGER DEFAULT 0")]: addcol(cur,t,c,typ,changes)
     for t in ("chunk_attention_scores",):
@@ -102,9 +100,9 @@ def ensure_schema(db=None):
     for t in ("context_expansion_plans", "context_expansion_actions", "gap_closure_attempts"):
         if table(cur,t):
             for c,typ in [("phase5f_effectiveness_score","REAL DEFAULT 0"),("phase5f_window_radius","INTEGER DEFAULT 3"),("phase5f_window_strategy","TEXT"),("phase5f_read_no_candidate_rate","REAL DEFAULT 0"),("phase5f_overlap_score","REAL DEFAULT 0"),("phase5f_next_action","TEXT"),("phase5f_last_evaluated_at","INTEGER DEFAULT 0"),("phase5f_reason","TEXT")]: addcol(cur,t,c,typ,changes)
-    for t,c in [("phase5f_window_strategy_memory","memory_key"),("phase5f_read_outcome_memory","memory_key"),("phase5f_gap_window_state","gap_id"),("phase5f_runtime_state","key"),("reading_queue","chunk_id"),("chunk_attention_scores","chunk_id"),("internal_learning_gaps","gap_key"),("internal_learning_questions","question_key"),("context_expansion_plans","plan_key")]: uidx(cur,t,c,changes)
+    for t,c in [("phase5f_window_strategy_memory","memory_key"),("phase5f_read_outcome_memory","memory_key"),("phase5f_gap_window_state","gap_id"),("phase5f_runtime_state","key"),("reading_queue","chunk_id"),("chunk_attention_scores","chunk_id"),("internal_learning_gaps","gap_key"),("context_expansion_plans","plan_key")]: uidx(cur,t,c,changes)
     n=now()
-    for k,v in {"phase":PHASE,"no_word_blacklists":"true","learning_mode":LEARNING_MODE,"fact_promotion":FACT_PROMOTION,"direct_fact_writes":"disabled","direct_relation_writes":"disabled","question_generation":"internal_learning_questions_only"}.items():
+    for k,v in {"phase":PHASE,"no_word_blacklists":"true","learning_mode":LEARNING_MODE,"fact_promotion":FACT_PROMOTION,"direct_fact_writes":"disabled","direct_relation_writes":"disabled","question_generation":"stageb_promoted_questions"}.items():
         cur.execute("INSERT INTO phase5f_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",(k,v,n))
     con.commit(); return {"status":"ok","phase":PHASE,"changes":changes,"no_word_blacklists":True,"fact_promotion":FACT_PROMOTION}
 
@@ -114,7 +112,8 @@ def avg_from_table(cur,t,col,where="1=1"):
     return 0.0
 
 def neuromod(cur):
-    return {"learning_rate":0.234,"error_weight":0.407,"revision_pressure":0.312,"exploration_pressure":0.31,"inhibition_level":0.349,"consolidation_gain":0.297}
+    from ki_system.v8_learning_controls import current_controls
+    return current_controls(cur)
 
 def selected_gaps(cur,limit=80):
     if not table(cur,"internal_learning_gaps"): return []
@@ -247,7 +246,7 @@ def apply_adaptive_windowing(db=None, limit=80):
     rec=strategies.most_common(1)[0][0] if strategies else 'observe'
     safety=(count(cur,'facts')==0 and count(cur,'relations')==0 and count(cur,'questions')==0)
     cur.execute('INSERT INTO phase5f_effectiveness_cycles(phase,gaps_considered,experiments_created,queue_updates,avg_closure_delta,avg_expected_gain,avg_no_candidate_rate,avg_overlap_score,recommended_strategy,safety_ok,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(PHASE,len(gaps),experiments,updates,avg(ds),avg(es),avg(no_rates),avg(overlaps),rec,1 if safety else 0,n))
-    state={'phase':PHASE,'last_gaps_considered':len(gaps),'last_experiments_created':experiments,'last_queue_updates':updates,'last_avg_closure_delta':round(avg(ds),6),'last_avg_expected_gain':round(avg(es),6),'last_avg_no_candidate_rate':round(avg(no_rates),6),'last_avg_overlap_score':round(avg(overlaps),6),'last_recommended_strategy':rec,'last_safety_ok':str(bool(safety)).lower(),'no_word_blacklists':'true','fact_promotion':FACT_PROMOTION,'learning_mode':LEARNING_MODE,'question_generation':'internal_learning_questions_only','direct_fact_writes':'disabled','direct_relation_writes':'disabled'}
+    state={'phase':PHASE,'last_gaps_considered':len(gaps),'last_experiments_created':experiments,'last_queue_updates':updates,'last_avg_closure_delta':round(avg(ds),6),'last_avg_expected_gain':round(avg(es),6),'last_avg_no_candidate_rate':round(avg(no_rates),6),'last_avg_overlap_score':round(avg(overlaps),6),'last_recommended_strategy':rec,'last_safety_ok':str(bool(safety)).lower(),'no_word_blacklists':'true','fact_promotion':FACT_PROMOTION,'learning_mode':LEARNING_MODE,'question_generation':'stageb_promoted_questions','direct_fact_writes':'disabled','direct_relation_writes':'disabled'}
     for k,v in state.items(): cur.execute('INSERT INTO phase5f_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at',(k,str(v),n))
     con.commit()
     return {'status':'phase5f_adaptive_windowing_complete','phase':PHASE,'gaps_considered':len(gaps),'experiments_created':experiments,'queue_updates':updates,'avg_closure_delta':round(avg(ds),6),'avg_expected_gain':round(avg(es),6),'avg_no_candidate_rate':round(avg(no_rates),6),'avg_overlap_score':round(avg(overlaps),6),'recommended_strategy':rec,'no_word_blacklists':True,'fact_promotion':FACT_PROMOTION,'facts':count(cur,'facts'),'relations':count(cur,'relations'),'questions':count(cur,'questions')}

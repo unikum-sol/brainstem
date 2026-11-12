@@ -23,6 +23,10 @@ HISTAMINE_PARAMS = {
     "histamine_level": 0.5, "histamine_baseline": 0.5, "ewma_alpha": 0.3,
     "adenosine_coupling": 0.6, "wake_activity_gain": 0.4,
     "sleep_gate_low": 0.35, "wake_gate_high": 0.65, "cycle_count": 0,
+    # During sleep the GABAergic VLPO inhibits the tuberomammillary histamine
+    # neurons, which fall nearly silent; this is one arm of the flip-flop.
+    # Literatur: Sherin et al. 1998; Takahashi, Lin & Sakai 2006
+    "sleep_tmn_inhibition": 0.5,
 }
 
 def _now(): return int(time.time())
@@ -105,7 +109,7 @@ def _get_adenosine(con):
 
 def _get_wake_activity(con):
     if not _table_exists(con, "phase7a_adenosine_state"): return 0.5
-    r = con.execute("SELECT value FROM phase7a_adenosine_state WHERE key='wake_activity'").fetchone()
+    r = con.execute("SELECT value FROM phase7a_adenosine_state WHERE key='last_encoding_load'").fetchone()
     return _clamp(_to_float(r[0], 0.5)) if r else 0.5
 
 def _read_neuromod(con):
@@ -123,29 +127,28 @@ def run_phase7e_cycle(db_or_obj=None, cycle_index=None):
     w_ade = _get_p(con, "adenosine_coupling", 0.6); w_wake = _get_p(con, "wake_activity_gain", 0.4)
     s = w_ade + w_wake
     if s <= 0: w_ade, w_wake, s = 0.5, 0.5, 1.0
+    cooperative_state = _read_kv(con, "cooperative_sleep_wake_state") if _table_exists(con, "cooperative_sleep_wake_state") else {}
+    canonical_mode = "sleep" if str(cooperative_state.get("state", "wake")).strip().lower() == "sleep" else "wake"
     histamine_target = _clamp((w_ade / s) * (1.0 - ade) + (w_wake / s) * wake)
+    if canonical_mode == "sleep":
+        histamine_target *= 1.0 - _clamp(_get_p(con, "sleep_tmn_inhibition", 0.5))
     alpha = _get_p(con, "ewma_alpha", 0.3); prev = _get_p(con, "histamine_level", 0.5)
     histamine_level = _clamp((1 - alpha) * prev + alpha * histamine_target)
     wake_drive = histamine_level; sleep_pressure = ade
     reciprocal_gate = _clamp(histamine_level - ade + 0.5)
     wake_hi = _get_p(con, "wake_gate_high", 0.65); sleep_lo = _get_p(con, "sleep_gate_low", 0.35)
-    phase7a_state = _read_kv(con, "phase7a_adenosine_state") if _table_exists(con, "phase7a_adenosine_state") else {}
-    cooperative_state = _read_kv(con, "cooperative_sleep_wake_state") if _table_exists(con, "cooperative_sleep_wake_state") else {}
-    canonical_mode = str(cooperative_state.get("state", phase7a_state.get("homeostat_mode", "wake"))).strip().lower()
     if canonical_mode == "sleep":
         regime = "sleep_permissive"
-    elif canonical_mode == "wake" and histamine_level >= wake_hi and histamine_level > ade:
+    elif histamine_level >= wake_hi and histamine_level > ade:
         regime = "wake_active"
-    elif canonical_mode == "wake":
-        regime = "wake_transition"
     else:
-        regime = "transition"
+        regime = "wake_transition"
     if _table_exists(con, "phase6a_neuromodulated_sleep_state"):
         _kv_set(con, "phase6a_neuromodulated_sleep_state", "histamine", round(histamine_level, 4))
     now = _now()
     con.execute("INSERT INTO phase7e_histamine_cycles(created_at,cycle_index,histamine_level,histamine_target,adenosine_level,wake_activity,wake_drive,sleep_pressure,reciprocal_gate,regime,note) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (now, int(cycle_index), float(histamine_level), float(histamine_target), float(ade), float(wake),
-                 float(wake_drive), float(sleep_pressure), float(reciprocal_gate), regime, "canonical_phase7a_mode_with_reciprocal_histamine_observation"))
+                 float(wake_drive), float(sleep_pressure), float(reciprocal_gate), regime, "single_sleep_switch_with_reciprocal_histamine"))
     _set_p(con, "histamine_level", histamine_level); _set_p(con, "cycle_count", cycle_index)
     _set_p(con, "last_regime", regime); _set_p(con, "last_reciprocal_gate", reciprocal_gate)
     _set_p(con, "last_adenosine", ade)

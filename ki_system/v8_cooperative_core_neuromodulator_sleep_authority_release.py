@@ -1,24 +1,38 @@
 # -*- coding: utf-8 -*-
-"""Canonical six-core dynamics and cooperative sleep/wake authority.
+"""Canonical six-core dynamics and the single sleep/wake switch.
+
+The switch is the only place that decides between wake and sleep. It works
+like the hypothalamic flip-flop: homeostatic sleep pressure (adenosine,
+Process S from Phase 7a) is compared against an upper threshold for sleep
+onset and a lower threshold for waking. The gap between the two thresholds is
+the hysteresis that makes transitions rare and complete. The arousal side
+(histamine, orexin, noradrenaline, acetylcholine, cortisol) and the
+GABAergic sleep side shift both thresholds together, the way the circadian
+process shifts them in the two-process model: strong arousal delays sleep
+onset and ends sleep earlier, strong inhibition does the opposite. Every
+other module reads the resulting state from cooperative_sleep_wake_state.
 
 Updates only neuromodulator and sleep/wake state. No facts, relations,
 questions, attention, gap, experiment, graduation, or promotion writes.
+
+Literatur: Daan, Beersma & Borbely 1984; Saper, Chou & Scammell 2001;
+Saper, Scammell & Lu 2005; Skeldon, Dijk & Derks 2014
 """
 from __future__ import annotations
 import json, sqlite3, time
 from pathlib import Path
 
 PHASE="cooperative_core_neuromodulator_sleep_authority"
-VERSION="v1"
+VERSION="v2_single_switch"
 CORE=("dopamine","serotonin","glutamate","gaba","noradrenaline","acetylcholine")
 SCHEMA_TABLES={
  "cooperative_sleep_wake_state":[("key","TEXT PRIMARY KEY"),("value","TEXT"),("updated_at","INTEGER")],
  "cooperative_sleep_wake_cycles":[
   ("id","INTEGER PRIMARY KEY AUTOINCREMENT"),("created_at","INTEGER"),("cycle_index","INTEGER"),
   ("state","TEXT"),("previous_state","TEXT"),("transitioned","INTEGER"),("reason","TEXT"),
-  ("sleep_score","REAL"),("adenosine_pressure","REAL"),("arousal_release","REAL"),
-  ("inhibitory_readiness","REAL"),("consolidation_readiness","REAL"),("stress_block","REAL"),
-  ("core_before_json","TEXT"),("core_target_json","TEXT"),("core_after_json","TEXT")],
+  ("sleep_pressure","REAL"),("upper_threshold","REAL"),("lower_threshold","REAL"),
+  ("threshold_shift","REAL"),("wake_drive","REAL"),("sleep_drive","REAL"),
+  ("core_before_json","TEXT"),("core_target_json","TEXT")],
  "cooperative_core_target_state":[("key","TEXT PRIMARY KEY"),("value","TEXT"),("updated_at","INTEGER")],
 }
 
@@ -61,6 +75,36 @@ def _self_check_schema(con):
   missing.extend(table+"."+name for name,_ in cols if name not in present)
  return missing
 def _value(state,key,default):return _clamp(state.get(key,default))
+SWITCH_PARAMS={"upper_threshold_base":0.67,"lower_threshold_base":0.17,"threshold_shift_gain":0.1,"upper_threshold_ceiling":0.85,"lower_threshold_floor":0.05}
+OBSOLETE_SWITCH_KEYS=("sleep_score","enter_threshold","exit_threshold","min_dwell_cycles","adenosine_pressure","arousal_release","inhibitory_readiness","consolidation_readiness","stress_block")
+def _switch(con,pressure,wake_drive,sleep_drive):
+ st=_read_kv(con,"cooperative_sleep_wake_state")
+ for k,v in SWITCH_PARAMS.items():
+  if k not in st:_set_kv(con,"cooperative_sleep_wake_state",k,v);st[k]=v
+ con.executemany("DELETE FROM cooperative_sleep_wake_state WHERE key=?",[(k,) for k in OBSOLETE_SWITCH_KEYS])
+ gain=_clamp(st["threshold_shift_gain"],0.0,0.3)
+ shift=max(-gain,min(gain,gain*(wake_drive-sleep_drive)))
+ upper=min(_clamp(st["upper_threshold_ceiling"]),_clamp(st["upper_threshold_base"])+shift)
+ lower=max(_clamp(st["lower_threshold_floor"]),_clamp(st["lower_threshold_base"])+shift)
+ previous="sleep" if str(st.get("state","wake")).lower()=="sleep" else "wake"
+ cycle=_to_int(st.get("cycle_count"),0)+1;entered=_to_int(st.get("state_entered_cycle"),cycle)
+ if st.get("switch_version")!=VERSION:entered=cycle;_set_kv(con,"cooperative_sleep_wake_state","switch_version",VERSION)
+ state=previous;reason="hold"
+ if previous=="wake" and pressure>=upper:state="sleep";reason="sleep_pressure_reached_upper_threshold"
+ elif previous=="sleep" and pressure<=lower:state="wake";reason="sleep_pressure_dissipated_to_lower_threshold"
+ transitioned=state!=previous
+ values={"state":state,"previous_state":previous,"cycle_count":cycle,"transition_reason":reason,
+  "sleep_pressure":round(pressure,6),"upper_threshold":round(upper,6),"lower_threshold":round(lower,6),
+  "threshold_shift":round(shift,6),"wake_drive":round(wake_drive,6),"sleep_drive":round(sleep_drive,6),
+  "pressure_position":round(_clamp((pressure-lower)/max(1e-6,upper-lower)),6)}
+ if transitioned:
+  episode=cycle-entered
+  values["last_"+previous+"_episode_cycles"]=episode
+  values["total_transitions"]=_to_int(st.get("total_transitions"),0)+1
+  entered=cycle
+ values["state_entered_cycle"]=entered;values["dwell_cycles"]=cycle-entered
+ for k,v in values.items():_set_kv(con,"cooperative_sleep_wake_state",k,v)
+ return values,transitioned
 def run_cycle(db_or_obj=None):
  con=resolve_db(db_or_obj);ensure_schema(con);missing=_self_check_schema(con)
  if missing:return {"phase":PHASE,"status":"schema_check_failed","missing_columns":missing}
@@ -71,36 +115,25 @@ def run_cycle(db_or_obj=None):
  ade_state=_read_kv(con,"phase7a_adenosine_state")
  his_state=_read_kv(con,"phase7e_histamine_state")
  orx_state=_read_kv(con,"phase7f_orexin_state")
- bdnf_state=_read_kv(con,"phase7g_bdnf_state")
  cort_state=_read_kv(con,"cortisol_state")
  ei_state=_read_kv(con,"phase7c_state")
  before={k:_value(core,k,{"dopamine":.5,"serotonin":.6,"glutamate":.4,"gaba":.4,"noradrenaline":.3,"acetylcholine":.5}[k]) for k in CORE}
- pressure=_value(ade_state,"adenosine_level",0.0);hist=_value(his_state,"histamine_level",core.get("histamine",.5));orexin=_value(orx_state,"orexin_level",core.get("orexin",.5));cort=_value(cort_state,"cortisol_level",core.get("cortisol",.2));bdnf=_value(bdnf_state,"bdnf_level",core.get("bdnf",.5))
+ pressure=_value(ade_state,"adenosine_level",0.0);hist=_value(his_state,"histamine_level",core.get("histamine",.5));orexin=_value(orx_state,"orexin_level",core.get("orexin",.5));cort=_value(cort_state,"cortisol_level",core.get("cortisol",.2))
  exploration=_value(meta,"last_exploration_bias",.5);consolidation=_value(meta,"last_consolidation_bias",.5);inhibition=_value(meta,"last_inhibition_bias",.4);revision=_value(meta,"last_revision_bias",.5);persistent=_value(meta,"last_persistent_gap_pressure",.5);outcome=_value(meta,"last_avg_outcome_score",.0)
  ei_glu=_value(ei_state,"glutamate_state",before["glutamate"]);ei_gaba=_value(ei_state,"gaba_state",before["gaba"])
- arousal=_clamp(.28*hist+.25*orexin+.20*before["noradrenaline"]+.12*before["acetylcholine"]+.15*cort)
- inhibitory=_clamp(.55*ei_gaba+.25*inhibition+.20*(1.0-ei_glu))
- consolid=_clamp(.45*consolidation+.30*bdnf+.25*before["serotonin"])
- arousal_release=1.0-arousal;stress_block=cort
- sleep_score=_clamp(.35*pressure+.25*arousal_release+.20*inhibitory+.12*consolid+.08*(1.0-stress_block))
+ wake_drive=_clamp(.28*hist+.25*orexin+.20*before["noradrenaline"]+.12*before["acetylcholine"]+.15*cort)
+ sleep_drive=_clamp(.55*ei_gaba+.25*inhibition+.20*(1.0-ei_glu))
  target={
   "dopamine":_clamp(.20+.34*outcome+.18*exploration+.16*(1.0-persistent)+.12*(1.0-cort)),
-  "serotonin":_clamp(.22+.38*consolidation+.20*(1.0-cort)+.12*outcome+.08*inhibitory),
+  "serotonin":_clamp(.22+.38*consolidation+.20*(1.0-cort)+.12*outcome+.08*sleep_drive),
   "noradrenaline":_clamp(.12+.30*persistent+.25*hist+.18*orexin+.15*cort),
   "acetylcholine":_clamp(.18+.33*revision+.22*hist+.17*orexin+.10*exploration),
  }
  for k,v in target.items():_set_kv(con,"cooperative_core_target_state",k,round(v,6))
- coop=_read_kv(con,"cooperative_sleep_wake_state");previous=str(coop.get("state","wake"));cycle=_to_int(coop.get("cycle_count"),0)+1;entered=_to_int(coop.get("state_entered_cycle"),cycle)
- enter=_clamp(coop.get("enter_threshold",.62));exitv=_clamp(coop.get("exit_threshold",.42));min_dwell=max(1,_to_int(coop.get("min_dwell_cycles"),3));dwell=max(0,cycle-entered)
- state=previous;reason="hold"
- if previous!="sleep" and sleep_score>=enter and dwell>=min_dwell:state="sleep";reason="cooperative_sleep_entry"
- elif previous=="sleep" and sleep_score<=exitv and dwell>=min_dwell:state="wake";reason="cooperative_wake_entry"
- transitioned=state!=previous
- if transitioned:entered=cycle
- for k,v in {"state":state,"previous_state":previous,"cycle_count":cycle,"state_entered_cycle":entered,"dwell_cycles":max(0,cycle-entered),"transition_reason":reason,"sleep_score":round(sleep_score,6),"adenosine_pressure":round(pressure,6),"arousal_release":round(arousal_release,6),"inhibitory_readiness":round(inhibitory,6),"consolidation_readiness":round(consolid,6),"stress_block":round(stress_block,6),"enter_threshold":enter,"exit_threshold":exitv,"min_dwell_cycles":min_dwell}.items():_set_kv(con,"cooperative_sleep_wake_state",k,v)
- con.execute("INSERT INTO cooperative_sleep_wake_cycles(created_at,cycle_index,state,previous_state,transitioned,reason,sleep_score,adenosine_pressure,arousal_release,inhibitory_readiness,consolidation_readiness,stress_block,core_before_json,core_target_json,core_after_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(_now(),cycle,state,previous,1 if transitioned else 0,reason,sleep_score,pressure,arousal_release,inhibitory,consolid,stress_block,json.dumps(before,sort_keys=True),json.dumps(target,sort_keys=True),json.dumps(before,sort_keys=True)))
+ sw,transitioned=_switch(con,pressure,wake_drive,sleep_drive)
+ con.execute("INSERT INTO cooperative_sleep_wake_cycles(created_at,cycle_index,state,previous_state,transitioned,reason,sleep_pressure,upper_threshold,lower_threshold,threshold_shift,wake_drive,sleep_drive,core_before_json,core_target_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(_now(),sw["cycle_count"],sw["state"],sw["previous_state"],1 if transitioned else 0,sw["transition_reason"],pressure,sw["upper_threshold"],sw["lower_threshold"],sw["threshold_shift"],wake_drive,sleep_drive,json.dumps(before,sort_keys=True),json.dumps(target,sort_keys=True)))
  con.commit()
- return {"phase":PHASE,"status":"complete","cycle_index":cycle,"core_before":before,"tonic_target":target,"sleep_state":state,"sleep_score":round(sleep_score,6),"transitioned":transitioned,"transition_reason":reason,"productive_writes":{"facts":0,"relations":0,"questions":0}}
+ return {"phase":PHASE,"status":"complete","cycle_index":sw["cycle_count"],"core_before":before,"tonic_target":target,"sleep_state":sw["state"],"sleep_pressure":sw["sleep_pressure"],"upper_threshold":sw["upper_threshold"],"lower_threshold":sw["lower_threshold"],"transitioned":transitioned,"transition_reason":sw["transition_reason"],"productive_writes":{"facts":0,"relations":0,"questions":0}}
 def managed_cycle(self,progress=None):
  from ki_system import v8_phase7cort_stability_watch_release as downstream
  result=downstream.managed_cycle(self,progress)

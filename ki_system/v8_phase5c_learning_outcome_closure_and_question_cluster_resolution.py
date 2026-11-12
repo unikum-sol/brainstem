@@ -73,8 +73,6 @@ def ensure_schema(mem=None):
         previous_attention REAL DEFAULT 0, new_attention REAL DEFAULT 0, status TEXT, reason TEXT, details TEXT, created_at INTEGER DEFAULT 0)""")
     if _table_exists(cur, 'phase5b_internal_question_clusters'):
         for col, spec in [('resolution_score','REAL DEFAULT 0'),('learning_outcome_score','REAL DEFAULT 0'),('strategy_effectiveness_score','REAL DEFAULT 0'),('closure_status',"TEXT DEFAULT 'open'"),('closure_reason','TEXT'),('last_closure_evaluated_at','INTEGER DEFAULT 0'),('closure_attempts','INTEGER DEFAULT 0'),('persistent_count','INTEGER DEFAULT 0'),('improved_count','INTEGER DEFAULT 0'),('open_count','INTEGER DEFAULT 0'),('phase5c_recommended_strategy','TEXT'),('phase5c_priority','REAL DEFAULT 0')]: _add_col(cur,'phase5b_internal_question_clusters',col,spec,changes)
-    if _table_exists(cur, 'internal_learning_questions'):
-        for col, spec in [('resolution_score','REAL DEFAULT 0'),('learning_outcome_score','REAL DEFAULT 0'),('strategy_effectiveness_score','REAL DEFAULT 0'),('closure_status',"TEXT DEFAULT 'internal_open'"),('closure_reason','TEXT'),('last_closure_evaluated_at','INTEGER DEFAULT 0'),('closure_attempts','INTEGER DEFAULT 0'),('phase5c_cluster_key','TEXT'),('phase5c_resolution_priority','REAL DEFAULT 0'),('phase5c_recommended_strategy','TEXT')]: _add_col(cur,'internal_learning_questions',col,spec,changes)
     if _table_exists(cur, 'internal_learning_gaps'):
         for col, spec in [('resolution_score','REAL DEFAULT 0'),('learning_outcome_score','REAL DEFAULT 0'),('strategy_effectiveness_score','REAL DEFAULT 0'),('priority','REAL DEFAULT 0'),('closure_status',"TEXT DEFAULT 'open'"),('closure_reason','TEXT'),('last_closure_evaluated_at','INTEGER DEFAULT 0'),('closure_attempts','INTEGER DEFAULT 0'),('phase5c_gap_outcome_score','REAL DEFAULT 0'),('phase5c_recommended_strategy','TEXT')]: _add_col(cur,'internal_learning_gaps',col,spec,changes)
     if _table_exists(cur, 'reading_queue'):
@@ -83,7 +81,7 @@ def ensure_schema(mem=None):
         for col, spec in [('phase5c_outcome_score','REAL DEFAULT 0'),('phase5c_reason','TEXT'),('phase5c_last_adjusted_at','INTEGER DEFAULT 0'),('read_no_candidate_penalty','REAL DEFAULT 0')]: _add_col(cur,'chunk_attention_scores',col,spec,changes)
     for t,c in [('phase5c_runtime_state','key'),('phase5c_cluster_resolution_memory','memory_key'),('reading_queue','chunk_id'),('chunk_attention_scores','chunk_id')]: _safe_unique(cur,t,c,changes)
     now=_now()
-    for k,v in [('phase',PHASE),('no_word_blacklists','true'),('fact_promotion','disabled'),('direct_fact_writes','disabled'),('direct_relation_writes','disabled'),('question_generation','internal_learning_questions_only'),('learning_mode','context_hypotheses_with_neuromodulators')]:
+    for k,v in [('phase',PHASE),('no_word_blacklists','true'),('fact_promotion','disabled'),('direct_fact_writes','disabled'),('direct_relation_writes','disabled'),('question_generation','stageb_promoted_questions'),('learning_mode','context_hypotheses_with_neuromodulators')]:
         cur.execute("INSERT INTO phase5c_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",(k,v,now))
     db.commit();
     if own: db.close()
@@ -98,15 +96,9 @@ def _cluster_rows(cur, limit=240):
         def field(name, fallback): return name if name in c else fallback
         ck=field('cluster_key',"COALESCE(question_type,'unknown')||':'||COALESCE(role,'unknown')")
         qt=field('question_type',"'unknown'"); role=field('role',"'unknown'")
-        cnt=field('question_count', field('count','1')); pri=field('avg_priority', field('priority','0'))
-        res=field('resolution_score','0'); eff=field('strategy_effectiveness_score','0'); out=field('learning_outcome_score','0'); st=field('status',"'open'")
+        cnt=field('size', '1'); pri=field('avg_priority', field('priority','0'))
+        res=field('avg_resolution_score', '0'); eff=field('strategy_effectiveness_score','0'); out=field('learning_outcome_score','0'); st=field('status',"'open'")
         q=f"SELECT {ck},{qt},{role},{cnt},{pri},{res},{eff},{out},{st} FROM phase5b_internal_question_clusters ORDER BY COALESCE({pri},0) DESC LIMIT ?"
-        return cur.execute(q,(limit,)).fetchall()
-    if _table_exists(cur,'internal_learning_questions'):
-        c=_cols(cur,'internal_learning_questions')
-        qt='question_type' if 'question_type' in c else "'unknown'"; role='role' if 'role' in c else "'unknown'"
-        pri='priority' if 'priority' in c else '0'; res='resolution_score' if 'resolution_score' in c else '0'; eff='strategy_effectiveness_score' if 'strategy_effectiveness_score' in c else '0'; out='learning_outcome_score' if 'learning_outcome_score' in c else '0'
-        q=f"SELECT COALESCE({qt},'unknown')||':'||COALESCE({role},'unknown'), COALESCE({qt},'unknown'), COALESCE({role},'unknown'), COUNT(*), AVG(COALESCE({pri},0)), AVG(COALESCE({res},0)), AVG(COALESCE({eff},0)), AVG(COALESCE({out},0)), 'open' FROM internal_learning_questions GROUP BY COALESCE({qt},'unknown'), COALESCE({role},'unknown') ORDER BY COUNT(*) DESC LIMIT ?"
         return cur.execute(q,(limit,)).fetchall()
     return []
 
@@ -125,8 +117,6 @@ def apply_learning_outcome_closure(mem=None):
         cur.execute("INSERT INTO question_cluster_resolution_events(cluster_key,question_type,role,question_count,open_count,improved_count,persistent_count,avg_priority,avg_resolution_score,avg_strategy_effectiveness,avg_learning_outcome,before_status,after_status,decision,details,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(cluster_key,qtype,role,count,1 if decision!='monitoring' else 0,1 if decision=='improving' else 0,1 if decision=='persistent_gap' else 0,priority,closure_score,eff,outcome,str(status),decision,rec,_json({'source':'phase5c_cluster_resolution','raw_resolution':resolution,'raw_effectiveness':eff,'raw_outcome':outcome}),now)); event_rows+=1
         if _table_exists(cur,'phase5b_internal_question_clusters') and 'cluster_key' in _cols(cur,'phase5b_internal_question_clusters'):
             cur.execute("UPDATE phase5b_internal_question_clusters SET resolution_score=?, learning_outcome_score=?, strategy_effectiveness_score=?, closure_status=?, closure_reason=?, last_closure_evaluated_at=?, closure_attempts=COALESCE(closure_attempts,0)+1, phase5c_recommended_strategy=?, phase5c_priority=? WHERE cluster_key=?",(closure_score,outcome,eff,decision,rec,now,rec,max(priority*(0.92 if decision!='persistent_gap' else 1.0),closure_score),cluster_key))
-        if _table_exists(cur,'internal_learning_questions') and 'cluster_key' in _cols(cur,'internal_learning_questions'):
-            cur.execute("UPDATE internal_learning_questions SET resolution_score=?, learning_outcome_score=?, strategy_effectiveness_score=?, closure_status=?, closure_reason=?, last_closure_evaluated_at=?, closure_attempts=COALESCE(closure_attempts,0)+1, phase5c_cluster_key=?, phase5c_recommended_strategy=?, phase5c_resolution_priority=? WHERE cluster_key=?",(closure_score,outcome,eff,decision,rec,now,cluster_key,rec,max(priority,closure_score),cluster_key))
         cur.execute("INSERT OR REPLACE INTO phase5c_cluster_resolution_memory(memory_key,question_type,role,observations,avg_resolution_score,avg_strategy_effectiveness,avg_learning_outcome,persistent_count,improved_count,recommended_strategy,status,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(str(cluster_key),qtype,role,count,closure_score,eff,outcome,1 if decision=='persistent_gap' else 0,1 if decision=='improving' else 0,rec,decision,now))
     adjusted=0
     if _table_exists(cur,'reading_queue'):
@@ -139,7 +129,7 @@ def apply_learning_outcome_closure(mem=None):
                     cur.execute("UPDATE chunk_attention_scores SET attention_score=?,phase5c_outcome_score=?,phase5c_reason=?,phase5c_last_adjusted_at=?,read_no_candidate_penalty=? WHERE chunk_id=?",(newa,0.0,'phase5c_high_priority_read_no_candidate_penalty',now,1.0,cid))
                 cur.execute("INSERT INTO learning_outcome_closure_events(target_type,target_key,target_id,before_priority,after_priority,resolution_score,strategy_effectiveness_score,learning_outcome_score,closure_status,closure_reason,neuromodulator_reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",('chunk',str(cid),cid,float(pri),newp,0.0,0.0,0.0,'penalized_read_no_candidate','high_priority_without_candidate','gaba_inhibition_and_exploration_rebalance',now)); adjusted+=1
     avg_res=round(total_resolution/evaluated,6) if evaluated else 0.0; avg_pri=round(total_priority/evaluated,6) if evaluated else 0.0
-    for k,v in [('phase',PHASE),('no_word_blacklists','true'),('fact_promotion','disabled'),('question_generation','internal_learning_questions_only'),('last_evaluated_clusters',evaluated),('last_improved_clusters',improved),('last_persistent_clusters',persistent),('last_monitoring_clusters',monitoring),('last_avg_cluster_resolution_score',avg_res),('last_avg_cluster_priority',avg_pri),('last_read_no_candidate_penalties',adjusted)]: _state_set(cur,k,v,now)
+    for k,v in [('phase',PHASE),('no_word_blacklists','true'),('fact_promotion','disabled'),('question_generation','stageb_promoted_questions'),('last_evaluated_clusters',evaluated),('last_improved_clusters',improved),('last_persistent_clusters',persistent),('last_monitoring_clusters',monitoring),('last_avg_cluster_resolution_score',avg_res),('last_avg_cluster_priority',avg_pri),('last_read_no_candidate_penalties',adjusted)]: _state_set(cur,k,v,now)
     db.commit();
     if own: db.close()
     return {'status':'phase5c_learning_outcome_closure_complete','phase':PHASE,'evaluated_clusters':evaluated,'improved_clusters':improved,'persistent_clusters':persistent,'monitoring_clusters':monitoring,'avg_cluster_resolution_score':avg_res,'avg_cluster_priority':avg_pri,'read_no_candidate_penalties':adjusted,'events':event_rows,'no_word_blacklists':True,'fact_promotion':'disabled'}

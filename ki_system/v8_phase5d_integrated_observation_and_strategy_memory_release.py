@@ -176,7 +176,7 @@ def ensure_phase5d_schema(db_or_mem=None):
         updated_at INTEGER DEFAULT 0
     )""")
     # Future-tolerant columns in existing tables.
-    for table in ("internal_learning_gaps", "internal_learning_questions", "context_hypotheses", "chunk_attention_scores", "reading_queue", "strategy_outcome_memory", "strategy_gap_resolution_memory"):
+    for table in ("internal_learning_gaps", "context_hypotheses", "chunk_attention_scores", "reading_queue"):
         if _table_exists(cur, table):
             for col, decl in [
                 ("phase5d_observation_score", "REAL DEFAULT 0"),
@@ -194,7 +194,6 @@ def ensure_phase5d_schema(db_or_mem=None):
         ("phase5d_observation_memory", "memory_key"),
         ("phase5d_runtime_state", "key"),
         ("internal_learning_gaps", "gap_key"),
-        ("internal_learning_questions", "question_key"),
         ("reading_queue", "chunk_id"),
         ("chunk_attention_scores", "chunk_id"),
         ("phase5b_strategy_refinement_state", "key"),
@@ -209,7 +208,7 @@ def ensure_phase5d_schema(db_or_mem=None):
         "fact_promotion": FACT_PROMOTION,
         "direct_fact_writes": "disabled",
         "direct_relation_writes": "disabled",
-        "question_generation": "internal_learning_questions_only",
+        "question_generation": "stageb_promoted_questions",
     }.items():
         cur.execute("INSERT INTO phase5d_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at", (k, str(v), now))
     db.commit()
@@ -230,16 +229,6 @@ def _avg(cur, table, col, where="1=1"):
         return float(v or 0.0)
     except Exception:
         return 0.0
-
-
-def _latest_state_float(cur, table, key, default=0.0):
-    if not _table_exists(cur, table): return default
-    cols = _cols(cur, table)
-    if not {"key", "value"}.issubset(cols): return default
-    row = cur.execute(f"SELECT value FROM {table} WHERE key=?", (key,)).fetchone()
-    if not row: return default
-    try: return float(str(row[0]).strip("'\""))
-    except Exception: return default
 
 
 def _upsert_memory(cur, key, observation_type, scope, values, recommendation, details, now):
@@ -278,24 +267,37 @@ def apply_integrated_observation_and_strategy_memory(db_or_mem=None):
     cur = db.cursor(); now = _now()
     facts, relations, questions = _count(cur,"facts"), _count(cur,"relations"), _count(cur,"questions")
     safety_ok = int(facts == 0 and relations == 0 and questions == 0)
+    # All inputs come from tables the running system maintains:
+    #   internal_questions       -> open questions (questions)
+    #   feedback_events          -> evaluated strategy experiments (outcome aggregates)
+    #   resolution_events        -> closed gaps
+    #   progress_evaluations     -> hypothesis graduations
+    #   strategy_feedback_events -> strategy memories learned from outcomes (5h)
+    #   long_term_patterns       -> consolidated (stable) hypotheses
+    from ki_system.v8_learning_controls import current_controls
+    controls = current_controls(cur)
+    def _scalar(sql, default=0):
+        try:
+            row = cur.execute(sql).fetchone()
+            return row[0] if row and row[0] is not None else default
+        except Exception:
+            return default
     metrics = {
         "hypotheses": _count(cur, "context_hypotheses"),
         "gaps": _count(cur, "internal_learning_gaps"),
-        "internal_questions": _count(cur, "internal_learning_questions"),
-        "feedback_events": _count(cur, "strategy_feedback_events"),
-        "resolution_events": _count(cur, "gap_resolution_outcomes"),
-        "progress_evaluations": _count(cur, "learning_progress_evaluations"),
-        "strategy_feedback_events": _count(cur, "strategy_feedback_events"),
-        "long_term_patterns": _count(cur, "long_term_pattern_memory"),
+        "internal_questions": int(_scalar("SELECT COUNT(*) FROM questions WHERE status='open'")),
+        "feedback_events": int(_scalar("SELECT SUM(n) FROM phase5g_outcome_aggregates WHERE n>0")),
+        "resolution_events": int(_scalar("SELECT COUNT(*) FROM internal_learning_gaps WHERE status='closed'")),
+        "progress_evaluations": _count(cur, "stageb_graduation_events"),
+        "strategy_feedback_events": _count(cur, "phase5h_strategy_outcome_memory"),
+        "long_term_patterns": int(_scalar("SELECT COUNT(*) FROM context_hypotheses WHERE role LIKE 'stable_%'")),
     }
-    outcome = _avg(cur, "strategy_feedback_events", "outcome_score") or _avg(cur, "strategy_outcome_memory", "avg_outcome_score")
-    resolution = _avg(cur, "gap_resolution_outcomes", "resolution_score") or _avg(cur, "internal_learning_gaps", "resolution_score")
-    error_pressure = _latest_state_float(cur, "progress_evaluation_state", "last_error_pressure", _avg(cur,"internal_learning_gaps","error_weight"))
-    unc_pressure = _latest_state_float(cur, "progress_evaluation_state", "last_uncertainty_pressure", _avg(cur,"internal_learning_gaps","uncertainty"))
-    stability_gain = _latest_state_float(cur, "progress_evaluation_state", "last_stability_gain", _avg(cur,"long_term_pattern_memory","stability"))
-    persistent = 0
-    if _table_exists(cur, "internal_learning_gaps") and "resolution_status" in _cols(cur, "internal_learning_gaps"):
-        persistent = int(cur.execute("SELECT COUNT(*) FROM internal_learning_gaps WHERE COALESCE(resolution_status,'open') IN ('persistent_gap','open','persistent')").fetchone()[0] or 0)
+    outcome = float(_scalar("SELECT SUM(s_outcome_score)/NULLIF(SUM(c_outcome_score),0) FROM phase5g_outcome_aggregates WHERE n>0", 0.0))
+    resolution = _avg(cur, "internal_learning_gaps", "resolution_score")
+    error_pressure = controls["error_weight"]
+    unc_pressure = _avg(cur, "internal_learning_gaps", "uncertainty")
+    stability_gain = controls["consolidation_gain"]
+    persistent = int(_scalar("SELECT COUNT(*) FROM internal_learning_gaps WHERE status='open'"))
     read_no_candidate = 0
     if _table_exists(cur, "reading_queue"):
         read_no_candidate = int(cur.execute("SELECT COUNT(*) FROM reading_queue WHERE status='read_no_candidate' AND COALESCE(priority,0) >= 0.6").fetchone()[0] or 0)
@@ -318,7 +320,7 @@ def apply_integrated_observation_and_strategy_memory(db_or_mem=None):
     _upsert_memory(cur, "persistent_gap_strategy_memory", "gap_resolution", "internal_learning_gaps", values, recommendation, {"persistent": persistent}, now)
     _upsert_memory(cur, "read_outcome_strategy_memory", "read_outcome", "reading_queue", values, recommendation, {"read_no_candidate_high_priority": read_no_candidate}, now)
     # Backpropagate scores to existing tables, tolerant and bounded.
-    for table, order_col in [("internal_learning_gaps", "priority"), ("internal_learning_questions", "priority"), ("chunk_attention_scores", "attention_score")]:
+    for table, order_col in [("internal_learning_gaps", "priority"), ("chunk_attention_scores", "attention_score")]:
         if _table_exists(cur, table):
             cols = _cols(cur, table)
             sets=[]; params=[]
@@ -338,7 +340,7 @@ def apply_integrated_observation_and_strategy_memory(db_or_mem=None):
                 ("integrated_strategy_memory", recommendation, "global", values["strategy_effectiveness"], PHASE, _json({"error_weight":"adaptive", "exploration":"adaptive", "inhibition":"adaptive"}), "open", _json(values), now))
     for k, v in {
         "phase": PHASE, "learning_mode": LEARNING_MODE, "no_word_blacklists": "true", "fact_promotion": FACT_PROMOTION,
-        "direct_fact_writes": "disabled", "direct_relation_writes": "disabled", "question_generation": "internal_learning_questions_only",
+        "direct_fact_writes": "disabled", "direct_relation_writes": "disabled", "question_generation": "stageb_promoted_questions",
         "last_outcome_score": values["outcome_score"], "last_resolution_score": values["resolution_score"],
         "last_strategy_effectiveness": values["strategy_effectiveness"], "last_persistent_gap_pressure": values["persistent_gap_pressure"],
         "last_read_no_candidate_pressure": values["read_no_candidate_pressure"], "last_recommendation": recommendation,

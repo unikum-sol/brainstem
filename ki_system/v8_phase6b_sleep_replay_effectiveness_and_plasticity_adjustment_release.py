@@ -585,6 +585,9 @@ def _apply_plasticity_adjustment(con, eff, neuromod, meta_state):
     if gate and allowed_state:
         for k,v in (("last_plasticity_level",post_plast),("last_exploration_bias",post_expl),("last_consolidation_bias",post_cons),("last_inhibition_bias",post_inh),("last_revision_bias",post_rev)):
             _kv_set(con,"phase6a_meta_plasticity_state",k,round(v,6)); _kv_set(con,"phase6a_neuromodulated_sleep_state",k,round(v,6))
+            # The persistent bias target (Phase 6c restores it every cycle) carries
+            # the adjustment forward, like the corrections of 6d, 7a and 7b.
+            if _table_exists(con,"phase6c_target_bias_state"): _kv_set(con,"phase6c_target_bias_state",k,round(v,6))
     con.commit(); return {'adjustment_type': adj, 'pre': {'plasticity_level': pre_plast, 'exploration_bias': pre_expl, 'consolidation_bias': pre_cons, 'inhibition_bias': pre_inh, 'revision_bias': pre_rev}, 'post': {'plasticity_level': post_plast, 'exploration_bias': post_expl, 'consolidation_bias': post_cons, 'inhibition_bias': post_inh, 'revision_bias': post_rev}, 'critic_gate_result': critic, 'critic_penalty': penalty, 'evidence_state': state, 'state_change_allowed': 1 if gate and allowed_state else 0}
 
 
@@ -684,7 +687,7 @@ def run_phase6b_cycle(db_or_obj=None, cycle_index=None):
     _kv_set(con, "phase6b_state", "direct_fact_writes", "disabled")
     _kv_set(con, "phase6b_state", "direct_relation_writes", "disabled")
     _kv_set(con, "phase6b_state", "fact_promotion", "disabled")
-    _kv_set(con, "phase6b_state", "question_generation", "internal_learning_questions_only")
+    _kv_set(con, "phase6b_state", "question_generation", "stageb_promoted_questions")
 
     con.commit()
 

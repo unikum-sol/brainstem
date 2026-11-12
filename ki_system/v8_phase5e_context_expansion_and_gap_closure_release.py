@@ -48,7 +48,6 @@ def ensure_phase5e_schema(mem=None):
         if not before: changes.append('create_table:'+t)
     future={
     'internal_learning_gaps': {'phase5e_context_expansion_score':'REAL DEFAULT 0','phase5e_expected_gain':'REAL DEFAULT 0','phase5e_closure_delta':'REAL DEFAULT 0','phase5e_closure_status':'TEXT','phase5e_context_window':'INTEGER DEFAULT 0','phase5e_plan_key':'TEXT','phase5e_last_expanded_at':'INTEGER DEFAULT 0','phase5e_expansion_attempts':'INTEGER DEFAULT 0','phase5e_recommended_strategy':'TEXT','phase5e_reason':'TEXT','resolution_score':'REAL DEFAULT 0','priority':'REAL DEFAULT 0','strategy_effectiveness_score':'REAL DEFAULT 0'},
-    'internal_learning_questions': {'phase5e_context_expansion_score':'REAL DEFAULT 0','phase5e_expected_gain':'REAL DEFAULT 0','phase5e_closure_delta':'REAL DEFAULT 0','phase5e_closure_status':'TEXT','phase5e_plan_key':'TEXT','phase5e_last_expanded_at':'INTEGER DEFAULT 0','phase5e_recommended_strategy':'TEXT','resolution_score':'REAL DEFAULT 0','priority':'REAL DEFAULT 0'},
     'phase5b_internal_question_clusters': {'phase5e_context_expansion_score':'REAL DEFAULT 0','phase5e_expected_gain':'REAL DEFAULT 0','phase5e_closure_delta':'REAL DEFAULT 0','phase5e_closure_status':'TEXT','phase5e_plan_key':'TEXT','phase5e_last_expanded_at':'INTEGER DEFAULT 0','phase5e_recommended_strategy':'TEXT','resolution_score':'REAL DEFAULT 0'},
     'reading_queue': {'phase5e_priority':'REAL DEFAULT 0','phase5e_reason':'TEXT','phase5e_last_adjusted_at':'INTEGER DEFAULT 0','context_expansion_plan_key':'TEXT','gap_closure_boost':'REAL DEFAULT 0'},
     'chunk_attention_scores': {'phase5e_score':'REAL DEFAULT 0','phase5e_reason':'TEXT','phase5e_last_adjusted_at':'INTEGER DEFAULT 0','context_expansion_score':'REAL DEFAULT 0','gap_closure_boost':'REAL DEFAULT 0'},
@@ -57,11 +56,11 @@ def ensure_phase5e_schema(mem=None):
         for c,s in cols.items():
             r=_addcol(db,t,c,s)
             if r: changes.append(r)
-    for t,c in [('context_expansion_plans','plan_key'),('context_expansion_memory','memory_key'),('phase5e_runtime_state','key'),('internal_learning_gaps','gap_key'),('internal_learning_questions','question_key'),('reading_queue','chunk_id'),('chunk_attention_scores','chunk_id')]:
+    for t,c in [('context_expansion_plans','plan_key'),('context_expansion_memory','memory_key'),('phase5e_runtime_state','key'),('internal_learning_gaps','gap_key'),('reading_queue','chunk_id'),('chunk_attention_scores','chunk_id')]:
         r=_uix(db,t,c)
         if r: changes.append(r)
     now=_now()
-    for k,v in {'phase':PHASE,'no_word_blacklists':'true','learning_mode':LEARNING_MODE,'fact_promotion':'disabled','direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'internal_learning_questions_only'}.items():
+    for k,v in {'phase':PHASE,'no_word_blacklists':'true','learning_mode':LEARNING_MODE,'fact_promotion':'disabled','direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'stageb_promoted_questions'}.items():
         db.execute('INSERT INTO phase5e_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at',(k,v,now))
     try: db.commit()
     except Exception: pass
@@ -106,7 +105,7 @@ def apply_context_expansion_and_gap_closure(mem=None, limit_gaps=80, neighbor_wi
         attempts+=1; total_delta+=delta
     avg_gain=total_gain/max(1,plans); avg_delta=total_delta/max(1,attempts)
     db.execute("""INSERT INTO context_expansion_memory(memory_key,source_type,role,attempts,avg_expected_gain,avg_outcome_score,avg_closure_delta,persistent_pressure,recommended_strategy,status,first_seen,last_seen,updated_at,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(memory_key) DO UPDATE SET attempts=context_expansion_memory.attempts+excluded.attempts,avg_expected_gain=excluded.avg_expected_gain,avg_closure_delta=excluded.avg_closure_delta,persistent_pressure=excluded.persistent_pressure,recommended_strategy=excluded.recommended_strategy,last_seen=excluded.last_seen,updated_at=excluded.updated_at,details=excluded.details""",('global_context_expansion_gap_closure','global','all',attempts,avg_gain,0.0,avg_delta,1.0-avg_delta,'broaden_context_window','observe',now,now,now,_json({'plans':plans,'actions':actions})))
-    for k,v in {'phase':PHASE,'no_word_blacklists':'true','learning_mode':LEARNING_MODE,'fact_promotion':'disabled','direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'internal_learning_questions_only','last_plans_created':str(plans),'last_actions_created':str(actions),'last_closure_attempts':str(attempts),'last_avg_expected_gain':str(round(avg_gain,6)),'last_avg_closure_delta':str(round(avg_delta,6))}.items():
+    for k,v in {'phase':PHASE,'no_word_blacklists':'true','learning_mode':LEARNING_MODE,'fact_promotion':'disabled','direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'stageb_promoted_questions','last_plans_created':str(plans),'last_actions_created':str(actions),'last_closure_attempts':str(attempts),'last_avg_expected_gain':str(round(avg_gain,6)),'last_avg_closure_delta':str(round(avg_delta,6))}.items():
         db.execute('INSERT INTO phase5e_runtime_state(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at',(k,v,now))
     db.execute('INSERT INTO phase5e_gap_closure_cycles(phase,gaps_considered,plans_created,actions_created,closure_attempts,avg_expected_gain,avg_closure_delta,facts,relations,questions,safety_ok,created_at,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(PHASE,len(rows),plans,actions,attempts,avg_gain,avg_delta,facts,relations,questions,1 if facts==relations==questions==0 else 0,now,_json({'no_word_blacklists':True})))
     try: db.commit()
@@ -121,7 +120,7 @@ def managed_cycle(self, progress=None):
         try: base=_orig_cycle(self, progress)
         except TypeError: base=_orig_cycle(self)
     mem=getattr(self,'mem',None) or getattr(self,'memory',None) or getattr(self,'m',None) or self
-    return {'phase':PHASE,'base':base,'phase5e_context_expansion':apply_context_expansion_and_gap_closure(mem),'direct_fact_writes':'disabled','direct_relation_writes':'disabled','fact_promotion':'disabled','question_generation':'internal_learning_questions_only','no_word_blacklists':True}
+    return {'phase':PHASE,'base':base,'phase5e_context_expansion':apply_context_expansion_and_gap_closure(mem),'direct_fact_writes':'disabled','direct_relation_writes':'disabled','fact_promotion':'disabled','question_generation':'stageb_promoted_questions','no_word_blacklists':True}
 
 def managed_run(self, cycles=1, progress=None):
     return [managed_cycle(self, progress) for _ in range(int(cycles or 1))]

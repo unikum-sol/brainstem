@@ -1,5 +1,18 @@
 # -*- coding: utf-8 -*-
-"""BrainStem Phase 7a - Adenosine homeostat with gated sleep discharge."""
+"""BrainStem Phase 7a - Adenosine as homeostatic sleep pressure (Process S).
+
+Adenosine rises during wake as a saturating exponential driven by encoding
+load and decays exponentially during sleep. The rise is faster while the
+system is immature, so the sleep share falls from about two thirds to the
+adult share as consolidated knowledge grows. Phase 7a does not decide when the
+system sleeps: it reads the single sleep/wake state of the switch in the
+cooperative core and only integrates the pressure. At the first sleep cycle it
+pulls saturated meta-plasticity biases back toward their mid values
+(synaptic renormalization at sleep onset).
+
+Literatur: Borbely 1982; Daan, Beersma & Borbely 1984; Porkka-Heiskanen et al.
+1997; Tononi & Cirelli 2006
+"""
 from __future__ import annotations
 
 import json
@@ -11,7 +24,7 @@ from pathlib import Path
 
 
 PHASE = "phase7a_adenosine_homeostat_release"
-PHASE_VERSION = "phase7a_v2_gated_sleep_discharge"
+PHASE_VERSION = "phase7a_v4_developmental_process_s"
 LEARNING_MODE = "context_hypotheses_with_neuromodulators"
 
 SCHEMA_TABLES = {
@@ -36,17 +49,49 @@ SCHEMA_INDEXES = [
     ("idx_phase7a_history_cyc", "phase7a_sleep_pressure_history", "cycle_index"),
 ]
 ADENOSINE_PARAMS = {
-    "adenosine_level": 0.0, "buildup_rate": 0.08, "activity_scale": 0.5,
-    "decay_after_sleep": 0.85, "threshold_high": 0.65, "threshold_low": 0.15,
+    "adenosine_level": 0.0,
+    # Process S time constants in cycles. The ratio of wake rise to sleep
+    # decay follows the two-process fits (tau_w 18.2 h, tau_s 4.2 h), scaled
+    # so that a wake episode at typical load lasts about 60 cycles, well
+    # inside the synaptic tag window of Phase 7d.
+    # Literatur: Daan, Beersma & Borbely 1984; Skeldon, Dijk & Derks 2014
+    "wake_rise_rate": 0.0154, "sleep_decay_rate": 0.0666,
+    # Rise scales with encoding load: new traces relative to the system's own
+    # running novelty level (synaptic potentiation during wake drives sleep
+    # need), and with glutamatergic activity (activity-dependent release).
+    # Literatur: Porkka-Heiskanen et al. 1997; Tononi & Cirelli 2006;
+    # Huber et al. 2004; Brambilla et al. 2005
+    "novelty_reference_hypotheses": 0.0, "novelty_reference_outcomes": 0.0,
+    "novelty_reference_alpha": 0.01, "outcome_load_share": 0.2,
+    "glutamate_rise_gain": 0.4,
+    # Developmental sleep share: an immature system builds up sleep pressure
+    # faster, so it sleeps about two thirds of the time at the start (like a
+    # newborn) and moves toward the adult share as consolidated knowledge
+    # grows. Only the rise changes with maturation; the decay stays the same.
+    # maturity = knowledge / (knowledge + maturity_half_knowledge), knowledge =
+    # net number of hypotheses in a stable role (revisions count back down).
+    # Literatur: Roffwarg, Muzio & Dement 1966; Jenni, Achermann & Carskadon
+    # 2005; Tarokh, Carskadon & Achermann 2012; Feinberg & Campbell 2010
+    "developmental_rise_gain": 4.0, "maturity_half_knowledge": 1000.0,
+    "developmental_maturity": 0.0, "developmental_rise_factor": 1.0, "consolidated_knowledge": 0,
+    # Slow-wave dissipation is deeper with stronger GABAergic inhibition.
+    # Literatur: Walsh et al. 2008
+    "gaba_decay_gain": 0.4,
     "downscale_min": 0.05, "downscale_max": 0.25,
-    "wake_activity_last": 0.0, "cycles_since_last_downscale": 0,
-    "total_wake_cycles": 0, "total_downscales": 0,
-    "last_adenosine_level": 0.0, "last_sleep_pressure": 0.0,
-    "homeostat_mode": "wake", "mode_entered_cycle": 0, "sleep_dwell_cycles": 0,
-    "minimum_sleep_cycles": 3, "total_sleep_cycles": 0,
-    "last_transition_cycle": 0, "transition_count": 0,
-    "productive_state_machine": "gated_sleep_discharge_v2",
+    "last_seen_state": "wake", "last_encoding_load": 0.0, "last_rate": 0.0,
+    "last_new_hypotheses": 0, "last_new_outcomes": 0,
+    "total_wake_cycles": 0, "total_sleep_cycles": 0, "total_downscales": 0,
+    "last_adenosine_level": 0.0,
 }
+OBSOLETE_STATE_KEYS = (
+    "buildup_rate", "activity_scale", "decay_after_sleep", "threshold_high", "threshold_low",
+    "homeostat_mode", "mode_entered_cycle", "sleep_dwell_cycles", "minimum_sleep_cycles",
+    "last_transition_cycle", "transition_count", "productive_state_machine", "wake_activity_last",
+    "cycles_since_last_downscale", "last_sleep_pressure", "canonical_event_typed_observer_mode",
+    "canonical_event_typed_observer_authority",
+)
+OBSOLETE_COUNTER_KEYS = ("last_ch_count", "last_outcome_count", "last_cycle_count")
+SWITCH_TABLE = "cooperative_sleep_wake_state"
 BIAS_KEYS = ("last_plasticity_level", "last_exploration_bias", "last_consolidation_bias", "last_inhibition_bias", "last_revision_bias")
 BIAS_MIDS = {"last_plasticity_level":0.5,"last_exploration_bias":0.5,"last_consolidation_bias":0.5,"last_inhibition_bias":0.35,"last_revision_bias":0.5}
 
@@ -107,23 +152,47 @@ def initialize_adenosine_parameters(con):
     ensure_schema(con); inserted=[]
     for k,v in ADENOSINE_PARAMS.items():
         if con.execute("SELECT 1 FROM phase7a_adenosine_state WHERE key=?",(k,)).fetchone() is None: _set(con,k,v); inserted.append(k)
-    mode=str(_get(con,"homeostat_mode","wake")).lower()
-    if mode not in ("wake","sleep"): _set(con,"homeostat_mode","wake")
+    con.executemany("DELETE FROM phase7a_adenosine_state WHERE key=?",[(k,) for k in OBSOLETE_STATE_KEYS])
+    con.executemany("DELETE FROM phase7a_state WHERE key=?",[(k,) for k in OBSOLETE_COUNTER_KEYS])
     con.commit(); return {"inserted":inserted,"total":len(ADENOSINE_PARAMS)}
-def _count(con,t):
-    try: return int(con.execute("SELECT COUNT(*) FROM "+t).fetchone()[0]) if _table_exists(con,t) else None
+def sleep_state(con):
+    st=_read_kv(con,SWITCH_TABLE) if _table_exists(con,SWITCH_TABLE) else {}
+    return "sleep" if str(st.get("state","wake")).strip().lower()=="sleep" else "wake"
+def _max_id(con,t):
+    try: return int(con.execute("SELECT COALESCE(MAX(id),0) FROM "+t).fetchone()[0]) if _table_exists(con,t) else None
     except Exception: return None
-def _measure_wake_activity(con):
-    st=_read_kv(con,"phase7a_state"); vals=[]
-    for table,key in (("context_hypotheses","last_ch_count"),("phase5g_experiment_outcomes","last_outcome_count"),("phase6a_sleep_replay_cycles","last_cycle_count")):
-        cur=_count(con,table); last=_to_int(st.get(key),0); delta=max(0,(cur or 0)-last) if cur is not None else 0
-        vals.append(delta); _kv_set(con,"phase7a_state",key,cur if cur is not None else last)
-    con.commit(); dch,dout,dcyc=vals
-    raw=0.5*math.log1p(dch)/math.log1p(1000)+0.3*math.log1p(dout)/math.log1p(2000)+0.2*math.log1p(dcyc)/math.log1p(50)
-    return {"wake_activity":_clamp(raw),"d_ch":dch,"d_out":dout,"d_cyc":dcyc,"reason":"measured"}
+def _novelty(con,n,ref_key,alpha,update):
+    ref=max(0.0,_to_float(_get(con,ref_key,0.0),0.0))
+    if ref<=0.0: ref=float(n)
+    load=n/(n+ref) if n>0 else 0.0
+    if update and n>0: _set(con,ref_key,round((1-alpha)*ref+alpha*n,6))
+    elif update and ref>0: _set(con,ref_key,round((1-alpha)*ref,6))
+    return load
+def _measure_encoding_load(con,update):
+    st=_read_kv(con,"phase7a_state"); deltas={}
+    for table,key in (("context_hypotheses","last_ch_max_id"),("phase5g_experiment_outcomes","last_outcome_max_id")):
+        cur=_max_id(con,table)
+        if cur is None: deltas[table]=0; continue
+        last=st.get(key); deltas[table]=max(0,cur-_to_int(last,cur)) if last is not None else 0
+        _kv_set(con,"phase7a_state",key,cur)
+    alpha=_clamp(_to_float(_get(con,"novelty_reference_alpha",0.01),0.01),0.0001,1.0)
+    share=_clamp(_to_float(_get(con,"outcome_load_share",0.2),0.2))
+    l_h=_novelty(con,deltas["context_hypotheses"],"novelty_reference_hypotheses",alpha,update)
+    l_o=_novelty(con,deltas["phase5g_experiment_outcomes"],"novelty_reference_outcomes",alpha,update)
+    return {"encoding_load":_clamp((1-share)*l_h+share*l_o),"new_hypotheses":deltas["context_hypotheses"],"new_outcomes":deltas["phase5g_experiment_outcomes"],"hypothesis_load":l_h,"outcome_load":l_o}
+def _maturity(con):
+    knowledge=0
+    if _table_exists(con,"context_hypotheses"):
+        try: knowledge=int(con.execute("SELECT COUNT(*) FROM context_hypotheses WHERE role>='stable_' AND role<'stable`'").fetchone()[0])
+        except Exception: knowledge=0
+    half=max(1.0,_to_float(_get(con,"maturity_half_knowledge",1000.0),1000.0))
+    maturity=knowledge/(knowledge+half)
+    gain=max(0.0,_to_float(_get(con,"developmental_rise_gain",4.0),4.0))
+    return {"consolidated_knowledge":knowledge,"maturity":maturity,"rise_factor":1.0+gain*(1.0-maturity)}
 def _neuromod(con):
     st=_read_kv(con,"phase6a_neuromodulated_sleep_state") if _table_exists(con,"phase6a_neuromodulated_sleep_state") else {}
-    return {k:_clamp(_to_float(st.get(k),d)) for k,d in (("acetylcholine",0.5),("glutamate",0.5),("serotonin",0.5))}
+    return {k:_clamp(_to_float(st.get(k),d)) for k,d in (("acetylcholine",0.5),("glutamate",0.5),("serotonin",0.5),("gaba",0.5))}
+def _gain(g,level): return (1.0-0.5*g)+g*level
 def _log(con,cyc,typ,level,pressure,factor,action,targets,reason,driver,val):
     con.execute("INSERT INTO phase7a_adenosine_events(created_at,cycle_index,event_type,adenosine_level,sleep_pressure,downscale_factor,action_taken,targets_affected,reason,driver_botenstoff,driver_botenstoff_value) VALUES(?,?,?,?,?,?,?,?,?,?,?)",(_now(),int(cyc),typ,float(level),float(pressure),float(factor),action,json.dumps(targets,sort_keys=True) if not isinstance(targets,str) else targets,reason,driver,float(val)))
 def _targets(con):
@@ -134,8 +203,10 @@ def _targets(con):
             v=_to_float(st[k],None)
             if v is not None and (v<=0.05 or v>=0.95): out.append((k,v,"min" if v<=0.05 else "max"))
     return out
-def _enter_sleep(con,level,neuromod,cyc):
-    high=_to_float(_get(con,"threshold_high",0.65),0.65); dmin=_to_float(_get(con,"downscale_min",0.05),0.05); dmax=_to_float(_get(con,"downscale_max",0.25),0.25)
+def _sleep_onset(con,level,neuromod,cyc):
+    sw=_read_kv(con,SWITCH_TABLE) if _table_exists(con,SWITCH_TABLE) else {}
+    high=_clamp(_to_float(sw.get("upper_threshold"),0.67),0.01,0.99)
+    dmin=_to_float(_get(con,"downscale_min",0.05),0.05); dmax=_to_float(_get(con,"downscale_max",0.25),0.25)
     glu=neuromod["glutamate"]; sero=neuromod["serotonin"]
     pull=dmin+max(0.0,level-high)*(dmax-dmin)/max(1e-6,1-high); pull=_clamp(pull*(0.7+0.6*glu)*(1-0.3*sero),0.02,0.4)
     affected=[]
@@ -144,35 +215,29 @@ def _enter_sleep(con,level,neuromod,cyc):
         for table in ("phase6a_meta_plasticity_state","phase6a_neuromodulated_sleep_state","phase6c_target_bias_state"):
             if _table_exists(con,table): _kv_set(con,table,k,round(nv,6))
         affected.append({"key":k,"pre":v,"post":nv,"side":side})
-    _set(con,"homeostat_mode","sleep"); _set(con,"mode_entered_cycle",cyc); _set(con,"sleep_dwell_cycles",0); _set(con,"last_transition_cycle",cyc); _set(con,"transition_count",_to_int(_get(con,"transition_count",0))+1)
-    typ="sleep_downscale" if affected else "idle_decay"
-    _log(con,cyc,typ,level,level,pull if affected else 0.0,"enter_gated_sleep",[a["key"] for a in affected],"threshold_high_reached","glutamate",glu)
     if affected: _set(con,"total_downscales",_to_int(_get(con,"total_downscales",0))+1)
-    return {"triggered":True,"action":"enter_sleep","pull":pull,"new_adenosine":level,"adenosine_after":level,"targets_affected":affected}
-def _sleep_cycle(con,old,neuromod,cyc):
-    retain=_clamp(_to_float(_get(con,"decay_after_sleep",0.85),0.85),0.01,0.999); new=_clamp(old*retain)
-    dwell=_to_int(_get(con,"sleep_dwell_cycles",0))+1; minimum=max(1,_to_int(_get(con,"minimum_sleep_cycles",3),3)); low=_clamp(_to_float(_get(con,"threshold_low",0.15),0.15))
-    _set(con,"adenosine_level",round(new,6)); _set(con,"sleep_dwell_cycles",dwell); _set(con,"total_sleep_cycles",_to_int(_get(con,"total_sleep_cycles",0))+1)
-    exit_now=dwell>=minimum and new<=low
-    if exit_now:
-        _set(con,"homeostat_mode","wake"); _set(con,"last_transition_cycle",cyc); _set(con,"transition_count",_to_int(_get(con,"transition_count",0))+1); _set(con,"cycles_since_last_downscale",0)
-    _log(con,cyc,"sleep_discharge",new,old,1-retain,"exit_to_wake" if exit_now else "continue_sleep",[],"low_threshold_and_dwell_satisfied" if exit_now else "gated_multicycle_discharge","acetylcholine",neuromod["acetylcholine"])
-    return {"triggered":True,"action":"sleep_discharge","new_adenosine":new,"adenosine_after":new,"targets_affected":[],"sleep_dwell_cycles":dwell,"transitioned_to_wake":exit_now}
+    _log(con,cyc,"sleep_onset_downscale" if affected else "sleep_onset",level,level,pull if affected else 0.0,"renormalize_saturated_biases" if affected else "none",[a["key"] for a in affected],"sleep_onset","glutamate",glu)
+    return {"pull":pull if affected else 0.0,"targets_affected":affected}
 def run_phase7a_cycle(db_or_obj=None,cycle_index=None):
     con=resolve_db(db_or_obj); ensure_schema(con); initialize_adenosine_parameters(con)
     if cycle_index is None: cycle_index=_to_int(_read_kv(con,"phase7a_state").get("cycle_count"),0)+1
-    neu=_neuromod(con); wake=_measure_wake_activity(con); old=_clamp(_to_float(_get(con,"adenosine_level",0.0),0.0)); mode=str(_get(con,"homeostat_mode","wake")).lower()
-    if mode=="sleep":
-        accum={"old":old,"new":old,"rate":0.0,"sleep_pressure":old,"inhibited_by_sleep_gate":True}; down=_sleep_cycle(con,old,neu,cycle_index)
+    neu=_neuromod(con); state=sleep_state(con); previous=str(_get(con,"last_seen_state","wake")).lower()
+    old=_clamp(_to_float(_get(con,"adenosine_level",0.0),0.0))
+    load=_measure_encoding_load(con,update=(state=="wake"))
+    onset=None; dev=_maturity(con)
+    if state=="sleep":
+        if previous!="sleep": onset=_sleep_onset(con,old,neu,cycle_index)
+        rate=max(0.0,_to_float(_get(con,"sleep_decay_rate",0.0666),0.0666))*_gain(_to_float(_get(con,"gaba_decay_gain",0.4),0.4),neu["gaba"])
+        new=_clamp(old*math.exp(-rate)); _set(con,"total_sleep_cycles",_to_int(_get(con,"total_sleep_cycles",0))+1)
+        _log(con,cycle_index,"sleep_dissipation",new,old,1-math.exp(-rate),"dissipate",[],"process_s_exponential_decay","gaba",neu["gaba"])
     else:
-        br=max(0.0,_to_float(_get(con,"buildup_rate",0.08),0.08)); scale=max(0.0,_to_float(_get(con,"activity_scale",0.5),0.5)); rate=br*(1+scale*wake["wake_activity"])*(1.2-0.4*neu["acetylcholine"]); new=_clamp(old+rate)
-        _set(con,"adenosine_level",round(new,6)); _set(con,"wake_activity_last",round(wake["wake_activity"],6)); _set(con,"last_adenosine_level",round(old,6)); _set(con,"last_sleep_pressure",round(new,6)); _set(con,"total_wake_cycles",_to_int(_get(con,"total_wake_cycles",0))+1)
-        _log(con,cycle_index,"buildup",new,new,0.0,"accumulate",[],"gated_wake_buildup","acetylcholine",neu["acetylcholine"])
-        accum={"old":old,"new":new,"rate":rate,"sleep_pressure":new,"inhibited_by_sleep_gate":False}
-        down=_enter_sleep(con,new,neu,cycle_index) if new>=_to_float(_get(con,"threshold_high",0.65),0.65) else {"triggered":False,"action":"wake_hold","new_adenosine":new,"adenosine_after":new,"targets_affected":[]}
+        rate=max(0.0,_to_float(_get(con,"wake_rise_rate",0.0154),0.0154))*dev["rise_factor"]*(0.5+load["encoding_load"])*_gain(_to_float(_get(con,"glutamate_rise_gain",0.4),0.4),neu["glutamate"])
+        new=_clamp(1.0-(1.0-old)*math.exp(-rate)); _set(con,"total_wake_cycles",_to_int(_get(con,"total_wake_cycles",0))+1)
+        _log(con,cycle_index,"wake_buildup",new,new,0.0,"accumulate",[],"process_s_saturating_rise","glutamate",neu["glutamate"])
+    for k,v in (("adenosine_level",round(new,6)),("last_adenosine_level",round(old,6)),("last_rate",round(rate,6)),("last_encoding_load",round(load["encoding_load"],6)),("last_new_hypotheses",load["new_hypotheses"]),("last_new_outcomes",load["new_outcomes"]),("last_seen_state",state),("developmental_maturity",round(dev["maturity"],6)),("developmental_rise_factor",round(dev["rise_factor"],6)),("consolidated_knowledge",dev["consolidated_knowledge"])): _set(con,k,v)
     for k,v in (("cycle_count",cycle_index),("last_cycle_at",_now()),("phase",PHASE),("phase_version",PHASE_VERSION),("learning_mode",LEARNING_MODE),("no_word_blacklists",True),("direct_fact_writes","disabled"),("direct_relation_writes","disabled"),("fact_promotion","disabled"),("adenosine_homeostat",True)):_kv_set(con,"phase7a_state",k,v)
     con.commit()
-    return {"phase":PHASE,"phase_version":PHASE_VERSION,"cycle_index":cycle_index,"status":"ok","homeostat_mode":str(_get(con,"homeostat_mode","wake")),"wake_activity":wake,"adenosine_accumulation":accum,"downscale":down,"safety":{"direct_fact_writes":"disabled","direct_relation_writes":"disabled","fact_promotion":"disabled","no_word_blacklists":True}}
+    return {"phase":PHASE,"phase_version":PHASE_VERSION,"cycle_index":cycle_index,"status":"ok","sleep_state":state,"adenosine_before":old,"adenosine_after":new,"rate":rate,"encoding_load":load,"development":dev,"sleep_onset":onset,"safety":{"direct_fact_writes":"disabled","direct_relation_writes":"disabled","fact_promotion":"disabled","no_word_blacklists":True}}
 def managed_cycle(self,progress=None):
     base=None; dmod=None
     for name in ("v8_phase6d_saturation_homeostasis_and_meta_metaplasticity_release","v8_phase6c_bias_persistence_and_self_regulating_meta_release","v8_phase6b_sleep_replay_effectiveness_and_plasticity_adjustment_release","v8_phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release"):
