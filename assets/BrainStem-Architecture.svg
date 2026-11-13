@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1660" height="1096" viewBox="0 0 1660 1096" font-family="Segoe UI, Helvetica, Arial, sans-serif"><defs><marker id="m2563eb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker><marker id="s2563eb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker><marker id="m334155" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker><marker id="s334155" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker><marker id="m475569" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker><marker id="s475569" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker><marker id="m7c3aed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker><marker id="s7c3aed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker><marker id="md97706" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#d97706"/></marker><marker id="sd97706" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d97706"/></marker><marker id="me11d48" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#e11d48"/></marker><marker id="se11d48" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e11d48"/></marker></defs><rect width="1660" height="1096" fill="#ffffff"/>
+<text x="830.0" y="42" font-size="26" font-weight="700" fill="#1e293b" text-anchor="middle">BrainStem: Architecture Overview</text>
+<text x="830.0" y="68" font-size="14" font-weight="normal" fill="#475569" text-anchor="middle">One system cycle runs all 36 phase modules once, in fixed order. One autonomous-learning cycle in the GUI = 5 system cycles.</text>
+<rect x="430" y="100" width="800" height="826" rx="14" fill="#ffffff" stroke="#334155" stroke-width="2"/>
+<text x="450" y="132" font-size="17" font-weight="700" fill="#334155" text-anchor="start">Stage 2: Autonomous learning, AutonomousLoop.cycle()</text>
+<text x="1210" y="132" font-size="13" font-weight="600" fill="#334155" text-anchor="end">↻ repeats every system cycle</text>
+<rect x="450" y="152" width="760" height="100" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.8"/>
+<text x="466" y="178" font-size="16" font-weight="700" fill="#2563eb" text-anchor="start">1  Observation</text>
+<text x="466" y="198" font-size="12.5" font-weight="normal" fill="#475569" text-anchor="start" font-style="italic">reads the next chunk and forms uncertain hypotheses</text>
+<rect x="466" y="210" width="216.48000000000002" height="26" rx="6" fill="#ffffff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="574.24" y="227.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">Context observation (sentences)</text>
+<rect x="689.48" y="210" width="186.32000000000002" height="26" rx="6" fill="#ffffff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="782.64" y="227.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">Phase 0 lexical boundaries</text>
+<rect x="450" y="282" width="760" height="166" rx="10" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.8"/>
+<text x="466" y="308" font-size="16" font-weight="700" fill="#0d9488" text-anchor="start">2  Strategy and reading control</text>
+<text x="466" y="328" font-size="12.5" font-weight="normal" fill="#475569" text-anchor="start" font-style="italic">learning gaps, curiosity and context experiments decide what to read and test next</text>
+<rect x="466" y="340" width="154.08" height="26" rx="6" fill="#ffffff" stroke="#0d9488" stroke-width="1.2"/>
+<text x="543.04" y="357.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">5b strategy refinement</text>
+<rect x="627.08" y="340" width="137.44" height="26" rx="6" fill="#ffffff" stroke="#0d9488" stroke-width="1.2"/>
+<text x="695.8000000000001" y="357.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">5c outcome closure</text>
+<rect x="771.52" y="340" width="235.20000000000002" height="26" rx="6" fill="#ffffff" stroke="#0d9488" stroke-width="1.2"/>
+<text x="889.12" y="357.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">5d observation and strategy memory</text>
+<rect x="1013.72" y="340" width="153.04000000000002" height="26" rx="6" fill="#ffffff" stroke="#0d9488" stroke-width="1.2"/>
+<text x="1090.24" y="357.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">Stage B gap detection</text>
+<rect x="466" y="373" width="152.00000000000003" height="26" rx="6" fill="#ffffff" stroke="#0d9488" stroke-width="1.2"/>
+<text x="542.0" y="390.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">5e context expansion</text>
+<rect x="625.0" y="373" width="153.04000000000002" height="26" rx="6" fill="#ffffff" stroke="#0d9488" stroke-width="1.2"/>
+<text x="701.52" y="390.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">5f adaptive windowing</text>
+<rect x="785.04" y="373" width="149.92000000000002" height="26" rx="6" fill="#ffffff" stroke="#0d9488" stroke-width="1.2"/>
+<text x="860.0" y="390.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">5g strategy selection</text>
+<rect x="941.96" y="373" width="209.20000000000002" height="26" rx="6" fill="#ffffff" stroke="#0d9488" stroke-width="1.2"/>
+<text x="1046.56" y="390.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">5h experiment outcome learning</text>
+<rect x="466" y="406" width="178.0" height="26" rx="6" fill="#ffffff" stroke="#0d9488" stroke-width="1.2"/>
+<text x="555.0" y="423.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">5i strategy diversification</text>
+<rect x="450" y="478" width="760" height="232" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.8"/>
+<text x="466" y="504" font-size="16" font-weight="700" fill="#7c3aed" text-anchor="start">3  Sleep, replay and homeostasis</text>
+<text x="466" y="524" font-size="12.5" font-weight="normal" fill="#475569" text-anchor="start" font-style="italic">neuromodulators set plasticity; during sleep, replay tags and consolidates traces</text>
+<rect x="466" y="536" width="198.8" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="565.4" y="553.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">6a replay and meta-plasticity</text>
+<rect x="671.8" y="536" width="234.16000000000003" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="788.88" y="553.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">6b replay effectiveness, critic gate</text>
+<rect x="912.96" y="536" width="246.64000000000004" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="1036.28" y="553.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">6c bias persistence, meta-parameters</text>
+<rect x="466" y="569" width="250.8" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="591.4" y="586.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">6d saturation homeostasis (meta-meta)</text>
+<rect x="723.8" y="569" width="174.88" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="811.24" y="586.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">7a adenosine (Process S)</text>
+<rect x="905.68" y="569" width="150.96" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="981.16" y="586.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">7b endocannabinoids</text>
+<rect x="466" y="602" width="156.16000000000003" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="544.08" y="619.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">7b1 wake-chain bridge</text>
+<rect x="629.1600000000001" y="602" width="245.60000000000002" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="751.96" y="619.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">7c adaptive boundaries, E/I balance</text>
+<rect x="881.7600000000001" y="602" width="160.32000000000002" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="961.9200000000001" y="619.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">connection accelerator</text>
+<rect x="466" y="635" width="189.44000000000003" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="560.72" y="652.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">7d slow-wave consolidation</text>
+<rect x="662.44" y="635" width="96.88000000000001" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="710.8800000000001" y="652.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">7e histamine</text>
+<rect x="766.32" y="635" width="75.04" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="803.84" y="652.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">7f orexin</text>
+<rect x="848.36" y="635" width="69.84" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="883.28" y="652.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">7g BDNF</text>
+<rect x="925.2" y="635" width="102.08000000000001" height="26" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="976.24" y="652.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">7cort cortisol</text>
+<rect x="466" y="668" width="268.48" height="26" rx="6" fill="#7c3aed" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="600.24" y="685.68" font-size="13" font-weight="600" fill="#ffffff" text-anchor="middle">Cooperative core: one sleep/wake switch</text>
+<rect x="450" y="740" width="760" height="166" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="1.8"/>
+<text x="466" y="766" font-size="16" font-weight="700" fill="#d97706" text-anchor="start">4  Stage B write chain</text>
+<text x="466" y="786" font-size="12.5" font-weight="normal" fill="#475569" text-anchor="start" font-style="italic">the only path into facts, relations, ontology and questions; lost competitions retract facts</text>
+<rect x="466" y="798" width="85.44000000000001" height="26" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.2"/>
+<text x="508.72" y="815.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">graduation</text>
+<rect x="558.44" y="798" width="161.36" height="26" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.2"/>
+<text x="639.1200000000001" y="815.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">contradiction detection</text>
+<rect x="726.8000000000001" y="798" width="141.60000000000002" height="26" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.2"/>
+<text x="797.6000000000001" y="815.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">hypothesis revision</text>
+<rect x="875.4000000000001" y="798" width="105.20000000000002" height="26" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.2"/>
+<text x="928.0000000000001" y="815.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">fact promotion</text>
+<rect x="987.6000000000001" y="798" width="128.08" height="26" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.2"/>
+<text x="1051.64" y="815.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">relational binding</text>
+<rect x="466" y="831" width="128.08" height="26" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.2"/>
+<text x="530.04" y="848.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">relation promotion</text>
+<rect x="601.08" y="831" width="194.64000000000001" height="26" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.2"/>
+<text x="698.4000000000001" y="848.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">ontology cluster observation</text>
+<rect x="802.72" y="831" width="134.32000000000002" height="26" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.2"/>
+<text x="869.88" y="848.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">ontology promotion</text>
+<rect x="944.0400000000001" y="831" width="134.32000000000002" height="26" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.2"/>
+<text x="1011.2" y="848.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">question promotion</text>
+<rect x="466" y="864" width="176.96000000000004" height="26" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.2"/>
+<text x="554.48" y="881.68" font-size="13" font-weight="normal" fill="#1e293b" text-anchor="middle">question-chunk feedback</text>
+<path d="M 830.0 254 L 830.0 278" fill="none" stroke="#334155" stroke-width="2" stroke-linejoin="round" marker-end="url(#m334155)"/>
+<path d="M 830.0 450 L 830.0 474" fill="none" stroke="#334155" stroke-width="2" stroke-linejoin="round" marker-end="url(#m334155)"/>
+<path d="M 830.0 712 L 830.0 736" fill="none" stroke="#334155" stroke-width="2" stroke-linejoin="round" marker-end="url(#m334155)"/>
+<rect x="30" y="100" width="300" height="312" rx="14" fill="#f8fafc" stroke="#475569" stroke-width="2"/>
+<text x="46" y="132" font-size="17" font-weight="700" fill="#334155" text-anchor="start">Stage 1: Pre-parsing</text>
+<text x="46" y="152" font-size="12.5" font-weight="normal" fill="#475569" text-anchor="start" font-style="italic">inference-free, before learning</text>
+<rect x="46" y="170" width="268" height="56" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.3"/>
+<text x="180.0" y="194" font-size="14" font-weight="600" fill="#1e293b" text-anchor="middle">Corpus (Wikipedia ZIM)</text>
+<text x="180.0" y="213" font-size="12" font-weight="normal" fill="#475569" text-anchor="middle">e.g. physics and computer categories</text>
+<path d="M 180.0 227 L 180.0 247" fill="none" stroke="#475569" stroke-width="2" stroke-linejoin="round" marker-end="url(#m475569)"/>
+<rect x="46" y="250" width="268" height="56" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.3"/>
+<text x="180.0" y="274" font-size="14" font-weight="600" fill="#1e293b" text-anchor="middle">ZIM import</text>
+<text x="180.0" y="293" font-size="12" font-weight="normal" fill="#475569" text-anchor="middle">extract, structure, split</text>
+<path d="M 180.0 307 L 180.0 327" fill="none" stroke="#475569" stroke-width="2" stroke-linejoin="round" marker-end="url(#m475569)"/>
+<rect x="46" y="330" width="268" height="56" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.3"/>
+<text x="180.0" y="354" font-size="14" font-weight="600" fill="#1e293b" text-anchor="middle">Chunk store and reading queue</text>
+<text x="180.0" y="373" font-size="12" font-weight="normal" fill="#475569" text-anchor="middle">SQLite, read counts per chunk</text>
+<path d="M 330 358 L 385 358 L 385 202.0 L 448 202.0" fill="none" stroke="#2563eb" stroke-width="2" stroke-linejoin="round" marker-end="url(#m2563eb)"/>
+<text x="377" y="280.0" font-size="12" font-weight="600" fill="#2563eb" text-anchor="middle" transform="rotate(-90 377 280.0)">next chunk</text>
+<rect x="30" y="452" width="300" height="258" rx="14" fill="#fff1f2" stroke="#e11d48" stroke-width="2"/>
+<text x="46" y="484" font-size="17" font-weight="700" fill="#be123c" text-anchor="start">Neuromodulator state (12)</text>
+<text x="46" y="504" font-size="12.5" font-weight="normal" fill="#475569" text-anchor="start" font-style="italic">written by 6a and 7a to 7cort,</text>
+<text x="46" y="520" font-size="12.5" font-weight="normal" fill="#475569" text-anchor="start" font-style="italic">read by every phase</text>
+<rect x="46" y="534" width="75.0" height="26" rx="6" fill="#ffffff" stroke="#e11d48" stroke-width="1.2"/>
+<text x="83.5" y="551.5" font-size="12.5" font-weight="normal" fill="#1e293b" text-anchor="middle">Dopamine</text>
+<rect x="128.0" y="534" width="76.0" height="26" rx="6" fill="#ffffff" stroke="#e11d48" stroke-width="1.2"/>
+<text x="166.0" y="551.5" font-size="12.5" font-weight="normal" fill="#1e293b" text-anchor="middle">Serotonin</text>
+<rect x="211.0" y="534" width="101.0" height="26" rx="6" fill="#ffffff" stroke="#e11d48" stroke-width="1.2"/>
+<text x="261.5" y="551.5" font-size="12.5" font-weight="normal" fill="#1e293b" text-anchor="middle">Noradrenaline</text>
+<rect x="46" y="567" width="101.0" height="26" rx="6" fill="#ffffff" stroke="#e11d48" stroke-width="1.2"/>
+<text x="96.5" y="584.5" font-size="12.5" font-weight="normal" fill="#1e293b" text-anchor="middle">Acetylcholine</text>
+<rect x="154.0" y="567" width="76.0" height="26" rx="6" fill="#ffffff" stroke="#e11d48" stroke-width="1.2"/>
+<text x="192.0" y="584.5" font-size="12.5" font-weight="normal" fill="#1e293b" text-anchor="middle">Glutamate</text>
+<rect x="237.0" y="567" width="50.0" height="26" rx="6" fill="#ffffff" stroke="#e11d48" stroke-width="1.2"/>
+<text x="262.0" y="584.5" font-size="12.5" font-weight="normal" fill="#1e293b" text-anchor="middle">GABA</text>
+<rect x="46" y="600" width="76.0" height="26" rx="6" fill="#ffffff" stroke="#e11d48" stroke-width="1.2"/>
+<text x="84.0" y="617.5" font-size="12.5" font-weight="normal" fill="#1e293b" text-anchor="middle">Histamine</text>
+<rect x="129.0" y="600" width="58.0" height="26" rx="6" fill="#ffffff" stroke="#e11d48" stroke-width="1.2"/>
+<text x="158.0" y="617.5" font-size="12.5" font-weight="normal" fill="#1e293b" text-anchor="middle">Orexin</text>
+<rect x="194.0" y="600" width="50.0" height="26" rx="6" fill="#ffffff" stroke="#e11d48" stroke-width="1.2"/>
+<text x="219.0" y="617.5" font-size="12.5" font-weight="normal" fill="#1e293b" text-anchor="middle">BDNF</text>
+<rect x="46" y="633" width="82.0" height="26" rx="6" fill="#ffffff" stroke="#e11d48" stroke-width="1.2"/>
+<text x="87.0" y="650.5" font-size="12.5" font-weight="normal" fill="#1e293b" text-anchor="middle">Adenosine</text>
+<rect x="135.0" y="633" width="161.0" height="26" rx="6" fill="#ffffff" stroke="#e11d48" stroke-width="1.2"/>
+<text x="215.5" y="650.5" font-size="12.5" font-weight="normal" fill="#1e293b" text-anchor="middle">Endocannabinoid (2-AG)</text>
+<rect x="46" y="666" width="66.0" height="26" rx="6" fill="#ffffff" stroke="#e11d48" stroke-width="1.2"/>
+<text x="79.0" y="683.5" font-size="12.5" font-weight="normal" fill="#1e293b" text-anchor="middle">Cortisol</text>
+<path d="M 332 670 L 370 670 L 370 594.0 L 446 594.0" fill="none" stroke="#e11d48" stroke-width="2" stroke-linejoin="round" marker-start="url(#se11d48)" marker-end="url(#me11d48)"/>
+<text x="362" y="632.0" font-size="12" font-weight="600" fill="#e11d48" text-anchor="middle" transform="rotate(-90 362 632.0)">set and read</text>
+<path d="M 332 492 L 405 492 L 405 424 L 446 424" fill="none" stroke="#e11d48" stroke-width="2" stroke-linejoin="round" stroke-dasharray="5 4" marker-end="url(#me11d48)"/>
+<text x="397" y="458.0" font-size="12" font-weight="600" fill="#e11d48" text-anchor="middle" transform="rotate(-90 397 458.0)">read</text>
+<rect x="1330" y="100" width="300" height="448" rx="14" fill="#f8fafc" stroke="#475569" stroke-width="2"/>
+<text x="1346" y="132" font-size="17" font-weight="700" fill="#334155" text-anchor="start">Knowledge store</text>
+<text x="1346" y="152" font-size="12.5" font-weight="normal" fill="#475569" text-anchor="start" font-style="italic">SQLite ki_memory.sqlite3</text>
+<rect x="1346" y="170" width="268" height="52" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.3"/>
+<text x="1480.0" y="192" font-size="14" font-weight="600" fill="#1e293b" text-anchor="middle">Hypotheses</text>
+<text x="1480.0" y="210" font-size="12" font-weight="normal" fill="#475569" text-anchor="middle">sentence, lexical, relation; uncertain to stable</text>
+<rect x="1346" y="232" width="268" height="52" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.3"/>
+<text x="1480.0" y="254" font-size="14" font-weight="600" fill="#1e293b" text-anchor="middle">Learning gaps</text>
+<text x="1480.0" y="272" font-size="12" font-weight="normal" fill="#475569" text-anchor="middle">open, habituated, closed</text>
+<rect x="1346" y="294" width="268" height="52" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.3"/>
+<text x="1480.0" y="316" font-size="14" font-weight="600" fill="#1e293b" text-anchor="middle">Contradictions and revisions</text>
+<text x="1480.0" y="334" font-size="12" font-weight="normal" fill="#475569" text-anchor="middle">cue competition, prediction error</text>
+<rect x="1346" y="356" width="268" height="36" rx="8" fill="#ffffff" stroke="#d97706" stroke-width="1.3"/>
+<text x="1480.0" y="379" font-size="14" font-weight="600" fill="#1e293b" text-anchor="middle">Facts</text>
+<rect x="1346" y="402" width="268" height="36" rx="8" fill="#ffffff" stroke="#d97706" stroke-width="1.3"/>
+<text x="1480.0" y="425" font-size="14" font-weight="600" fill="#1e293b" text-anchor="middle">Relations</text>
+<rect x="1346" y="448" width="268" height="36" rx="8" fill="#ffffff" stroke="#d97706" stroke-width="1.3"/>
+<text x="1480.0" y="471" font-size="14" font-weight="600" fill="#1e293b" text-anchor="middle">Ontology</text>
+<rect x="1346" y="494" width="268" height="36" rx="8" fill="#ffffff" stroke="#d97706" stroke-width="1.3"/>
+<text x="1480.0" y="517" font-size="14" font-weight="600" fill="#1e293b" text-anchor="middle">Questions</text>
+<path d="M 1212 196.0 L 1344 196.0" fill="none" stroke="#2563eb" stroke-width="2" stroke-linejoin="round" marker-end="url(#m2563eb)"/>
+<text x="1290" y="188.0" font-size="12" font-weight="600" fill="#2563eb" text-anchor="middle">hypotheses</text>
+<path d="M 1214 518 L 1272 518 L 1272 258.0 L 1344 258.0" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linejoin="round" stroke-dasharray="5 4" marker-start="url(#s7c3aed)" marker-end="url(#m7c3aed)"/>
+<text x="1264" y="388.0" font-size="12" font-weight="600" fill="#7c3aed" text-anchor="middle" transform="rotate(-90 1264 388.0)">replay, consolidation</text>
+<path d="M 1212 823.0 L 1296 823.0 L 1296 443.0 L 1328 443.0" fill="none" stroke="#d97706" stroke-width="2" stroke-linejoin="round" marker-end="url(#md97706)"/>
+<text x="1310" y="633.0" font-size="12" font-weight="600" fill="#d97706" text-anchor="middle" transform="rotate(90 1310 633.0)">promote, retract</text>
+<path d="M 510 908 L 510 960 L 14 960 L 14 358 L 28 358" fill="none" stroke="#d97706" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6 4" marker-end="url(#md97706)"/>
+<text x="40" y="952" font-size="12" font-weight="600" fill="#d97706" text-anchor="start">question-chunk feedback: open questions steer which chunks are read next</text>
+<text x="30" y="994" font-size="14" font-weight="700" fill="#334155" text-anchor="start">Interfaces and tools</text>
+<rect x="30.0" y="1006" width="305.6" height="60" rx="10" fill="#f1f5f9" stroke="#475569" stroke-width="1.5"/>
+<text x="182.8" y="1031" font-size="14.5" font-weight="700" fill="#334155" text-anchor="middle">Admin GUI</text>
+<text x="182.8" y="1051" font-size="12" font-weight="normal" fill="#475569" text-anchor="middle">live neuromodulators, sleep state, drift report</text>
+<path d="M 336.6 1036 L 351.6 1036" fill="none" stroke="#475569" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m475569)"/>
+<rect x="353.6" y="1006" width="305.6" height="60" rx="10" fill="#f1f5f9" stroke="#475569" stroke-width="1.5"/>
+<text x="506.40000000000003" y="1031" font-size="14.5" font-weight="700" fill="#334155" text-anchor="middle">CSV logger</text>
+<text x="506.40000000000003" y="1051" font-size="12" font-weight="normal" fill="#475569" text-anchor="middle">displayed values per system cycle</text>
+<path d="M 660.2 1036 L 675.2 1036" fill="none" stroke="#475569" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m475569)"/>
+<rect x="677.2" y="1006" width="305.6" height="60" rx="10" fill="#f1f5f9" stroke="#475569" stroke-width="1.5"/>
+<text x="830.0" y="1031" font-size="14.5" font-weight="700" fill="#334155" text-anchor="middle">BrainStem CSV Viewer</text>
+<text x="830.0" y="1051" font-size="12" font-weight="normal" fill="#475569" text-anchor="middle">separate app, offline plots</text>
+<rect x="1000.8000000000001" y="1006" width="305.6" height="60" rx="10" fill="#f1f5f9" stroke="#475569" stroke-width="1.5"/>
+<text x="1153.6000000000001" y="1031" font-size="14.5" font-weight="700" fill="#334155" text-anchor="middle">User GUI</text>
+<text x="1153.6000000000001" y="1051" font-size="12" font-weight="normal" fill="#475569" text-anchor="middle">read-only dialogue</text>
+<rect x="1324.4" y="1006" width="305.6" height="60" rx="10" fill="#f1f5f9" stroke="#475569" stroke-width="1.5"/>
+<text x="1477.2" y="1031" font-size="14.5" font-weight="700" fill="#334155" text-anchor="middle">System test</text>
+<text x="1477.2" y="1051" font-size="12" font-weight="normal" fill="#475569" text-anchor="middle">isolated database snapshot</text>
+</svg>
