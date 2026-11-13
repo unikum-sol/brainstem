@@ -123,8 +123,8 @@ Every promoted fact, relation, category and question carries a complete provenan
 ---
 ### Architecture
 
-<a href="assets/Project-Structure.png" target="_blank">
-  <img src="assets/Project-Structure.png" alt="Project-Structure" width="500" />
+<a href="assets/BrainStem-Architecture.png" target="_blank">
+  <img src="assets/BrainStem-Architecture.png" alt="BrainStem-Architecture" width="500" />
 </a>
 
 BrainStem does not run as a continuously coupled system of differential equations. It traverses a cyclic state graph: each phase activates a few dominant neuromodulators while the rest stay passive. This sequential design prevents interaction cascades and keeps debugging deterministic.
