@@ -157,8 +157,11 @@ def compute_signals(con):
 
     eff_vals = _read_recent(con, "phase6b_effectiveness_events", "effectiveness_score", 5)
     effectiveness = (sum(eff_vals) / len(eff_vals)) if eff_vals else 0.0
-    bias_vals = _read_recent(con, "phase6c_bias_history", "exploration_bias", 6)
-    bias_oscillation = _clamp(statistics.pstdev(bias_vals) * 2) if len(bias_vals) >= 2 else 0.0
+    bias_oscillation = 0.0
+    for column in ("plasticity_level", "exploration_bias", "consolidation_bias", "inhibition_bias", "revision_bias"):
+        bias_vals = _read_recent(con, "phase6c_bias_history", column, 6)
+        if len(bias_vals) >= 2:
+            bias_oscillation = max(bias_oscillation, _clamp(statistics.pstdev(bias_vals) * 2))
     nm = _read_neuromod(con); glu, gaba = nm["glutamate"], nm["gaba"]
     ei_saturation = _clamp(max(abs(glu - 0.5), abs(gaba - 0.5)) * 2 - 0.6)
     return {"threshold_drift": threshold_drift,
@@ -208,10 +211,9 @@ def _apply_stage2_nudges(con, recommended, allostatic_load):
         return False, [{"reason": "load_or_recommendation_gate"}]
     if not _table_exists(con, "phase6a_neuromodulated_sleep_state"):
         return False, [{"reason": "neuromodulator_state_missing"}]
-    allowed = {"dopamine", "serotonin", "noradrenaline", "acetylcholine", "glutamate", "gaba", "adenosine"}
+    allowed = {"dopamine", "serotonin", "noradrenaline", "acetylcholine", "glutamate", "gaba"}
     st = _read_kv(con, "phase6a_neuromodulated_sleep_state")
     ei = _read_kv(con, "phase7c_state") if _table_exists(con, "phase7c_state") else {}
-    ade = _read_kv(con, "phase7a_adenosine_state") if _table_exists(con, "phase7a_adenosine_state") else {}
     remaining = cycle_budget
     changes = []
     savepoint = "cortisol_stage2_guarded_apply"
@@ -223,18 +225,13 @@ def _apply_stage2_nudges(con, recommended, allostatic_load):
             raw = _to_float(recommended.get(key), 0.0)
             delta = max(-nudge_cap, min(nudge_cap, raw))
             delta = max(-remaining, min(remaining, delta))
-            if key == "adenosine":
-                if not _table_exists(con, "phase7a_adenosine_state"):
-                    continue
-                table, state_key = "phase7a_adenosine_state", "adenosine_level"
-                old = _clamp(_to_float(ade.get(state_key), 0.0))
-            elif key in ("glutamate", "gaba") and _table_exists(con, "phase7c_state"):
+            if key in ("glutamate", "gaba") and _table_exists(con, "phase7c_state"):
                 table, state_key = "phase7c_state", key + "_state"
                 old = _clamp(_to_float(ei.get(state_key, st.get(key)), 0.5))
             else:
                 table, state_key = "phase6a_neuromodulated_sleep_state", key
                 old = _clamp(_to_float(st.get(key), 0.5))
-            low, high = ((0.0, 1.0) if key == "adenosine" else (0.05, 0.95))
+            low, high = 0.05, 0.95
             new_value = _clamp(old + delta, low, high)
             actual = new_value - old
             if abs(actual) <= 1e-12:
@@ -294,9 +291,9 @@ def run_stability_watch(con, cycle_index=None):
     if st["drift"] > t_drift:
         cands.append(("threshold_drift_rising", "threshold_drift", st["drift"], {"glutamate": nudge, "gaba": -nudge}))
     if st["oscillation"] > t_osc:
-        cands.append(("oscillation", "bias_oscillation", st["oscillation"], {"gaba": nudge*0.5, "adenosine": nudge}))
+        cands.append(("oscillation", "bias_oscillation", st["oscillation"], {"gaba": nudge*0.5, "serotonin": nudge*0.5}))
     if st["saturation"] > t_sat:
-        cands.append(("ei_saturation", "ei_saturation", st["saturation"], {"adenosine": nudge, "gaba": nudge*0.5}))
+        cands.append(("ei_saturation", "ei_saturation", st["saturation"], {"gaba": nudge*0.5, "glutamate": -nudge*0.5}))
     if cands:
         cands.sort(key=lambda x: x[2], reverse=True)
         regime, dominant, _mag, rec = cands[0]

@@ -30,7 +30,15 @@ def con_from(obj=None):
             except Exception: pass
     return sqlite3.connect("ki_memory.sqlite3")
 
-def table(cur,t): return cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?",(t,)).fetchone() is not None
+# Positive table-existence answers are kept per connection: tables are
+# never dropped while the learning loop runs, so a table seen once stays.
+_KNOWN_TABLES = set()
+def table(cur,t):
+    key=(id(getattr(cur,'connection',cur)),t)
+    if key in _KNOWN_TABLES: return True
+    found=cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?",(t,)).fetchone() is not None
+    if found: _KNOWN_TABLES.add(key)
+    return found
 def cols(cur,t): return [r[1] for r in cur.execute(f"PRAGMA table_info({t})").fetchall()] if table(cur,t) else []
 def count(cur,t): return cur.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] if table(cur,t) else 0
 
@@ -123,7 +131,7 @@ def selected_gaps(cur,limit=80):
     if 'phase5f_window_effectiveness' in c: order.append('COALESCE(phase5f_window_effectiveness,0) ASC')
     for x in ['priority','phase5e_expected_gain','strategy_effectiveness_score','uncertainty','severity']:
         if x in c: order.append(f'COALESCE({x},0) DESC')
-    rows=cur.execute(f"SELECT {','.join(fields)} FROM internal_learning_gaps WHERE COALESCE(status,'open') NOT IN ('resolved','closed') ORDER BY {','.join(order) if order else 'id DESC'} LIMIT ?",(limit,)).fetchall()
+    rows=cur.execute(f"SELECT {','.join(fields)} FROM internal_learning_gaps WHERE COALESCE(status,'open') NOT IN ('resolved','closed','habituated') ORDER BY {','.join(order) if order else 'id DESC'} LIMIT ?",(limit,)).fetchall()
     names=[d[0] for d in cur.description]
     return [dict(zip(names,r)) for r in rows]
 

@@ -150,6 +150,7 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                             ('habituated_at', 'INTEGER'),
                             ('stagnant_streak', 'INTEGER DEFAULT 0'),
                             ('evidence_count_at_last_gain', 'INTEGER'),
+                            ('last_gain_cycle', 'INTEGER'),
                             ('updated_at', 'INTEGER DEFAULT 0'),
                             ('created_at', 'INTEGER')],
  'phase5g_experiment_outcomes': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
@@ -727,6 +728,14 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {'facts': [('id', 'INTEGER PRI
                                ('driver_metric', 'TEXT'),
                                ('driver_value', 'REAL'),
                                ('reason', 'TEXT')],
+ 'phase6c_bias_history': [('id', 'INTEGER PRIMARY KEY AUTOINCREMENT'),
+                          ('created_at', 'INTEGER'),
+                          ('cycle_index', 'INTEGER'),
+                          ('plasticity_level', 'REAL'),
+                          ('exploration_bias', 'REAL'),
+                          ('consolidation_bias', 'REAL'),
+                          ('inhibition_bias', 'REAL'),
+                          ('revision_bias', 'REAL')],
  'phase6d_state': [('key', 'TEXT PRIMARY KEY'), ('value', 'TEXT'), ('updated_at', 'INTEGER')],
  'phase6d_meta_metaplasticity_state': [('parameter_key', 'TEXT PRIMARY KEY'),
                                        ('kind', 'TEXT'),
@@ -1087,6 +1096,12 @@ SCHEMA_INDEXES = [('idx_chunk_attention_scores_chunk_id_uniq', 'chunk_attention_
 
 
 SCHEMA_INDEXES.extend([
+    ('idx_bs_internal_learning_gaps_status','internal_learning_gaps',('status',),False),
+    # Covering index: 5d averages and 6a counts over all gaps read it instead of the wide rows.
+    ('idx_bs_gaps_resolution_uncertainty','internal_learning_gaps',('resolution_score','uncertainty'),False),
+    ('idx_bs_contradictions_status','contradictions',('status',),False),
+    # Contradiction detection looks up a gap's row by subject and relation.
+    ('idx_bs_contradictions_subject_relation','contradictions',('subject','relation'),False),
     ('idx_semantic_hypothesis_role_id','context_hypotheses',('role','id'),False),
     ('idx_semantic_contrast_hypotheses','semantic_text_contrasts',('hypothesis_a','hypothesis_b'),False),
     ('idx_semantic_graduation_hypothesis','stageb_graduation_events',('hypothesis_id','id'),False),
@@ -1126,6 +1141,35 @@ SCHEMA_EXPRESSION_INDEXES = [
      'COALESCE(outcome_score,0) DESC, COALESCE(overlap_score,0) ASC'),
     ('idx_bs_context_hypotheses_uncertainty', 'context_hypotheses', ('uncertainty',),
      'COALESCE(uncertainty,0)'),
+    # Phase 5d backpropagates to the 250 gaps of highest priority.
+    ('idx_bs_gaps_priority_order', 'internal_learning_gaps', ('priority',),
+     'COALESCE(priority,0)'),
+]
+
+# Partial indexes over the gap table. Almost all gaps are habituated (about
+# 274,000 of 276,000 in November 2026), but the strategy phases only read the
+# active ones. SQLite uses a partial index only if the query contains the
+# same WHERE expression, so each entry names the queries it serves; a query
+# that changes its filter must change the entry too. Same rows, same results
+# (checked on 16 November 2026); about 2 s less per cycle.
+SCHEMA_PARTIAL_INDEXES = [
+    # 5e, 5i and 6a select active gaps.
+    ('idx_bs_gaps_active', 'internal_learning_gaps', ('status',),
+     "COALESCE(status,'open') NOT IN ('closed','resolved','habituated')"),
+    # 5f (selected_gaps) lists the excluded statuses in a different order.
+    ('idx_bs_gaps_active_5f', 'internal_learning_gaps', ('status',),
+     "COALESCE(status,'open') NOT IN ('resolved','closed','habituated')"),
+    # 5g selects open gaps by a positive list.
+    ('idx_bs_gaps_active_5g', 'internal_learning_gaps', ('status',),
+     "COALESCE(status,'open') IN ('open','internal_open','persistent_gap','monitoring','')"),
+    # Gap detection fills last_gain_cycle, 5g fills priority, gap detection
+    # resets stale resolution scores; each only touches the few rows that need it.
+    ('idx_bs_gaps_gain_unset', 'internal_learning_gaps', ('last_gain_cycle',),
+     "last_gain_cycle IS NULL"),
+    ('idx_bs_gaps_priority_unset', 'internal_learning_gaps', ('priority',),
+     "priority IS NULL"),
+    ('idx_bs_gaps_resolution_stale', 'internal_learning_gaps', ('resolution_score', 'status'),
+     "COALESCE(resolution_score,-1) <> (CASE WHEN status='closed' THEN 1.0 ELSE 0.0 END)"),
 ]
 
 
@@ -1133,6 +1177,9 @@ def _apply_schema_indexes(con):
     for name, table, columns, expr in SCHEMA_EXPRESSION_INDEXES:
         if _table_exists(con, table) and all(c in _columns(con, table) for c in columns):
             con.execute("CREATE INDEX IF NOT EXISTS " + name + " ON " + table + "(" + expr + ")")
+    for name, table, columns, where in SCHEMA_PARTIAL_INDEXES:
+        if _table_exists(con, table) and all(c in _columns(con, table) for c in columns):
+            con.execute("CREATE INDEX IF NOT EXISTS " + name + " ON " + table + "(id) WHERE " + where)
     for name, table, columns, unique in SCHEMA_INDEXES:
         if not _table_exists(con, table):
             continue

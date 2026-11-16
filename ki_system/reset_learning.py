@@ -230,6 +230,17 @@ def _create_full_backup(db_path: Path) -> Tuple[Path, Path, Dict[str, Any]]:
         raise
 
 
+# Project-owned triggers that only maintain derived summaries of learning
+# tables (v8_outcome_aggregates). They are dropped together with the learning
+# state; the summary module rebuilds table and triggers on first use, because
+# its build state is wiped as well. Any other trigger still blocks the reset.
+RESETTABLE_TRIGGERS = {
+    "trg_phase5g_outcome_aggregates_ins",
+    "trg_phase5g_outcome_aggregates_upd",
+    "trg_phase5g_outcome_aggregates_del",
+}
+
+
 def _trigger_rows(con: sqlite3.Connection) -> List[Tuple[Any, ...]]:
     return con.execute(
         "SELECT name,tbl_name,sql FROM sqlite_master WHERE type='trigger' ORDER BY name"
@@ -316,8 +327,10 @@ def build_plan(db_path: Path) -> Dict[str, Any]:
         if not _checks_ok(checks):
             raise ResetError("database precheck failed: " + repr(checks))
         trigger_rows = _trigger_rows(con)
-        if trigger_rows:
-            raise ResetError("database contains triggers; reset refuses implicit trigger side effects")
+        unknown = [row[0] for row in trigger_rows if row[0] not in RESETTABLE_TRIGGERS]
+        if unknown:
+            raise ResetError("database contains unknown triggers; reset refuses implicit trigger side effects: "
+                             + ", ".join(unknown))
         keep, wipe = _classification(con)
         kept_snapshot = _snapshot_kept(con, keep)
         wipe_plan = [{"table": table, "rows": _rowcount(con, table)} for table in wipe]
@@ -328,6 +341,7 @@ def build_plan(db_path: Path) -> Dict[str, Any]:
             "wipe_plan": wipe_plan,
             "pre_checks": checks,
             "trigger_count": len(trigger_rows),
+            "dropped_triggers": [row[0] for row in trigger_rows],
         }
     finally:
         con.close()
@@ -371,6 +385,9 @@ def reset_learning(db_path: str = "ki_memory.sqlite3", dry_run: bool = True) -> 
             con.execute("PRAGMA foreign_keys=OFF")
             con.execute("BEGIN IMMEDIATE")
             try:
+                for name in plan.get("dropped_triggers", []):
+                    con.execute("DROP TRIGGER IF EXISTS " + _quote_identifier(name))
+                result["dropped_triggers"] = list(plan.get("dropped_triggers", []))
                 for item in plan["wipe_plan"]:
                     table = item["table"]
                     before = _rowcount(con, table)

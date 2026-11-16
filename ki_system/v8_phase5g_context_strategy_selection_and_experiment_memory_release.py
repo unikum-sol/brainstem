@@ -57,7 +57,7 @@ def ensure_schema(mem=None):
         cols=_cols(cur,'internal_learning_gaps'); fallback='0.5'
         for cand in ('severity','active_learning_priority','progress_priority','reread_priority'):
             if cand in cols: fallback=cand; break
-        cur.execute(f'UPDATE internal_learning_gaps SET priority=COALESCE(priority,{fallback},0.5)')
+        cur.execute(f'UPDATE internal_learning_gaps SET priority=COALESCE({fallback},0.5) WHERE priority IS NULL')
         changes.append('backfill:internal_learning_gaps.priority')
     for t,c in [('phase5g_context_strategy_state','key'),('phase5g_strategy_selection_memory','memory_key'),('phase5g_neuromodulator_strategy_profiles','profile_key'),('internal_learning_gaps','gap_key'),('reading_queue','chunk_id'),('chunk_attention_scores','chunk_id')]: _unique(cur,t,c,changes)
     for k,v in {'phase':PHASE,'learning_mode':LEARNING_MODE,'no_word_blacklists':'true','fact_promotion':'disabled','direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'stageb_promoted_questions'}.items(): cur.execute('INSERT OR REPLACE INTO phase5g_context_strategy_state(key,value,updated_at) VALUES(?,?,?)',(k,str(v),now))

@@ -312,23 +312,23 @@ def _apply_anandamide_ltd(con, anandamide_level, cycle_index, neuromod):
     return {'pulled': pulled, 'affected_keys': affected, 'effective_pull': effective_pull}
 
 def _apply_retrograde_dampening(con, two_ag_level, cycle_index, neuromod):
-    if two_ag_level < 0.15: return {"dampened": 0, "reason": "two_ag_below_threshold"}
-    if not _table_exists(con, "phase6c_meta_control_parameters"):
-        return {"dampened": 0, "reason": "phase6c_missing"}
+    """2-AG dampens the learning rates of the meta-parameter regulators for as
+    long as it is elevated: the factor is recomputed from the decaying 2-AG
+    level every cycle and Phase 6c applies it to every regulation step.
+    Literatur: Wilson & Nicoll 2001; Castillo et al. 2012"""
     strength = _get_ecb(con, "retrograde_dampening_strength", 0.6)
-    factor = _clamp(1.0 - strength * two_ag_level, 0.1, 1.0)
-    rows = con.execute("SELECT parameter_key, learning_rate FROM phase6c_meta_control_parameters").fetchall()
-    dampened = 0
-    for r in rows:
-        key = r[0]; old_lr = _to_float(r[1], 0.05); new_lr = max(0.005, old_lr * factor)
-        if abs(new_lr - old_lr) < 1e-9: continue
-        con.execute("UPDATE phase6c_meta_control_parameters SET learning_rate=?, updated_at=? WHERE parameter_key=?",
-                    (new_lr, _now(), key))
-        _log_retrograde_signal(con, cycle_index, "2ag_dampens_6c_lr", "phase6c_meta_control",
-            (old_lr - new_lr), key, old_lr, new_lr,
-            "2ag=" + str(round(two_ag_level,4)) + "_factor=" + str(round(factor,4)),
-            "gaba", neuromod.get("gaba",0.3))
-        dampened += 1
+    factor = _clamp(1.0 - strength * two_ag_level, 0.1, 1.0) if two_ag_level >= 0.15 else 1.0
+    previous = _get_ecb(con, "regulator_lr_factor", 1.0)
+    _set_ecb(con, "regulator_lr_factor", round(factor, 6))
+    if factor >= 1.0:
+        con.commit()
+        return {"dampened": 0, "reason": "two_ag_below_threshold", "factor": 1.0}
+    rows = con.execute("SELECT parameter_key FROM phase6c_meta_control_parameters").fetchall() if _table_exists(con, "phase6c_meta_control_parameters") else []
+    dampened = len(rows)
+    _log_retrograde_signal(con, cycle_index, "2ag_dampens_6c_lr", "phase6c_meta_control",
+        (1.0 - factor), "regulator_lr_factor", previous, factor,
+        "2ag=" + str(round(two_ag_level,4)) + "_factor=" + str(round(factor,4)),
+        "gaba", neuromod.get("gaba",0.3))
     if dampened > 0:
         _log_gain_event(con, cycle_index, "2ag_retrograde_dampening",
             "2ag_level_high", "reduce_6c_learning_rates",

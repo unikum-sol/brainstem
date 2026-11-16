@@ -154,13 +154,31 @@ DERIVED_SIGNALS = {
 DERIVED_SPAN_TOLERANCE = 0.02  # small allowance for clamping/float noise
 
 
+# Start and end of a run are compared by the means of the first and the last
+# tenth of the cycles (at least one, at most 150 cycles), not by single
+# values: signals that oscillate with the sleep-wake rhythm or as a reward
+# prediction error would otherwise be judged by the phase their first and
+# last cycle happen to fall into.
+WINDOW_SHARE = 0.1
+WINDOW_MAX = 150
+BOUND_LOW, BOUND_HIGH = 0.02, 0.98
+
+
+def _window(n):
+    return max(1, min(WINDOW_MAX, int(n * WINDOW_SHARE)))
+
+
 def _classify_single_signal(vals):
-    first = vals[0]; last = vals[-1]
+    w = _window(len(vals))
+    first = sum(vals[:w]) / w; last = sum(vals[-w:]) / w
     delta = last - first
     minv = min(vals); maxv = max(vals); span = maxv - minv
+    at_bound_end = last >= BOUND_HIGH or last <= BOUND_LOW
+    at_bound_start = first >= BOUND_HIGH or first <= BOUND_LOW
     if span < 0.03:
         verdict = "stabil"
-    elif (maxv >= 0.98 or minv <= 0.02) and abs(delta) > 0.1:
+    elif at_bound_end and not at_bound_start and abs(delta) > 0.1:
+        # Divergence: the signal moved into a boundary and stays there.
         verdict = "DIVERGIERT"
     elif abs(delta) > 0.05:
         verdict = "konvergiert"
@@ -196,10 +214,11 @@ def compute_drift(rows):
         vals = [_to_float(r.get(k, 0.0)) for r in rows]
         if not vals:
             continue
-        first = vals[0]; last = vals[-1]
+        w = _window(len(vals))
+        first = sum(vals[:w]) / w; last = sum(vals[-w:]) / w
         delta = last - first
         minv = min(vals); maxv = max(vals); span = maxv - minv
-        dpc = delta / max(1, n - 1)
+        dpc = delta / max(1, n - w)
         if k in count_signals:
             mean = sum(vals) / len(vals)
             base = mean if mean > 1e-6 else 1.0
@@ -232,6 +251,7 @@ def compute_drift(rows):
         if verdict == "DIVERGIERT": any_div = True
         elif verdict == "konvergiert": any_conv = True
         out[k] = {"first": round(first, 4), "last": round(last, 4), "delta": round(delta, 4),
+                  "first_value": round(vals[0], 4), "last_value": round(vals[-1], 4), "window": w,
                   "drift_per_cycle": round(dpc, 5), "min": round(minv, 4), "max": round(maxv, 4),
                   "span": round(span, 4), "verdict": verdict}
     overall = "DIVERGENZ-WARNUNG" if any_div else ("konvergenz" if any_conv else "kein_drift")
@@ -241,6 +261,7 @@ def write_report(rows, csv_path):
     lines = []
     lines.append("=" * 60)
     lines.append("DRIFT-REPORT  (Zyklen: %d)" % len(rows))
+    lines.append("first/last = Mittel der ersten/letzten %d Zyklen" % _window(len(rows)))
     lines.append("=" * 60)
     lines.append("%-20s %8s %8s %8s %8s  %s" % ("Signal", "first", "last", "delta", "span", "Urteil"))
     for k, d in drift.items():
@@ -276,7 +297,22 @@ def _selftest():
     d2, ov2 = compute_drift(stable)
     e = "PASS" if ov2 == "kein_drift" else "FAIL(" + ov2 + ")"
     print("  stable overall kein_drift:", e)
-    print("OVERALL:", "ALL PASS" if all(x == "PASS" for x in (a, b, c, e)) else "SOME FAILED")
+    # A signal resting near 0 with one late fluctuation must not count as
+    # divergence (first-vs-last artefact of the old verdict).
+    rest = []
+    for i in range(200):
+        rest.append({"cycle": i + 1, "ts": 0, "allostatic_load": 0.0 if i == 0 else (0.1 + 0.05 * ((i * 7) % 5) / 4.0)})
+    rest[-1]["allostatic_load"] = 0.14
+    d3, ov3 = compute_drift(rest)
+    f = "PASS" if d3["allostatic_load"]["verdict"] != "DIVERGIERT" else "FAIL"
+    print("  resting signal with late fluctuation not DIVERGIERT:", f)
+    # Oscillating signal (sleep-wake rhythm) without trend stays stable.
+    osc = [{"cycle": i + 1, "ts": 0, "noradrenaline": 0.63 if (i // 20) % 2 == 0 else 0.21} for i in range(400)]
+    osc[-1]["noradrenaline"] = 0.21
+    d4, ov4 = compute_drift(osc)
+    g = "PASS" if d4["noradrenaline"]["verdict"] == "stabil" else "FAIL(" + d4["noradrenaline"]["verdict"] + ")"
+    print("  oscillating signal without trend stabil:", g)
+    print("OVERALL:", "ALL PASS" if all(x == "PASS" for x in (a, b, c, e, f, g)) else "SOME FAILED")
 if __name__ == "__main__":
     import sys
     if "--selftest" in sys.argv:

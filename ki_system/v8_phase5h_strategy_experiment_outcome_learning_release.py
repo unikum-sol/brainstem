@@ -55,8 +55,17 @@ def _get_db(mem_or_conn: Any) -> sqlite3.Connection:
     return sqlite3.connect("ki_memory.sqlite3")
 
 
+# Positive table-existence answers are kept per connection: tables are
+# never dropped while the learning loop runs, so a table seen once stays.
+_KNOWN_TABLES = set()
 def _table_exists(db: sqlite3.Connection, table: str) -> bool:
-    return db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
+    key = (id(db), table)
+    if key in _KNOWN_TABLES:
+        return True
+    found = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
+    if found:
+        _KNOWN_TABLES.add(key)
+    return found
 
 
 def _cols(db: sqlite3.Connection, table: str) -> List[str]:
@@ -368,12 +377,14 @@ def _current_controls(db: sqlite3.Connection) -> Dict[str, float]:
 
 
 def _read_status(db: sqlite3.Connection, chunk_id: Optional[int]) -> str:
-    if chunk_id is None or not _table_exists(db, 'reading_queue'):
+    if chunk_id is None:
         return 'unknown'
-    cols = _cols(db, 'reading_queue')
-    if 'status' not in cols or 'chunk_id' not in cols:
+    # Called once per experiment: query directly instead of re-reading the
+    # schema every time (reading_queue is part of the central schema).
+    try:
+        r = db.execute("SELECT status FROM reading_queue WHERE chunk_id=?", (chunk_id,)).fetchone()
+    except sqlite3.OperationalError:
         return 'unknown'
-    r = db.execute("SELECT status FROM reading_queue WHERE chunk_id=?", (chunk_id,)).fetchone()
     return str(r[0]) if r and r[0] is not None else 'unknown'
 
 
@@ -398,6 +409,41 @@ def _memory_recommendation(avg_outcome: float, avg_closure: float, no_cand: floa
     return 'observe_and_refine_strategy'
 
 
+_OUTCOME_FIELDS = ("read_status", "closure_delta", "no_candidate_rate", "overlap_score", "strategy_score", "outcome_score")
+
+
+def _gap_closed(db: sqlite3.Connection, gap_id: Any) -> bool:
+    try:
+        r = db.execute("SELECT status FROM internal_learning_gaps WHERE id=?", (int(gap_id),)).fetchone()
+    except Exception:
+        return False
+    return bool(r) and str(r[0]) in ('closed', 'resolved')
+
+
+def _existing_outcome(db: sqlite3.Connection, key: str) -> Optional[tuple]:
+    """Stored evaluation of an outcome key, so that an experiment whose
+    evaluation has not changed since the last cycle is not rewritten."""
+    try:
+        r = db.execute("SELECT " + ",".join(_OUTCOME_FIELDS) + " FROM phase5g_experiment_outcomes WHERE outcome_key=?", (key,)).fetchone()
+    except Exception:
+        return None
+    return tuple(r) if r else None
+
+
+def _same_evaluation(old: Optional[tuple], new: tuple) -> bool:
+    if old is None:
+        return False
+    if str(old[0]) != str(new[0]):
+        return False
+    for a, b in zip(old[1:], new[1:]):
+        try:
+            if abs(float(a) - float(b)) > 1e-12:
+                return False
+        except Exception:
+            return False
+    return True
+
+
 def evaluate_strategy_experiment_outcomes(mem_or_conn: Any = None, limit: int = 1200) -> Dict[str, Any]:
     db = _get_db(mem_or_conn)
     ensure_schema(db)
@@ -405,7 +451,10 @@ def evaluate_strategy_experiment_outcomes(mem_or_conn: Any = None, limit: int = 
     controls = _current_controls(db)
     experiments = _fetch_recent_experiments(db, limit=limit)
     outcomes_written = 0
+    outcomes_changed = 0
     events_written = 0
+    # Recent experiments are re-evaluated every cycle because the read status
+    # of their target chunk can change; only changed evaluations are written.
     outcome_scores: List[float] = []
     closure_scores: List[float] = []
     no_cand_scores: List[float] = []
@@ -441,7 +490,14 @@ def evaluate_strategy_experiment_outcomes(mem_or_conn: Any = None, limit: int = 
             no_candidate_rate = _clamp(explicit_no)
             if read_status == 'read_no_candidate':
                 no_candidate_rate = max(no_candidate_rate, 1.0)
-        closure_delta = _clamp(_first(e, ['closure_delta','phase5g_closure_delta','phase5f_closure_delta'], 0.0), -1, 1)
+        # Phase 5g stores the closure progress of the gap in
+        # observed_closure_delta; the plain closure_delta column of the
+        # experiment table is never written. An experiment whose gap has
+        # closed since then receives the full observed closure (the outcome
+        # itself, not a prediction, drives the learning; Schultz 1997).
+        closure_delta = _clamp(_first(e, ['observed_closure_delta','phase5g_closure_delta','phase5f_closure_delta'], 0.0), -1, 1)
+        if gap_id is not None and _gap_closed(db, gap_id):
+            closure_delta = 1.0
         overlap_score = _clamp(_first(e, ['overlap_score','phase5g_overlap_score','phase5f_overlap_score'], 0.5))
         strategy_score = _clamp(_first(e, ['strategy_score','phase5g_strategy_score','phase5f_score','score'], 0.5))
         outcome_score = _clamp(0.45*max(closure_delta,0) + 0.25*(1-no_candidate_rate) + 0.20*(1-overlap_score) + 0.10*strategy_score)
@@ -459,6 +515,11 @@ def evaluate_strategy_experiment_outcomes(mem_or_conn: Any = None, limit: int = 
         exp_key = str(_first(e, ['experiment_key'], f'exp:{rowid}:{selected_strategy}:{target_chunk}'))
         outcome_key = f'{exp_key}:outcome'
         details = {'source':'phase5h','read_status':read_status,'rowid':rowid,'controls':controls}
+        outcomes_written += 1
+        outcome_scores.append(outcome_score); closure_scores.append(max(closure_delta,0)); no_cand_scores.append(no_candidate_rate); overlap_scores.append(overlap_score)
+        if _same_evaluation(_existing_outcome(db, outcome_key), (read_status, closure_delta, no_candidate_rate, overlap_score, strategy_score, outcome_score)):
+            continue
+        outcomes_changed += 1
         db.execute("""
             INSERT INTO phase5g_experiment_outcomes(
                 experiment_key,outcome_key,gap_id,gap_key,gap_type,role,center_chunk_id,target_chunk_id,
@@ -479,8 +540,6 @@ def evaluate_strategy_experiment_outcomes(mem_or_conn: Any = None, limit: int = 
             controls['learning_rate'],controls['error_weight'],controls['revision_pressure'],controls['exploration_pressure'],controls['inhibition_level'],controls['consolidation_gain'],
             controls['dopamine'],controls['serotonin'],controls['glutamate'],controls['gaba'],controls['noradrenaline'],controls['acetylcholine'],1,_j(details),now,now
         ))
-        outcomes_written += 1
-        outcome_scores.append(outcome_score); closure_scores.append(max(closure_delta,0)); no_cand_scores.append(no_candidate_rate); overlap_scores.append(overlap_score)
         try:
             if _table_exists(db, 'phase5g_strategy_experiments'):
                 db.execute("UPDATE phase5g_strategy_experiments SET phase5h_outcome_score=?, phase5h_outcome_label=?, phase5h_last_evaluated_at=?, phase5h_memory_key=?, phase5h_reason=? WHERE rowid=?", (outcome_score, outcome_label, now, f'{selected_strategy}:{gap_type}:{role}', recommendation, rowid))
@@ -532,17 +591,6 @@ def evaluate_strategy_experiment_outcomes(mem_or_conn: Any = None, limit: int = 
                     details=excluded.details, last_seen=excluded.last_seen, updated_at=excluded.updated_at
             """, memory_values)
             memory_updates += 1
-            # Backpropagate to matching gaps/chunks for future selection.
-            if _table_exists(db, 'internal_learning_gaps'):
-                try:
-                    db.execute("UPDATE internal_learning_gaps SET phase5h_strategy_outcome_score=?, phase5h_strategy_memory_key=?, phase5h_last_outcome_at=?, phase5h_recommendation=?, phase5h_reason=? WHERE COALESCE(gap_type,'unknown_gap')=? AND COALESCE(role,'unknown_role')=?", (_clamp(avg_out), key, now, rec, PHASE, gap_type, role))
-                except Exception:
-                    pass
-            if _table_exists(db, 'chunk_attention_scores'):
-                try:
-                    db.execute("UPDATE chunk_attention_scores SET phase5h_strategy_outcome_score=?, phase5h_strategy_memory_key=?, phase5h_last_outcome_at=?, phase5h_recommendation=?, phase5h_reason=? WHERE COALESCE(phase5g_selected_strategy,phase5f_window_strategy,'')=?", (_clamp(avg_out), key, now, rec, PHASE, strategy))
-                except Exception:
-                    pass
             # Update neuromodulator strategy profiles if available
             if _table_exists(db, 'phase5g_neuromodulator_strategy_profiles'):
                 try:
@@ -558,7 +606,7 @@ def evaluate_strategy_experiment_outcomes(mem_or_conn: Any = None, limit: int = 
     state = {
         'phase':PHASE,'learning_mode':LEARNING_MODE,'no_word_blacklists':'true','fact_promotion':'disabled',
         'direct_fact_writes':'disabled','direct_relation_writes':'disabled','question_generation':'stageb_promoted_questions',
-        'last_experiments_seen':str(len(experiments)),'last_outcomes_written':str(outcomes_written),'last_memory_updates':str(memory_updates),
+        'last_experiments_seen':str(len(experiments)),'last_outcomes_written':str(outcomes_written),'last_outcomes_changed':str(outcomes_changed),'last_memory_updates':str(memory_updates),
         'last_avg_outcome_score':str(round(avg_out,6)),'last_avg_closure_delta':str(round(avg_cl,6)),
         'last_avg_no_candidate_rate':str(round(avg_no,6)),'last_avg_overlap_score':str(round(avg_ov,6)),'last_recommendation':recommendation
     }

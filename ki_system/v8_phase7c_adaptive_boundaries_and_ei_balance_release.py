@@ -236,11 +236,24 @@ def _read_meta_params(con):
 
 def _get_streaks(con, key):
     row = con.execute(
-        "SELECT min_streak, max_streak, mid_streak FROM phase7c_parameter_streaks WHERE parameter_key=?",
+        "SELECT min_streak, max_streak, mid_streak, last_value FROM phase7c_parameter_streaks WHERE parameter_key=?",
         (key,)).fetchone()
     if row is None:
-        return 0, 0, 0
-    return _to_int(row[0]), _to_int(row[1]), _to_int(row[2])
+        return 0, 0, 0, None
+    return _to_int(row[0]), _to_int(row[1]), _to_int(row[2]), (None if row[3] is None else _to_float(row[3]))
+
+
+def _default_widths():
+    """Width of each meta parameter's calibrated range (Phase 6c defaults)."""
+    try:
+        from ki_system.v8_phase6c_bias_persistence_and_self_regulating_meta_release import META_PARAMETER_DEFAULTS
+    except Exception:
+        return {}
+    return {p["parameter_key"]: float(p["max_value"]) - float(p["min_value"]) for p in META_PARAMETER_DEFAULTS}
+
+
+# A range never contracts below this share of its calibrated width.
+MIN_RANGE_SHARE = 0.5
 
 def _set_streaks(con, key, mn, mx, mid, last_value):
     con.execute(
@@ -268,18 +281,31 @@ def _update_streaks_and_adapt(con, cycle_index, neuromod):
     da = neuromod["dopamine"]; na = neuromod["noradrenaline"]; sero = neuromod["serotonin"]
     expansions, contractions = [], []
 
+    widths = _default_widths()
     for p in params:
         key = p["key"]; cur = p["current"]; mn = p["min"]; mx = p["max"]
+        hard_min, hard_max = HARD_BOUNDARIES.get(key, (0.0, 1.0))
+        min_width = MIN_RANGE_SHARE * widths.get(key, 0.0)
+        if mx - mn < min_width - 1e-9:
+            # Repair a range that contracted while the parameter was not regulated.
+            half = min_width / 2.0
+            new_min = max(hard_min, min(cur - half, mn)); new_max = min(hard_max, max(cur + half, mx))
+            con.execute("UPDATE phase6c_meta_control_parameters SET min_value=?, max_value=?, updated_at=? WHERE parameter_key=?",
+                        (new_min, new_max, _now(), key))
+            _log_boundary(con, cycle_index, key, "both", mn, new_min, mx, new_max, "serotonin", sero, "restore_minimum_range_width")
+            mn, mx = new_min, new_max
         rng = mx - mn
         pos = (cur - mn) / rng if rng > 1e-9 else 0.5
-        min_s, max_s, mid_s = _get_streaks(con, key)
+        min_s, max_s, mid_s, last_value = _get_streaks(con, key)
+        moving = last_value is not None and abs(cur - last_value) > 1e-9
         if pos >= 0.98:
             max_s += 1; min_s = 0; mid_s = 0
         elif pos <= 0.02:
             min_s += 1; max_s = 0; mid_s = 0
-        elif 0.4 <= pos <= 0.6:
+        elif 0.4 <= pos <= 0.6 and moving:
+            # Stable only counts while the parameter is actually regulated;
+            # an unregulated parameter is not evidence of stability.
             mid_s += 1
-        hard_min, hard_max = HARD_BOUNDARIES.get(key, (0.0, 1.0))
 
         acted = False
         if max_s >= threshold:
@@ -302,7 +328,7 @@ def _update_streaks_and_adapt(con, cycle_index, neuromod):
                 _set_bp(con, "total_expansions", int(_get_bp(con, "total_expansions", 0)) + 1)
                 expansions.append({"key": key, "boundary": "min", "old": mn, "new": new_min})
                 min_s = 0; acted = True
-        elif mid_s >= mid_threshold:
+        elif mid_s >= mid_threshold and (mx - mn) - con_delta >= min_width:
             new_min = _clamp(mn + con_delta * 0.5, hard_min, cur - 0.01)
             new_max = _clamp(mx - con_delta * 0.5, cur + 0.01, hard_max)
             if abs(new_min - mn) > 1e-9 or abs(new_max - mx) > 1e-9:

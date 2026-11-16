@@ -115,18 +115,12 @@ def _consolidation_consistency(con):
     return _clamp(1.0 - (sd / (mean + 1e-6)))
 
 def _marginal_progress(con):
-    TH = "context_hypotheses"
-    if not _table_exists(con, TH): return 0.0
-    cset = set(_columns(con, TH))
-    if "uncertainty" not in cset: return 0.0
-    order = "created_at" if "created_at" in cset else "id"
-    try:
-        nu = con.execute("SELECT AVG(u) FROM (SELECT uncertainty u FROM " + TH + " ORDER BY " + order + " DESC LIMIT 2000)").fetchone()[0]
-        ou = con.execute("SELECT AVG(u) FROM (SELECT uncertainty u FROM " + TH + " ORDER BY " + order + " ASC LIMIT 2000)").fetchone()[0]
-    except Exception:
-        return 0.0
-    if nu is None or ou is None: return 0.0
-    return float(ou) - float(nu)
+    """Learning progress: fast minus slow running average of the per-cycle
+    reward computed in Phase 6a (performance is improving when positive).
+    Literatur: Oudeyer, Kaplan & Hafner 2007; Gottlieb et al. 2013"""
+    if not _table_exists(con, "phase6a_meta_plasticity_state"): return 0.0
+    row = con.execute("SELECT value FROM phase6a_meta_plasticity_state WHERE key='learning_progress'").fetchone()
+    return _to_float(row[0], 0.0) if row else 0.0
 
 def _activity_level(con):
     st = _read_kv(con, "phase6a_neuromodulated_sleep_state")

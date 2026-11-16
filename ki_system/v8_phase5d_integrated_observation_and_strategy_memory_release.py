@@ -290,12 +290,19 @@ def apply_integrated_observation_and_strategy_memory(db_or_mem=None):
         "resolution_events": int(_scalar("SELECT COUNT(*) FROM internal_learning_gaps WHERE status='closed'")),
         "progress_evaluations": _count(cur, "stageb_graduation_events"),
         "strategy_feedback_events": _count(cur, "phase5h_strategy_outcome_memory"),
-        "long_term_patterns": int(_scalar("SELECT COUNT(*) FROM context_hypotheses WHERE role LIKE 'stable_%'")),
+        "long_term_patterns": int(_scalar("SELECT COUNT(*) FROM context_hypotheses WHERE role>='stable_' AND role<'stable`'")),
     }
     outcome = float(_scalar("SELECT SUM(s_outcome_score)/NULLIF(SUM(c_outcome_score),0) FROM phase5g_outcome_aggregates WHERE n>0", 0.0))
-    resolution = _avg(cur, "internal_learning_gaps", "resolution_score")
+    # One pass over the gap table for both averages (was two full scans).
+    resolution = unc_pressure = 0.0
+    if _table_exists(cur, "internal_learning_gaps") and {"resolution_score", "uncertainty"} <= set(_cols(cur, "internal_learning_gaps")):
+        try:
+            r = cur.execute("SELECT AVG(COALESCE(resolution_score,0)), AVG(COALESCE(uncertainty,0)) "
+                            "FROM internal_learning_gaps").fetchone()
+            resolution, unc_pressure = float(r[0] or 0.0), float(r[1] or 0.0)
+        except Exception:
+            pass
     error_pressure = controls["error_weight"]
-    unc_pressure = _avg(cur, "internal_learning_gaps", "uncertainty")
     stability_gain = controls["consolidation_gain"]
     persistent = int(_scalar("SELECT COUNT(*) FROM internal_learning_gaps WHERE status='open'"))
     read_no_candidate = 0

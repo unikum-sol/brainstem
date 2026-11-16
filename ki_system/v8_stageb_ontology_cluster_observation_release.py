@@ -104,6 +104,25 @@ def _self_check_schema(con):
             for column in columns if column not in _columns(con, table)]
 
 
+def _is_word(surface) -> bool:
+    s = (surface or "").strip()
+    return len(s) >= 4 and s.isalpha()
+
+
+def word_level_keys(con, surfaces) -> set:
+    """Node keys that are word-level units: alphabetic surfaces of at least
+    four letters, or confirmed lexical units."""
+    keys = {k for k, s in surfaces.items() if _is_word(s)}
+    try:
+        for (form,) in con.execute(
+                "SELECT surface_form FROM lexical_units WHERE COALESCE(status,'candidate')<>'candidate'"):
+            if form:
+                keys.add(str(form).strip().lower()[:180])
+    except Exception:
+        pass
+    return keys
+
+
 def ensure_schema(con) -> bool:
     if not _table_exists(con, STATE_TABLE):
         con.execute(
@@ -122,7 +141,8 @@ def ensure_schema(con) -> bool:
             "member_count INTEGER DEFAULT 0, streak INTEGER DEFAULT 0, promoted INTEGER DEFAULT 0, "
             "first_seen_cycle INTEGER, last_seen_cycle INTEGER, updated_at INTEGER, "
             "noradrenaline_at_promotion REAL, promoted_at_cycle INTEGER, retracted_at_cycle INTEGER, "
-            "min_size_eligible INTEGER DEFAULT 1)"
+            "min_size_eligible INTEGER DEFAULT 1, sleep_epochs_seen INTEGER DEFAULT 0, "
+            "last_sleep_epoch INTEGER DEFAULT 0, miss_cycles INTEGER DEFAULT 0, content_eligible INTEGER DEFAULT 0)"
         )
     else:
         existing_stability_cols = _columns(con, STABILITY_TABLE)
@@ -131,6 +151,10 @@ def ensure_schema(con) -> bool:
             ("promoted_at_cycle", "INTEGER"),
             ("retracted_at_cycle", "INTEGER"),
             ("min_size_eligible", "INTEGER DEFAULT 1"),
+            ("sleep_epochs_seen", "INTEGER DEFAULT 0"),
+            ("last_sleep_epoch", "INTEGER DEFAULT 0"),
+            ("miss_cycles", "INTEGER DEFAULT 0"),
+            ("content_eligible", "INTEGER DEFAULT 0"),
         ):
             if col_name not in existing_stability_cols:
                 con.execute("ALTER TABLE " + STABILITY_TABLE + " ADD COLUMN " + col_name + " " + col_decl)
@@ -266,11 +290,21 @@ def _build_graph(con) -> Tuple[Dict[str, str], Dict[str, set]]:
     return surfaces, neighbors
 
 
-def _label_propagation(neighbors: Dict[str, set], max_iterations: int, rnd: random.Random) -> Dict[str, str]:
-    labels = {node: node for node in neighbors}
-    nodes = list(neighbors.keys())
+def _label_propagation(neighbors: Dict[str, set], max_iterations: int, rnd: random.Random = None,
+                       initial: Dict[str, str] = None) -> Dict[str, str]:
+    """Label propagation (Raghavan, Albert & Kumara 2007), deterministic and
+    warm-started: nodes are visited in a fixed order, a node keeps its label
+    when that label is among the most frequent ones (Cordasco & Gargano
+    2010), and labels start from the previous partition. An unchanged
+    relation graph therefore yields an unchanged partition; new relations
+    change it only locally, like a network settling back into its previous
+    attractor. Before, a new random order every cycle produced a different
+    partition on an identical graph (production run 13 November 2026: 1,013
+    clusters promoted, 1,010 retracted)."""
+    initial = initial or {}
+    labels = {node: initial.get(node, node) for node in neighbors}
+    nodes = sorted(neighbors.keys())
     for _ in range(max(1, max_iterations)):
-        rnd.shuffle(nodes)
         changed = False
         for node in nodes:
             neighbor_labels = [labels[n] for n in neighbors.get(node, ()) if n in labels]
@@ -281,7 +315,7 @@ def _label_propagation(neighbors: Dict[str, set], max_iterations: int, rnd: rand
                 counts[lbl] = counts.get(lbl, 0) + 1
             best_count = max(counts.values())
             candidates = sorted(lbl for lbl, c in counts.items() if c == best_count)
-            new_label = candidates[0]
+            new_label = labels[node] if labels[node] in candidates else candidates[0]
             if new_label != labels[node]:
                 labels[node] = new_label
                 changed = True
@@ -364,8 +398,25 @@ def observe_ontology_clusters(con) -> Dict[str, Any]:
         con.commit()
         return {"status": "stageb_ontology_cluster_observation_no_graph", "cycle_index": cycle}
 
-    rnd = random.Random("stageb_ontology_cluster_lp:%d" % cycle)
-    labels = _label_propagation(neighbors, max_iterations, rnd)
+    # Sleep episodes: a category becomes knowledge only after it has been
+    # present in several distinct sleep episodes (offline generalization of
+    # infant categories during naps: Gomez, Bootzin & Nadel 2006; Friedrich
+    # et al. 2015; Lewis & Durrant 2011), not after a few consecutive looks.
+    sleeping = False
+    if _table_exists(con, "cooperative_sleep_wake_state"):
+        srow = con.execute("SELECT value FROM cooperative_sleep_wake_state WHERE key='state'").fetchone()
+        sleeping = bool(srow) and str(srow[0]) == "sleep"
+    sleep_epoch = _int(state.get("sleep_epoch"), 0)
+    if sleeping and str(state.get("last_sleep_state", "wake")) != "sleep":
+        sleep_epoch += 1
+    _set_kv(con, STATE_TABLE, "sleep_epoch", sleep_epoch)
+    _set_kv(con, STATE_TABLE, "last_sleep_state", "sleep" if sleeping else "wake")
+    grace_cycles = max(1, _int(state.get("dissolve_grace_cycles"), 60))
+    min_promotion_size = max(2, _int(state.get("min_promotion_size"), 3))
+
+    previous_labels = {r[0]: r[1] for r in con.execute(
+        "SELECT node_key, current_cluster_label FROM " + NODE_TABLE + " WHERE current_cluster_label IS NOT NULL")}
+    labels = _label_propagation(neighbors, max_iterations, None, previous_labels)
     _set_kv(con, STATE_TABLE, "na_size_fractional_remainder", next_carry)
     # Track all structurally valid clusters. NA gates NEW promotions only:
     # a transient size schedule must not masquerade as graph dissolution.
@@ -408,40 +459,68 @@ def observe_ontology_clusters(con) -> Dict[str, Any]:
             except Exception:
                 prev_members = set()
             overlap = _jaccard(member_set, prev_members)
-            new_streak = (int(prev_streak or 0) + 1) if overlap >= overlap_threshold else 1
+            same = overlap >= overlap_threshold
+            new_streak = (int(prev_streak or 0) + 1) if same else 1
             if new_streak > 1:
                 reconfirmed += 1
+            ep = con.execute("SELECT COALESCE(sleep_epochs_seen,0), COALESCE(last_sleep_epoch,0) FROM " +
+                             STABILITY_TABLE + " WHERE prototype_key=?", (prototype,)).fetchone()
+            epochs_seen, last_epoch = (int(ep[0]), int(ep[1])) if ep else (0, 0)
+            if not same:
+                epochs_seen, last_epoch = 0, 0
+            if sleeping and last_epoch != sleep_epoch:
+                epochs_seen, last_epoch = epochs_seen + 1, sleep_epoch
             con.execute(
                 "UPDATE " + STABILITY_TABLE + " SET member_keys_json=?, member_count=?, streak=?, "
-                "last_seen_cycle=?, updated_at=? WHERE prototype_key=?",
-                (json.dumps(member_keys), len(member_keys), new_streak, cycle, now, prototype),
+                "last_seen_cycle=?, updated_at=?, sleep_epochs_seen=?, last_sleep_epoch=?, miss_cycles=0 "
+                "WHERE prototype_key=?",
+                (json.dumps(member_keys), len(member_keys), new_streak, cycle, now, epochs_seen, last_epoch, prototype),
             )
         else:
             newly_observed += 1
             con.execute(
                 "INSERT INTO " + STABILITY_TABLE + "(prototype_key,prototype_surface,member_keys_json,"
-                "member_count,streak,promoted,first_seen_cycle,last_seen_cycle,updated_at) "
-                "VALUES(?,?,?,?,?,0,?,?,?)",
+                "member_count,streak,promoted,first_seen_cycle,last_seen_cycle,updated_at,"
+                "sleep_epochs_seen,last_sleep_epoch,miss_cycles) VALUES(?,?,?,?,?,0,?,?,?,?,?,0)",
                 (prototype, surfaces.get(prototype, prototype), json.dumps(member_keys),
-                 len(member_keys), 1, cycle, cycle, now),
+                 len(member_keys), 1, cycle, cycle, now, 1 if sleeping else 0, sleep_epoch if sleeping else 0),
             )
 
+    # Categories form over words, not over characters or syllables (advisory
+    # council of 15 November 2026). Statistics over syllables serve word
+    # segmentation in language acquisition (Saffran, Aslin & Newport 1996;
+    # Saffran & Thiessen 2003); categories that carry meaning form over
+    # segmented words (Mintz 2003; Gomez & Lakusta 2004; Lany & Saffran 2010).
+    # Sub-word clusters stay observed but are never promoted.
+    word_keys = word_level_keys(con, surfaces)
     blocked = 0
+    content_blocked = 0
     for prototype, member_keys in this_cycle_prototypes.items():
-        eligible = int(len(member_keys) >= min_cluster_size)
+        # A two-element cluster is a single relation, not a category.
+        eligible = int(len(member_keys) >= max(min_cluster_size, min_promotion_size))
         blocked += int(not eligible)
-        con.execute("UPDATE " + STABILITY_TABLE + " SET min_size_eligible=? WHERE prototype_key=?",
-                    (eligible, prototype))
+        words = sum(1 for m in member_keys if m in word_keys)
+        content_ok = int(prototype in word_keys and words >= min_promotion_size)
+        content_blocked += int(not content_ok)
+        con.execute("UPDATE " + STABILITY_TABLE + " SET min_size_eligible=?, content_eligible=? WHERE prototype_key=?",
+                    (eligible, content_ok, prototype))
     _set_kv(con, STATE_TABLE, "size_gate_blocked_clusters", blocked)
+    _set_kv(con, STATE_TABLE, "content_gate_blocked_clusters", content_blocked)
 
     previously_tracked = con.execute(
         "SELECT prototype_key FROM " + STABILITY_TABLE + " WHERE streak > 0"
     ).fetchall()
+    # A category that is missing for a moment weakens, it does not vanish
+    # (graded membership: Rosch 1975); it dissolves only after it has been
+    # absent for the grace period, and must then earn its sleep episodes again.
     for (prototype_key,) in previously_tracked:
         if prototype_key not in this_cycle_prototypes:
+            con.execute("UPDATE " + STABILITY_TABLE + " SET miss_cycles=COALESCE(miss_cycles,0)+1, updated_at=? "
+                        "WHERE prototype_key=?", (now, prototype_key))
             con.execute(
-                "UPDATE " + STABILITY_TABLE + " SET streak=0, updated_at=? WHERE prototype_key=?",
-                (now, prototype_key),
+                "UPDATE " + STABILITY_TABLE + " SET streak=0, sleep_epochs_seen=0, last_sleep_epoch=0, updated_at=? "
+                "WHERE prototype_key=? AND miss_cycles>=?",
+                (now, prototype_key, grace_cycles),
             )
             reset_count += 1
 

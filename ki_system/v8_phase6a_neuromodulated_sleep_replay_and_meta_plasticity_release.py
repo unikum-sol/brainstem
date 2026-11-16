@@ -12,8 +12,12 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 def _canonical_outcome_observation_count(con):
     try:
-        if not _table_exists(con, "phase5g_experiment_outcomes"):
+        if not table_exists(con, "phase5g_experiment_outcomes"):
             return 0
+        # Lifetime count from the outcome summaries: the raw outcome log keeps
+        # only recent rows (v8_log_retention) and a full count is expensive.
+        if table_exists(con, "phase5g_outcome_aggregates"):
+            return int(con.execute("SELECT COALESCE(SUM(n),0) FROM phase5g_outcome_aggregates").fetchone()[0] or 0)
         return int(con.execute("SELECT COUNT(*) FROM phase5g_experiment_outcomes").fetchone()[0] or 0)
     except Exception:
         return 0
@@ -453,7 +457,8 @@ def _select_replay_candidates(db: sqlite3.Connection, limit: int = 180) -> List[
         res_expr = "COALESCE(resolution_score,0)" if "resolution_score" in columns else "0"
         rows = db.execute(
             f"SELECT rowid, COALESCE(gap_key,''), COALESCE(gap_type,'gap'), COALESCE(role,'unknown'), {priority_expr}, {res_expr} "
-            f"FROM internal_learning_gaps ORDER BY {priority_expr} DESC, {res_expr} ASC, rowid DESC LIMIT ?",
+            f"FROM internal_learning_gaps WHERE COALESCE(status,'open') NOT IN ('closed','resolved','habituated') "
+            f"ORDER BY {priority_expr} DESC, {res_expr} ASC, rowid DESC LIMIT ?",
             (limit // 3,),
         ).fetchall()
         for rid, gap_key, gap_type, role, priority, resolution in rows:
@@ -517,13 +522,119 @@ def _select_replay_candidates(db: sqlite3.Connection, limit: int = 180) -> List[
                 "role": str(role or "hypothesis"),
                 "priority": uncertainty,
                 "outcome": confidence,
-                "closure": max(0.0, confidence - (1.0 - uncertainty)),
+                "closure": confidence,
                 "overlap": _avg_recent(db, "phase5g_experiment_outcomes", "overlap_score"),
                 "no_candidate": _avg_recent(db, "phase5g_experiment_outcomes", "no_candidate_rate"),
             })
     # Stable deterministic order.
     out.sort(key=lambda x: (float(x.get("priority", 0)), float(x.get("overlap", 0))), reverse=True)
     return out[:limit]
+
+
+SIGNAL_DEFAULTS = {
+    # Window of most recent rows that represents the current learning state.
+    "signal_window_rows": 500.0,
+    # Reward expectation and its fast/slow averages (reward prediction error,
+    # average reward rate, learning progress).
+    # Literatur: Schultz, Dayan & Montague 1997; Niv et al. 2007;
+    # Oudeyer, Kaplan & Hafner 2007
+    "reward_expectation_alpha": 0.1, "reward_fast_alpha": 0.2, "reward_slow_alpha": 0.02,
+    "graduation_rate_alpha": 0.05, "rpe_gain": 1.5,
+    # Bottom-up integration of the freshly computed biases into the
+    # persistent bias state (time constant of about ten cycles).
+    "bias_integration_rate": 0.1,
+    # State-dependent neuromodulator tone during slow-wave sleep: locus
+    # coeruleus and cholinergic forebrain activity drop, raphe activity is
+    # reduced. Literatur: Aston-Jones & Bloom 1981; Marrosu et al. 1995;
+    # Gais & Born 2004; Lee & Dan 2012
+    # Calibration: locus coeruleus firing in NREM about 30 % of waking
+    # (1.70 vs 0.51 Hz, Yang & Eschenko 2025); raphe activity markedly
+    # reduced (Trulson & Jacobs 1979); cortical acetylcholine low in slow-wave
+    # sleep (Hasselmo & McGaughy 2004).
+    "sleep_gate_noradrenaline": 0.3, "sleep_gate_acetylcholine": 0.4, "sleep_gate_serotonin": 0.5,
+}
+BIAS_STATE_KEYS = ("last_plasticity_level", "last_exploration_bias", "last_consolidation_bias",
+                   "last_inhibition_bias", "last_revision_bias")
+
+
+def _meta_get(db: sqlite3.Connection, key: str, default: float) -> float:
+    try:
+        row = db.execute("SELECT value FROM phase6a_meta_plasticity_state WHERE key=?", (key,)).fetchone()
+        return float(row[0]) if row is not None and row[0] is not None else default
+    except Exception:
+        return default
+
+
+def _signal_param(db: sqlite3.Connection, key: str) -> float:
+    return _meta_get(db, "param_" + key, SIGNAL_DEFAULTS[key])
+
+
+def _scalar(db: sqlite3.Connection, sql: str, args: tuple = (), default: float = 0.0) -> float:
+    try:
+        row = db.execute(sql, args).fetchone()
+        return float(row[0]) if row is not None and row[0] is not None else default
+    except Exception:
+        return default
+
+
+def _system_signals(db: sqlite3.Connection) -> Dict[str, float]:
+    """Learning state from representative recent windows.
+
+    The replay candidates are deliberately the weakest items (replay what is
+    not yet learned). Global neuromodulator signals must instead describe the
+    whole system, otherwise they only measure the worst tail and saturate.
+    """
+    window = int(max(50, _signal_param(db, "signal_window_rows")))
+    outcome = _avg_recent(db, "phase5g_experiment_outcomes", "outcome_score", window)
+    overlap = _avg_recent(db, "phase5g_experiment_outcomes", "overlap_score", window)
+    no_candidate = _avg_recent(db, "phase5g_experiment_outcomes", "no_candidate_rate", window)
+    gap_resolved = 0.0
+    if table_exists(db, "internal_learning_gaps") and "resolution_score" in cols(db, "internal_learning_gaps"):
+        gap_resolved = _scalar(db, "SELECT AVG(CASE WHEN COALESCE(resolution_score,0)>0 THEN 1.0 ELSE 0.0 END) "
+                                   "FROM (SELECT resolution_score FROM internal_learning_gaps ORDER BY rowid DESC LIMIT ?)", (window,))
+    # Rewards of this cycle: new experiment outcomes, new graduations, newly closed gaps.
+    last_outcome_id = int(_meta_get(db, "sig_last_outcome_id", -1))
+    max_outcome_id = int(_scalar(db, "SELECT COALESCE(MAX(id),0) FROM phase5g_experiment_outcomes")) if table_exists(db, "phase5g_experiment_outcomes") else 0
+    new_outcome = outcome
+    if last_outcome_id >= 0 and max_outcome_id > last_outcome_id:
+        new_outcome = _scalar(db, "SELECT AVG(COALESCE(outcome_score,0)) FROM phase5g_experiment_outcomes WHERE id>?", (last_outcome_id,), outcome)
+    stable = int(_scalar(db, "SELECT COUNT(*) FROM context_hypotheses WHERE role>='stable_' AND role<'stable`'")) if table_exists(db, "context_hypotheses") else 0
+    resolved = int(_scalar(db, "SELECT COUNT(*) FROM internal_learning_gaps WHERE COALESCE(resolution_score,0)>0")) if table_exists(db, "internal_learning_gaps") and "resolution_score" in cols(db, "internal_learning_gaps") else 0
+    last_stable = int(_meta_get(db, "sig_last_stable_count", stable))
+    last_resolved = int(_meta_get(db, "sig_last_resolved_count", resolved))
+    grad_inc = min(1.0, float(max(0, stable - last_stable)))
+    closed_inc = min(1.0, float(max(0, resolved - last_resolved)))
+    reward = _clamp(0.5 * new_outcome + 0.3 * grad_inc + 0.2 * closed_inc)
+    # State-dependent expectation (a value per brain state, as in temporal
+    # difference learning): consolidation successes are expected during
+    # sleep, so they do not produce systematic errors in the other state.
+    # Literatur: Sutton & Barto 2018; Schultz, Dayan & Montague 1997
+    state = _sleep_state(db)
+    expectation = _meta_get(db, "reward_expectation_" + state, _meta_get(db, "reward_expectation", reward))
+    rpe = reward - expectation
+    a_exp = _signal_param(db, "reward_expectation_alpha")
+    fast = _meta_get(db, "reward_fast", reward); slow = _meta_get(db, "reward_slow", reward)
+    fast = fast + _signal_param(db, "reward_fast_alpha") * (reward - fast)
+    slow = slow + _signal_param(db, "reward_slow_alpha") * (reward - slow)
+    grad_rate = _meta_get(db, "graduation_rate", 0.0)
+    grad_rate = grad_rate + _signal_param(db, "graduation_rate_alpha") * (grad_inc - grad_rate)
+    closure = _clamp(0.5 * gap_resolved + 0.5 * grad_rate)
+    anchor = _scalar(db, "SELECT AVG(stability_score) FROM phase6b_anchor_pool WHERE active=1", (), 0.5) if table_exists(db, "phase6b_anchor_pool") else 0.5
+    return {
+        "outcome": _clamp(outcome), "overlap": _clamp(overlap), "no_candidate": _clamp(no_candidate),
+        "gap_resolved_share": _clamp(gap_resolved), "graduation_rate": _clamp(grad_rate), "closure": closure,
+        "reward": reward, "reward_expectation": _clamp(expectation + a_exp * (reward - expectation)),
+        "rpe": rpe, "reward_fast": _clamp(fast), "reward_slow": _clamp(slow), "state": state,
+        "learning_progress": fast - slow, "anchor_stability": _clamp(anchor),
+        "sig_last_outcome_id": max_outcome_id, "sig_last_stable_count": stable, "sig_last_resolved_count": resolved,
+    }
+
+
+def _sleep_state(db: sqlite3.Connection) -> str:
+    if not table_exists(db, "cooperative_sleep_wake_state"):
+        return "wake"
+    row = db.execute("SELECT value FROM cooperative_sleep_wake_state WHERE key='state'").fetchone()
+    return "sleep" if row is not None and str(row[0]).strip().lower() == "sleep" else "wake"
 
 
 def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 180) -> Dict[str, Any]:
@@ -533,22 +644,29 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
     candidates = _select_replay_candidates(db, replay_limit)
     if not candidates:
         candidates = []
-    n = max(1, len(candidates))
-    avg_outcome = sum(float(c.get("outcome", 0)) for c in candidates) / n
-    avg_closure = sum(float(c.get("closure", 0)) for c in candidates) / n
-    avg_overlap = sum(float(c.get("overlap", 0)) for c in candidates) / n
-    avg_no_candidate = sum(float(c.get("no_candidate", 0)) for c in candidates) / n
-    persistent_pressure = _clamp(1.0 - avg_closure + avg_overlap * 0.35 + (1.0 - avg_outcome) * 0.25)
+    sig = _system_signals(db)
+    avg_outcome = sig["outcome"]
+    avg_closure = sig["closure"]
+    avg_overlap = sig["overlap"]
+    avg_no_candidate = sig["no_candidate"]
+    # Convex combination (weights sum to 1): bounded without clipping, so
+    # the pressure keeps responding to progress instead of saturating.
+    persistent_pressure = _clamp(0.5 * (1.0 - avg_closure) + 0.3 * (1.0 - avg_outcome) + 0.2 * avg_overlap)
     plasticity = _clamp(0.28 + persistent_pressure * 0.35 + avg_overlap * 0.18 + (1.0 - avg_outcome) * 0.15)
     exploration_bias = _clamp(0.30 + avg_overlap * 0.35 + (1.0 - avg_outcome) * 0.20 + avg_no_candidate * 0.10)
     consolidation_bias = _clamp(0.25 + avg_closure * 0.45 + avg_outcome * 0.25 - persistent_pressure * 0.18)
     inhibition_bias = _clamp(0.20 + avg_no_candidate * 0.35 + avg_overlap * 0.12)
     revision_bias = _clamp(0.25 + persistent_pressure * 0.40 + (1.0 - avg_outcome) * 0.20)
-    dopamine = _clamp(0.25 + avg_outcome * 0.45 + avg_closure * 0.25)
-    serotonin = _clamp(0.25 + consolidation_bias * 0.55)
+    # Phasic dopamine: reward prediction error around the neutral 0.5.
+    dopamine = _clamp(0.5 + _signal_param(db, "rpe_gain") * sig["rpe"])
+    # Serotonin: consolidation, long-run average reward, stable anchors.
+    serotonin = _clamp(0.20 + consolidation_bias * 0.40 + sig["reward_slow"] * 0.25 + sig["anchor_stability"] * 0.15)
     glutamate = _clamp(0.30 + exploration_bias * 0.55)
     gaba = _clamp(0.20 + inhibition_bias * 0.60)
-    noradrenaline = _clamp(0.25 + persistent_pressure * 0.45 + avg_overlap * 0.15)
+    # Noradrenaline: persistent unresolved pressure plus unexpected outcomes
+    # (unsigned prediction error). Literatur: Yu & Dayan 2005; Aston-Jones & Cohen 2005
+    surprise = _clamp(2.0 * abs(sig["rpe"]))
+    noradrenaline = _clamp(0.20 + persistent_pressure * 0.35 + surprise * 0.30 + avg_overlap * 0.15)
     acetylcholine = _clamp(0.30 + (1.0 - avg_overlap) * 0.25 + revision_bias * 0.25)
     nm = {
         "dopamine": round(dopamine, 6),
@@ -577,6 +695,10 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
             "final_value": round(_final_value, 6),
         })
     _integrated = {row["parameter"]: row["final_value"] for row in _integration_rows}
+    _state = _sleep_state(db)
+    if _state == "sleep":
+        for _key in ("noradrenaline", "acetylcholine", "serotonin"):
+            _integrated[_key] = round(_clamp(_integrated[_key] * _signal_param(db, "sleep_gate_" + _key)), 6)
     nm.update({
         "dopamine": _integrated["dopamine"],
         "serotonin": _integrated["serotonin"],
@@ -665,6 +787,23 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
         "INSERT INTO phase6a_sleep_replay_cycles(replay_mode,candidate_count,replay_events,avg_outcome_score,avg_closure_delta,avg_overlap_score,persistent_gap_pressure,plasticity_level,exploration_bias,consolidation_bias,inhibition_bias,revision_bias,safety_ok,details,created_at,population_available,outcome_observation_available,outcome_observation_count,evidence_state,evidence_reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         ("offline_replay_after_wake_cycle", len(candidates), replayed, avg_outcome, avg_closure, avg_overlap, persistent_pressure, plasticity, exploration_bias, consolidation_bias, inhibition_bias, revision_bias, 1 if _safety(db) == {"facts": 0, "relations": 0, "questions": 0} else 0, _j({"neuromodulators": nm, "no_word_blacklists": True}), now, (1 if (int(len(candidates) or 0) > 0 or int(replayed or 0) > 0) else 0), _canonical_outcome_observation_available(db), _canonical_outcome_observation_count(db), _canonical_phase6a_evidence_state(db, len(candidates), replayed), _canonical_phase6a_evidence_reason(db, len(candidates), replayed))
     )
+    fresh_bias = {"last_plasticity_level": plasticity, "last_exploration_bias": exploration_bias,
+                  "last_consolidation_bias": consolidation_bias, "last_inhibition_bias": inhibition_bias,
+                  "last_revision_bias": revision_bias}
+    target = {}
+    if table_exists(db, "phase6c_target_bias_state"):
+        target = {k: v for k, v in db.execute("SELECT key, value FROM phase6c_target_bias_state").fetchall()}
+    kappa = _clamp(_signal_param(db, "bias_integration_rate"))
+    persistent_bias = {}
+    for _k, _fresh in fresh_bias.items():
+        try:
+            _t = float(target[_k])
+            persistent_bias[_k] = _clamp(_t + kappa * (_fresh - _t))
+        except (KeyError, TypeError, ValueError):
+            persistent_bias[_k] = _fresh
+    if table_exists(db, "phase6c_target_bias_state"):
+        for _k, _v in persistent_bias.items():
+            kv_set(db, "phase6c_target_bias_state", _k, round(_v, 6), now)
     # State tables.
     state_vals = {
         "last_replay_at": now,
@@ -675,11 +814,30 @@ def sleep_replay_and_meta_plasticity(db_or_obj: Any = None, replay_limit: int = 
         "last_avg_overlap_score": round(avg_overlap, 6),
         "last_avg_no_candidate_rate": round(avg_no_candidate, 6),
         "last_persistent_gap_pressure": round(persistent_pressure, 6),
-        "last_plasticity_level": round(plasticity, 6),
-        "last_exploration_bias": round(exploration_bias, 6),
-        "last_consolidation_bias": round(consolidation_bias, 6),
-        "last_inhibition_bias": round(inhibition_bias, 6),
-        "last_revision_bias": round(revision_bias, 6),
+        "last_plasticity_level": round(persistent_bias["last_plasticity_level"], 6),
+        "last_exploration_bias": round(persistent_bias["last_exploration_bias"], 6),
+        "last_consolidation_bias": round(persistent_bias["last_consolidation_bias"], 6),
+        "last_inhibition_bias": round(persistent_bias["last_inhibition_bias"], 6),
+        "last_revision_bias": round(persistent_bias["last_revision_bias"], 6),
+        "fresh_plasticity_level": round(plasticity, 6),
+        "fresh_exploration_bias": round(exploration_bias, 6),
+        "fresh_consolidation_bias": round(consolidation_bias, 6),
+        "fresh_inhibition_bias": round(inhibition_bias, 6),
+        "fresh_revision_bias": round(revision_bias, 6),
+        "reward": round(sig["reward"], 6),
+        "reward_prediction_error": round(sig["rpe"], 6),
+        "reward_expectation": round(sig["reward_expectation"], 6),
+        "reward_expectation_" + sig["state"]: round(sig["reward_expectation"], 6),
+        "reward_fast": round(sig["reward_fast"], 6),
+        "reward_slow": round(sig["reward_slow"], 6),
+        "learning_progress": round(sig["learning_progress"], 6),
+        "graduation_rate": round(sig["graduation_rate"], 6),
+        "gap_resolved_share": round(sig["gap_resolved_share"], 6),
+        "anchor_stability": round(sig["anchor_stability"], 6),
+        "sig_last_outcome_id": sig["sig_last_outcome_id"],
+        "sig_last_stable_count": sig["sig_last_stable_count"],
+        "sig_last_resolved_count": sig["sig_last_resolved_count"],
+        "sleep_state_seen": _state,
         "phase": PHASE,
         "no_word_blacklists": "true",
         "learning_mode": LEARNING_MODE,

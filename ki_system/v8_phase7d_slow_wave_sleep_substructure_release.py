@@ -49,6 +49,11 @@ SLOW_WAVE_PARAMS = {
     "novel_fairness_recentering_enabled": 1.0,
     "novel_fairness_recenter_target": 0.5,
     "survivor_reactivation_ratio": 0.3,
+    # BDNF supports late-phase LTP and synaptic consolidation: higher BDNF
+    # lowers the consistency a reactivated trace needs to survive and
+    # strengthens the reinforcement of surviving anchors.
+    # Literatur: Bramham & Messaoudi 2005; Lu, Christian & Lu 2008
+    "bdnf_survival_gain": 0.3, "bdnf_reinforce_gain": 1.0,
     # Synaptic tag lifetime in slow-wave cycles (Frey & Morris 1997: tags
     # decay unless captured); dopamine prolongs capture (Lisman, Grace &
     # Duzel 2011).
@@ -163,6 +168,7 @@ def _read_neuromod(con):
         "acetylcholine": _clamp(_to_float(st.get("acetylcholine"), 0.5)),
         "glutamate": _clamp(_to_float(ei.get("glutamate_state", st.get("glutamate")), 0.5)),
         "gaba": _clamp(_to_float(ei.get("gaba_state", st.get("gaba")), 0.3)),
+        "bdnf": _clamp(_to_float(st.get("bdnf"), 0.5)),
     }
 
 def initialize_slow_wave_parameters(con):
@@ -267,21 +273,23 @@ def _sample_role(con, role, n_wanted, used, rnd, recent_ratio):
     n_recent = min(n_wanted, int(round(n_wanted * _clamp(recent_ratio, 0.0, 1.0))))
     if n_recent > 0:
         window = con.execute(
-            "SELECT id FROM context_hypotheses WHERE role=? ORDER BY updated_at DESC LIMIT ?",
+            "SELECT id FROM context_hypotheses WHERE role=? AND COALESCE(origin,'')<>'sleep_encoded' "
+            "ORDER BY updated_at DESC LIMIT ?",
             (role, max(n_recent * 4, n_recent)),
         ).fetchall()
         ids = [_to_int(r[0]) for r in window if _to_int(r[0]) not in used]
         rnd.shuffle(ids)
         for sid in ids[:n_recent]:
             out.append(sid); used.add(sid)
-    span = con.execute("SELECT MIN(id), MAX(id) FROM context_hypotheses WHERE role=?", (role,)).fetchone()
-    lo, hi = (_to_int(span[0], 0), _to_int(span[1], 0)) if span else (0, 0)
+    lo = _to_int(con.execute("SELECT MIN(id) FROM context_hypotheses WHERE role=?", (role,)).fetchone()[0], 0)
+    hi = _to_int(con.execute("SELECT MAX(id) FROM context_hypotheses WHERE role=?", (role,)).fetchone()[0], 0)
     attempts = 0
     while len(out) < n_wanted and hi > 0 and attempts < n_wanted * 6:
         attempts += 1
         probe = rnd.randint(lo, hi)
         row = con.execute(
-            "SELECT id FROM context_hypotheses WHERE role=? AND id>=? ORDER BY id LIMIT 1",
+            "SELECT id FROM context_hypotheses WHERE role=? AND id>=? AND COALESCE(origin,'')<>'sleep_encoded' "
+            "ORDER BY id LIMIT 1",
             (role, probe),
         ).fetchone()
         if row is None:
@@ -455,9 +463,11 @@ def _build_candidate_pool(con, pool_size, anchor_ratio, context_hypotheses_min_n
 def _run_slow_wave_sleep(con, cycle_index, neuromod, adenosine_level):
     n_osc = int(_get_sw(con, "n_oscillations", 5)); size = int(_get_sw(con, "up_state_reactivation_size", 30))
     anchor_ratio = _get_sw(con, "anchor_interleave_ratio", 0.3); down_scale = _get_sw(con, "down_state_scale", 0.9)
-    reinforce_delta = _get_sw(con, "reinforce_delta", 0.02); weaken_delta = _get_sw(con, "weaken_delta", 0.01)
+    bdnf = neuromod.get("bdnf", 0.5)
+    reinforce_delta = max(0.0, _modulated(_get_sw(con, "reinforce_delta", 0.02), _get_sw(con, "bdnf_reinforce_gain", 1.0), bdnf))
+    weaken_delta = _get_sw(con, "weaken_delta", 0.01)
     pool_factor = _get_sw(con, "reactivation_pool_factor", 4.0)
-    surv_ratio = _get_sw(con, "survival_consistency_ratio", 0.6)
+    surv_ratio = _clamp(_modulated(_get_sw(con, "survival_consistency_ratio", 0.6), -_get_sw(con, "bdnf_survival_gain", 0.3), bdnf), 0.3, 0.9)
     min_part_ratio = _get_sw(con, "min_participation_ratio", 0.4)
     thr_floor = _get_sw(con, "activity_threshold_floor", 0.15)
     sp_base = _get_sw(con, "selection_pressure_base", 0.5)

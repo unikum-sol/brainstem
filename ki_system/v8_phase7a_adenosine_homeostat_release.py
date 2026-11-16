@@ -189,6 +189,71 @@ def _maturity(con):
     maturity=knowledge/(knowledge+half)
     gain=max(0.0,_to_float(_get(con,"developmental_rise_gain",4.0),4.0))
     return {"consolidated_knowledge":knowledge,"maturity":maturity,"rise_factor":1.0+gain*(1.0-maturity)}
+def _is_word(s):
+    s = (s or "").strip()
+    return len(s) >= 4 and s.isalpha()
+
+
+SHADOW_LEVELS = (  # (weight, half constant)
+    (0.02, 200.0),  # L0 relations between characters or syllables
+    (0.08, 500.0),  # L1 word-boundary statistics and literal sentence excerpts
+    (0.25, 500.0),  # L2 confirmed lexical units (words)
+    (0.30, 300.0),  # L3 relations and category edges between words
+    (0.35, 300.0),  # L4 sentence-level structure (no detector yet)
+)
+
+
+def _content_maturity(con):
+    """Content-weighted maturity in shadow mode (decision F1, advisory council
+    of 14 November 2026); logged only, not coupled to the sleep rhythm yet.
+    Development is measured by the level of structure reached, not by item
+    counts: segmentation, then words, then word combinations (Saffran, Aslin
+    & Newport 1996; Kuhl 2004; Bates & Goodman 1997). Sleep maturation follows
+    the construction and pruning of the network, not stored items (Kurth et al.
+    2010; Huber & Born 2014). A higher level cannot run ahead of the level
+    below it (developmental cascade): s'_L = min(s_L, s'_{L-1} + 0.1)."""
+    n = [0, 0, 0, 0, 0]
+    def q(sql):
+        try:
+            return con.execute(sql).fetchall()
+        except Exception:
+            return []
+    for role, cnt in q("SELECT role, COUNT(*) FROM context_hypotheses WHERE role>='stable_' AND role<'stable`' GROUP BY role"):
+        if role in ("stable_lexical_boundary", "stable_hypothesis"):
+            n[1] += int(cnt)
+    for (cnt,) in q("SELECT COUNT(*) FROM lexical_units WHERE COALESCE(status,'candidate')<>'candidate'"):
+        n[2] += int(cnt)
+    for src, tgt in q("SELECT source, target FROM relations"):
+        if _is_word(src) and _is_word(tgt):
+            n[3] += 1
+        else:
+            n[0] += 1
+    for child, parent in q("SELECT child, parent FROM ontology"):
+        if _is_word(child) and _is_word(parent):
+            n[3] += 1
+    s_prev = None; target = 0.0; levels = []
+    for i, (w, k) in enumerate(SHADOW_LEVELS):
+        s = n[i] / (n[i] + k)
+        if s_prev is not None:
+            s = min(s, s_prev + 0.1)
+        s_prev = s; target += w * s; levels.append(round(s, 4))
+    return {"counts": n, "levels": levels, "target": round(target, 6)}
+
+
+def _update_content_maturity(con, cycle_index):
+    """Every 10 cycles: integrate slowly toward the target (time constant
+    1,000 cycles) and never fall (maturation does not regress)."""
+    if int(cycle_index) % 10 != 0:
+        return None
+    cm = _content_maturity(con)
+    old = _to_float(_get(con, "content_maturity_shadow", -1.0), -1.0)
+    new = cm["target"] if old < 0 else max(old, old + (cm["target"] - old) * (1 - (1 - 1 / 1000.0) ** 10))
+    _set(con, "content_maturity_shadow", round(new, 6))
+    _set(con, "content_maturity_target", cm["target"])
+    _set(con, "content_maturity_detail", json.dumps({"counts": cm["counts"], "levels": cm["levels"]}))
+    return new
+
+
 def _neuromod(con):
     st=_read_kv(con,"phase6a_neuromodulated_sleep_state") if _table_exists(con,"phase6a_neuromodulated_sleep_state") else {}
     return {k:_clamp(_to_float(st.get(k),d)) for k,d in (("acetylcholine",0.5),("glutamate",0.5),("serotonin",0.5),("gaba",0.5))}
@@ -235,6 +300,8 @@ def run_phase7a_cycle(db_or_obj=None,cycle_index=None):
         new=_clamp(1.0-(1.0-old)*math.exp(-rate)); _set(con,"total_wake_cycles",_to_int(_get(con,"total_wake_cycles",0))+1)
         _log(con,cycle_index,"wake_buildup",new,new,0.0,"accumulate",[],"process_s_saturating_rise","glutamate",neu["glutamate"])
     for k,v in (("adenosine_level",round(new,6)),("last_adenosine_level",round(old,6)),("last_rate",round(rate,6)),("last_encoding_load",round(load["encoding_load"],6)),("last_new_hypotheses",load["new_hypotheses"]),("last_new_outcomes",load["new_outcomes"]),("last_seen_state",state),("developmental_maturity",round(dev["maturity"],6)),("developmental_rise_factor",round(dev["rise_factor"],6)),("consolidated_knowledge",dev["consolidated_knowledge"])): _set(con,k,v)
+    try: _update_content_maturity(con,cycle_index)
+    except Exception: pass
     for k,v in (("cycle_count",cycle_index),("last_cycle_at",_now()),("phase",PHASE),("phase_version",PHASE_VERSION),("learning_mode",LEARNING_MODE),("no_word_blacklists",True),("direct_fact_writes","disabled"),("direct_relation_writes","disabled"),("fact_promotion","disabled"),("adenosine_homeostat",True)):_kv_set(con,"phase7a_state",k,v)
     con.commit()
     return {"phase":PHASE,"phase_version":PHASE_VERSION,"cycle_index":cycle_index,"status":"ok","sleep_state":state,"adenosine_before":old,"adenosine_after":new,"rate":rate,"encoding_load":load,"development":dev,"sleep_onset":onset,"safety":{"direct_fact_writes":"disabled","direct_relation_writes":"disabled","fact_promotion":"disabled","no_word_blacklists":True}}

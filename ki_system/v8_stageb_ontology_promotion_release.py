@@ -6,6 +6,8 @@ import json
 import time
 from typing import Any, Dict, List
 
+from ki_system import v8_stageb_ontology_cluster_observation_release as _obs
+
 PHASE = "stageb_ontology_promotion_release"
 STATE_TABLE = "stageb_ontology_promotion_state"
 EVENTS_TABLE = "stageb_ontology_promotion_events"
@@ -182,10 +184,12 @@ def _promote_stable_clusters(con, now) -> Dict[str, int]:
         streak_state.get("effective_stability_streak_required",
                           streak_state.get("stability_streak_required")), 3))
 
+    required_epochs = max(1, _int(streak_state.get("promotion_sleep_epochs_required"), 3))
     eligible_exists = con.execute(
         "SELECT 1 FROM " + STABILITY_TABLE +
-        " WHERE streak>=? AND promoted=0 AND COALESCE(min_size_eligible,1)=1 LIMIT 1",
-        (required_streak,),
+        " WHERE streak>=? AND promoted=0 AND COALESCE(min_size_eligible,1)=1 "
+        "AND COALESCE(content_eligible,0)=1 AND COALESCE(sleep_epochs_seen,0)>=? LIMIT 1",
+        (required_streak, required_epochs),
     ).fetchone() is not None
     if base_budget == 0 or not eligible_exists:
         budget, next_carry = 0, 0.0
@@ -199,8 +203,9 @@ def _promote_stable_clusters(con, now) -> Dict[str, int]:
     stable_unpromoted = con.execute(
         "SELECT prototype_key, prototype_surface, member_keys_json, streak FROM " + STABILITY_TABLE + " "
         "WHERE streak>=? AND promoted=0 AND COALESCE(min_size_eligible,1)=1 "
+        "AND COALESCE(content_eligible,0)=1 AND COALESCE(sleep_epochs_seen,0)>=? "
         "ORDER BY streak DESC, prototype_key ASC LIMIT ?",
-        (required_streak, budget if budget > 0 else 0),
+        (required_streak, required_epochs, budget if budget > 0 else 0),
     ).fetchall()
 
     clusters_promoted = 0
@@ -210,14 +215,17 @@ def _promote_stable_clusters(con, now) -> Dict[str, int]:
             member_keys = json.loads(member_keys_json or "[]")
         except Exception:
             continue
-        children = [m for m in member_keys if m != prototype_key]
-        if not children:
-            continue
-        confidence = 1.0 - (1.0 / (1.0 + int(streak)))
         node_rows = dict(con.execute(
             "SELECT node_key, surface_form FROM ontology_node_cluster_state WHERE node_key IN (%s)"
             % ",".join("?" for _ in member_keys), member_keys
         ).fetchall()) if member_keys else {}
+        # Only word-level members join a category (see the content gate in
+        # the cluster observation).
+        word_keys = _obs.word_level_keys(con, {m: node_rows.get(m, m) for m in member_keys})
+        children = [m for m in member_keys if m != prototype_key and m in word_keys]
+        if not children:
+            continue
+        confidence = 1.0 - (1.0 / (1.0 + int(streak)))
         for child_key in children:
             child_surface = node_rows.get(child_key, child_key)
             relation_ids = _relation_ids_for_edge(con, prototype_key, child_key)
@@ -248,6 +256,30 @@ def _promote_stable_clusters(con, now) -> Dict[str, int]:
     return {"clusters_promoted": clusters_promoted, "child_rows_promoted": child_rows_promoted}
 
 
+def _retract_below_word_level(con, now) -> Dict[str, int]:
+    """Promoted clusters that fail the content gate (characters or
+    syllables) are withdrawn. They did not dissolve, so retracted_at_cycle
+    stays untouched and the noradrenaline direction learning, which compares
+    surviving and retracted clusters, is not distorted."""
+    rows_out = 0
+    keys = [r[0] for r in con.execute(
+        "SELECT prototype_key FROM " + STABILITY_TABLE + " WHERE promoted=1 AND COALESCE(content_eligible,0)=0")]
+    for prototype_key in keys:
+        for ontology_id, child, confidence in con.execute(
+                "SELECT id, child, confidence FROM ontology WHERE source_cluster_key=?", (prototype_key,)).fetchall():
+            con.execute("DELETE FROM ontology WHERE id=?", (ontology_id,))
+            con.execute(
+                "INSERT INTO " + EVENTS_TABLE + "(event_type,prototype_key,child_key,ontology_id,confidence,"
+                "reason,created_at) VALUES(?,?,?,?,?,?,?)",
+                ("ontology_retracted", prototype_key, child, ontology_id, confidence,
+                 "cluster_below_word_level", now),
+            )
+            rows_out += 1
+        con.execute("UPDATE " + STABILITY_TABLE + " SET promoted=0, updated_at=? WHERE prototype_key=?",
+                    (now, prototype_key))
+    return {"clusters_withdrawn": len(keys), "rows_withdrawn": rows_out}
+
+
 def _retract_dissolved_clusters(con, now) -> Dict[str, int]:
     observation_cycle = _int(
         _read_kv(con, "stageb_ontology_cluster_observation_state").get("cycle_count"), 0)
@@ -266,7 +298,7 @@ def _retract_dissolved_clusters(con, now) -> Dict[str, int]:
                 "INSERT INTO " + EVENTS_TABLE + "(event_type,prototype_key,child_key,ontology_id,confidence,"
                 "reason,created_at) VALUES(?,?,?,?,?,?,?)",
                 ("ontology_retracted", prototype_key, child, ontology_id, confidence,
-                 "cluster_dissolved_streak_reset_to_zero", now),
+                 "cluster_dissolved_after_grace_period", now),
             )
             retracted += 1
         con.execute(
@@ -283,11 +315,16 @@ def run_ontology_promotion_cycle(con) -> Dict[str, Any]:
     if str(state.get("enabled", "true")).strip().lower() != "true":
         return {"status": "stageb_ontology_promotion_disabled"}
     now = _now()
+    # Commits on its own, so it must run before the savepoint opens.
+    _obs.ensure_schema(con)
 
     con.execute("SAVEPOINT stageb_ontology_promotion")
     try:
         promotion_result = _promote_stable_clusters(con, now)
+        withdrawal_result = _retract_below_word_level(con, now)
         retraction_result = _retract_dissolved_clusters(con, now)
+        _set_kv(con, STATE_TABLE, "clusters_withdrawn_below_word_level_total",
+                _int(state.get("clusters_withdrawn_below_word_level_total"), 0) + withdrawal_result["clusters_withdrawn"])
 
         _set_kv(con, STATE_TABLE, "cycle_count", _int(state.get("cycle_count"), 0) + 1)
         _set_kv(con, STATE_TABLE, "clusters_promoted_total",

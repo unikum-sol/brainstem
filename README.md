@@ -1,4 +1,4 @@
-## BrainStem Update 12.11.26
+## BrainStem Update 16.11.26
 
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-state)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
@@ -39,20 +39,29 @@ YouTube - AI conversation about BrainStem Project
 ---
 ### Current State
 
-#### Status as of 12 November 2026
+#### Status as of 16 November 2026
 
-- **Runtime chain:** 36 phase modules, loaded by `ki_system/phase_registry.py`. The chain top is the Stage-B question-chunk feedback.
+All cycle counts are system cycles; one autonomous-learning cycle in the GUI comprises 5 of them (see [Cycle units](#cycle-units)).
+
+- **Runtime chain:** 36 phase modules plus a log-retention maintenance step, loaded by `ki_system/phase_registry.py`. The chain top is the log retention (`v8_log_retention`).
+- **Production run (13 November 2026):** 5,000 cycles on the full corpus without exceptions or hidden errors. Stable hypotheses grew from 36 to 2,597, facts from 36 to 819 (101 retracted after lost competitions), relations from 0 to 493; the corpus was read completely and no regulator reached a boundary.
+- **Database hygiene and learning fixes (13 November 2026):** the experiment event logs are now kept for the last 1,000 cycles only (a one-time compaction shrinks the 20.5 GB database to 5.8 GB with unchanged lifetime summaries); experiments now report closure when their gap actually closes; replay effectiveness is measured as a cued-versus-uncued contrast; exploration follows learning progress; and ontology categories are stable (10 promotions and 1 retraction in 1,000 cycles, before about 200 of each). A final 1,000-cycle learning run met all nine calibration criteria.
+- **Second production run (15 November 2026):** 5,000 cycles on the compacted production database without exceptions or hidden errors. Stable hypotheses grew from 2,597 to 4,505, facts to 1,136 and relations to 1,067, with a capture rate of 97.4 % and no regulator at a boundary. The database grew from 5.8 to 8.1 GB during the first 1,750 cycles and then stayed constant, while the log retention removed 17.5 million old rows. Ontology churn fell to a tenth (110 promotions and 112 retractions, before 1,013 and 1,010), but categories over characters and syllables still dissolve as the relation graph grows.
+- **Ontology from words, coexisting memories, faster strategy phases (16 November 2026):** following an advisory council, ontology categories now form only from word-level units, so the ontology stays empty until words are confirmed; two consolidated sentences that share a cue now coexist instead of revising each other; phases 5b and 5d compute their averages with index-backed queries (0.59 to 0.012 s and 0.35 to 0.18 s per cycle, identical values). A 1,000-cycle test run uncovered a savepoint error in the new ontology code, which was fixed; a 200-cycle check afterwards ran without exceptions or diagnostic findings. Details: the project status reports under `docs/`.
+- **Half the computation per cycle (16 November 2026):** partial indexes on the gap table let phases 5e, 5f, 5g, 5i, 6a and gap detection read only the about 1,300 active gaps instead of all 276,000 (2.1 s to 0.03 s per cycle, identical results); the process CPU time per cycle fell from about 5.1 to 2.6 s. A 1,000-cycle test run met all nine calibration criteria without exceptions or diagnostic findings. The capture-rate criterion K5 now counts only traces tagged at least 250 cycles before the end of a run, because capture takes a median of 62 and at most about 240 cycles. Details: the project status reports under `docs/`.
+- **Stability check (14 November 2026):** a 1,500-cycle sensory-deprivation run on the compacted production state ended with the verdict "konvergenz": all 21 signals stable or converging, no regulator at a boundary, and consolidation continued without input (stable hypotheses 2,598 to 3,196).
 - **All layers learn:** sentence hypotheses, lexical boundaries and relation hypotheses all take part in sleep consolidation and graduate into stable roles. In a 150-cycle run on 300 real Wikipedia chunks the system graduated 35 sentence, 15 lexical-boundary and 35 relation hypotheses and promoted 33 facts, 12 relations and 11 ontology rows.
 - **Self-correction works:** consolidated hypotheses compete with alternative completions of the same learned cue. A decisively stronger competitor is treated as a prediction error: the stored hypothesis is reverted to uncertain, its fact is retracted and the hypothesis has to be consolidated again. This happens without any external trigger (example from a test run: cue "April 20", stored evidence 1 vs. competitor evidence 3).
-- **Speed:** about 1.3 to 1.6 s per learning cycle on the full production database (5.6 GB, 167,661 chunks, 937,552 hypotheses), about 0.9 s on a small corpus.
+- **Speed:** on the current production state the computation takes about 2.6 s of CPU time per learning cycle (1.2 s on the much smaller state of 13 November); on the storage pool, waiting for the commits adds between under 1 s and about 6 s, so the wall time per cycle fluctuates between about 2.4 and 9 s. See [Performance](#performance).
 - **Stability:** system test fully green; repeated multi-hundred-cycle runs without exceptions or hidden error states in the nested cycle results.
 - **Reading strategies use live state:** phases 5b to 5i take their learning controls (learning rate, error weight, revision, exploration, inhibition, consolidation) and the six core neuromodulators from the live state of Phases 6a and 7c, cluster the real curiosity questions, and read gap resolution from the actual gap status. Phase 5b's exploration and inhibition recommendations act back on the persistent bias state with a damped step (top-down strategy control), counterbalanced by saturation homeostasis (6d) and the endocannabinoid pull (7b).
 - **One sleep trigger, developmental sleep share:** a single sleep/wake switch decides when the system sleeps. Adenosine (Process S) rises with the encoding load of each cycle and falls during sleep; sleep starts at an upper and ends at a lower threshold. Like a newborn, the immature system builds up sleep pressure faster and sleeps about two thirds of the time; as consolidated knowledge grows, wake episodes lengthen toward the adult rhythm of about 55 wake and 22 sleep cycles (about 28% sleep). In a 400-cycle run from a fresh database the system slept 62% of the time and graduated 231 hypotheses (103 with a fixed adult rhythm); only 3 of 275 tagged survivors expired before consolidation.
+- **Neuromodulators carry the learning state:** dopamine is a reward prediction error (bursts on unexpected success, dips below baseline when an expected reward is missing), noradrenaline adds surprise to the persistent pressure, serotonin follows the long-run average reward, and noradrenaline, acetylcholine and serotonin drop during sleep. The plasticity chain is fully active: replay effectiveness adjusts plasticity and biases, 16 meta parameters regulate themselves with a homeostatic restoring force, meta-meta-plasticity adapts their learning rates, and in a 400-cycle run no regulator reached a boundary.
 - **Cortisol Stage 2** is active (guarded soft regulator; per-value cap 0.01, per-cycle budget 0.03, 3-cycle cooldown).
 
 #### Production database
 
-The production database `ki_memory.sqlite3` holds the German Wikipedia categories _Physics_ and _Computer_ (2 documents, 167,661 chunks). Since the last corpus-preserving learning reset, 1,947 learning cycles have run and 37.1% of the chunks have been read. The new replay and self-correction mechanisms described below have not yet run on this database; it was last used before they existed.
+The production database `ki_memory.sqlite3` holds the German Wikipedia categories _Physics_ and _Computer_ (2 documents, 167,661 chunks). Since the last corpus-preserving learning reset, about 6,950 learning cycles have run and all chunks have been read. The production run left it at 20.5 GB, mostly old experiment event logs. On 14 November 2026 a one-time compaction (`python -m ki_system.compact_logs`) brought it down to 5.8 GB, with all learned content and lifetime summaries unchanged; after the second production run it holds 8.1 GB, and its size stays constant under the log retention. Every fact, relation and stable hypothesis traces back to its source chunk.
 
 #### Earlier validation (September 2026)
 
@@ -60,9 +69,12 @@ A full read-through of the corpus and more than 11,500 learning cycles ran witho
 
 ---
 ### Next Major Steps
-- Run the new replay, cue competition and reconsolidation mechanisms over a long period on the full production corpus and observe how quality develops.
-- Observe the exploration bias: with many unresolved gaps it currently sits at the upper bound of Phase 5b's strategy control.
-- Observe whether the neuromodulators leave their current high-noradrenaline state once more gaps are closed by the new correction path.
+- Bundle the commits: a cycle commits about 74 times because many phases commit or release an outermost savepoint themselves; on the storage pool these commits are now the largest cost. This changes every phase and needs its own plan.
+- Text-contrast search: frequent terms make its full-text queries match tens of thousands of rows (about 0.3 s per cycle); narrowing it changes behaviour, so it goes to an advisory council first.
+- Ontology: later, form categories from sentence positions instead of co-occurrence, and use syllable classes to support word segmentation.
+- Watch the learning rate: its spread over a run has narrowed to about 0.010 to 0.012, close to the calibration bound of 0.01.
+- Content-weighted maturity: observe the shadow value over several runs before coupling it to the sleep rhythm.
+- Observe the reward prediction error, learning progress and meta-parameter regulation over a long production run, and how the closure signal develops as more gaps are resolved.
 - Catastrophic-forgetting test (Tadros/Bazhenov motivated): import a second, topically distinct corpus and measure whether already consolidated knowledge is protected, degraded or reinforced.
 
 ---
@@ -77,7 +89,7 @@ A full read-through of the corpus and more than 11,500 learning cycles ran witho
 <tr><td>**Self-correction (cue competition)**</td><td>Active: learned partial cues, evidence-decided competition, revision, fact retraction, reconsolidation requirement</td><td>Long-run observation on the production corpus</td></tr>
 <tr><td>**Lexical emergence (Phase 0)**</td><td>Active, takes part in consolidation and graduation with its own replay quota</td><td>Calibration of context length and entropy threshold</td></tr>
 <tr><td>**Relations emergence (Module A)**</td><td>Active and productive</td><td>Observation at production scale</td></tr>
-<tr><td>**Ontology emergence (Module B)**</td><td>Active and productive</td><td>Observation at production scale</td></tr>
+<tr><td>**Ontology emergence (Module B)**</td><td>Active, word-gated (empty until word units are confirmed)</td><td>Categories from sentence positions</td></tr>
 <tr><td>**Questions emergence (Module C)**</td><td>Active and productive, including curiosity-directed reading</td><td>Observation at production scale</td></tr>
 <tr><td>**Full corpus scaling** (complete German Wikipedia)</td><td>Deliberately deferred</td><td>Order-of-magnitude estimate only</td></tr>
 <tr><td>**Vector database evaluation**</td><td>Deliberately deferred</td><td>Only once stable hypothesis identities exist, a concrete semantic-retrieval use case is identified, and a shadow comparison against the SQLite baseline is performed</td></tr>
@@ -124,7 +136,7 @@ Every promoted fact, relation, category and question carries a complete provenan
 ### Architecture
 
 <a href="assets/BrainStem-Architecture.png" target="_blank">
-  <img src="assets/BrainStem-Architecture.png" alt="BrainStem-Architecture" width="500" />
+  <img src="assets/BrainStem-Architecture.png" alt="BrainStem architecture overview: pre-parsing, the four groups of the learning cycle, neuromodulator state, knowledge store and interfaces" width="100%" />
 </a>
 
 BrainStem does not run as a continuously coupled system of differential equations. It traverses a cyclic state graph: each phase activates a few dominant neuromodulators while the rest stay passive. This sequential design prevents interaction cascades and keeps debugging deterministic.
@@ -137,7 +149,7 @@ BrainStem does not run as a continuously coupled system of differential equation
 <tr><td>2</td><td>Autonomous learning</td><td>The AutonomousLoop processes chunks while the neuromodulatory, replay, consolidation and write-path chain reacts to the evolving internal state.</td></tr>
 </table>
 
-#### Runtime chain (36 phases, in execution order)
+#### Runtime chain (36 phases and a maintenance step, in execution order)
 
 <table>
 <tr><th>Group</th><th>Phases</th></tr>
@@ -145,6 +157,7 @@ BrainStem does not run as a continuously coupled system of differential equation
 <tr><td>Strategy and reading control</td><td>Phases 5b to 5i, with Stage-B gap detection between 5d and 5e</td></tr>
 <tr><td>Sleep and homeostasis</td><td>6a replay and meta-plasticity, 6b replay effectiveness and critic gate, 6c bias persistence and self-regulating meta-parameters, 6d saturation homeostasis, 7a adenosine, 7b endocannabinoids, 7b1 wake-chain bridge, 7c adaptive boundaries and E/I balance, connection accelerator, 7d slow-wave consolidation, 7e histamine, 7f orexin, 7g BDNF, 7cort cortisol, cooperative core</td></tr>
 <tr><td>Stage B write chain</td><td>Graduation, contradiction detection, hypothesis revision, fact promotion, relational binding, relation promotion, ontology cluster observation, ontology promotion, question promotion, question-chunk feedback</td></tr>
+<tr><td>Maintenance</td><td>Log retention: keeps the raw experiment event logs of the last 1,000 cycles and prunes older rows during sleep with a row budget; lifetime summaries stay intact</td></tr>
 </table>
 
 The Stage B chain is ordered so that a competition decided in a cycle already causes its fact to be retracted within the same cycle, and a relation, cluster or question promoted in a cycle is already visible to the next module.
@@ -160,6 +173,8 @@ The decision between wake and sleep is made in exactly one place, the sleep/wake
 - **What drives the rise.** The wake rate scales with encoding load: the new hypotheses and experiment outcomes of the cycle relative to the system's own running novelty level, `load = n / (n + reference)`. A burst of new material brings sleep forward, a quiet phase delays it. Glutamatergic activity scales the rise further, and GABAergic inhibition deepens the decay during sleep.
 - **Switch with hysteresis.** Sleep starts when adenosine reaches the upper threshold (0.67) and ends when it has dissipated to the lower threshold (0.17). The gap between the two thresholds keeps transitions rare and complete, like the mutually inhibiting flip-flop between the sleep-active preoptic area and the arousal system. The arousal side (histamine, orexin, noradrenaline, acetylcholine, cortisol) and the GABAergic sleep side shift both thresholds together by at most 0.1, the role the circadian process plays in the two-process model. During sleep the switch suppresses histamine, which in turn stabilizes sleep.
 - **Developmental sleep share.** The wake rate is multiplied by `1 + 4 * (1 - maturity)`, with `maturity = knowledge / (knowledge + 1000)` and knowledge being the net number of hypotheses in a stable role (a revision counts back down). A fresh system therefore builds up sleep pressure five times faster and sleeps about two thirds of the time, as newborns do; with growing consolidated knowledge the share falls toward the adult value. Only the rise changes with maturation, the decay stays the same, matching the finding that sleep pressure builds up faster in younger children while its dissipation is stable across development.
+- **Content-weighted maturity (shadow mode).** Counting stable hypotheses overstates maturity, because most of them are text fragments and character relations. Development is measured by the level of structure reached (Saffran et al. 1996; Kuhl 2004; Bates & Goodman 1997), and sleep maturation follows the construction and pruning of the network rather than stored items (Kurth et al. 2010; Huber & Born 2014). Phase 7a therefore also computes a content-weighted maturity over five levels: character and syllable relations, word-boundary statistics and literal excerpts, confirmed words, relations and category edges between words, and sentence-level structure. A higher level cannot run ahead of the level below it, and the value rises slowly and never falls. It is logged as `content_maturity_shadow` and not yet coupled to the sleep rhythm; after the production run it is 0.04, against 0.41 for the item count.
+- **Sensory gating in sleep (full gating, default).** Sleeping brains gate sensory input in the thalamus (McCormick & Bal 1994; Andrillon & Kouider 2020). Learning during sleep exists but is simple and weak (Fifer et al. 2010; Ruch & Henke 2020), input close to a reactivation can cancel its benefit (Schreiner, Lehmann & Rasch 2015), and consolidation profits from little new input (Mednick et al. 2011). Since 14 November 2026 the system therefore reads nothing while asleep. In a comparison of three 1,000-cycle runs after a learning reset, full gating reached the same number of stable hypotheses as reading during sleep (533 vs 531) with 60 % fewer chunks, the same capture rate and fewer lost competitions, at 2.3 instead of 3.6 s per cycle. A graded variant (reading rate in light sleep from 30 % while immature to 5 % when mature, sleep-read sentences flagged until confirmed in wake) stays available; its first run showed six times more lost competitions, caused by sleep re-observations refreshing the recency stamp that Phase 7d uses to pick fresh traces, which is fixed now. Pre-registered confirmation runs on 15 November 2026 met every criterion in both pairs: from the learning reset to cycle 3,000, full gating reached 1,484 stable hypotheses against 1,452 with reading in sleep, at the same capture rate and with fewer lost competitions, in 3.2 instead of 4.6 hours; from an earlier developmental state it reached 684 against 655. `sleep_input_gating_state.enabled = false` restores reading in sleep.
 - **Not too early, not too late.** Depending on maturity, load and glutamate, a wake episode lasts between roughly 7 cycles (newborn, high load) and 150 cycles (mature, no new material), and a sleep episode about 20 to 23 cycles. Wake always ends inside the dopamine-modulated synaptic tag window of Phase 7d (225 to 375 cycles), so tagged traces are consolidated before they decay, while enough new material accumulates between two sleep episodes to make replay worthwhile. At sleep onset, saturated meta-plasticity biases are pulled back toward their mid values.
 
 #### Prioritized replay (Phase 7d)
@@ -175,6 +190,8 @@ Track shares are normalized (divisive normalization) and equal the calibrated ba
 #### Critic gate and replay effectiveness
 
 Phase 6b evaluates replay effectiveness and plasticity adjustments. The critic gate checks whether proposed changes stay consistent enough to be retained; the same critic gate is reused by Stage-B graduation.
+
+Replay effectiveness is measured the way sleep research measures it (targeted memory reactivation: Rudoy et al. 2009; Rasch et al. 2007; meta-analysis by Hu et al. 2020). In every slow-wave cycle, the tagged traces of Phase 7d form a cohort: traces reactivated in an up-state are the cued group, eligible traces that were not drawn are the uncued control (`v8_replay_cue_effect.py`). The outcome is capture: a trace counts as a success when it has reached three reinforced survivals, or has graduated, within the next 15 cycles, the cue cycle included (synaptic tagging and capture: Frey & Morris 1997; Redondo & Morris 2011). An earlier version counted only further survivals after the cue; a cued trace that was captured left the tagged track and could no longer survive, so the success of the cue was scored as a failure. Each trace enters at most one cohort per horizon, so cohorts are close to independent, and only traces inside Phase 7d's replay pool are compared. Cued and uncued traces are compared within strength strata, because weak traces are replayed preferentially (Schapiro et al. 2018). The smoothed difference is flagged only beyond 2.814 standard errors (EWMA control chart, Lucas & Saccucci 1990), and a plateau needs evidence of absence: an equivalence bound (two one-sided tests) has to hold for a run of cohorts. Without enough evidence the measure stays neutral and never triggers a plateau break. Because nearly every tagged trace is replayed within a few cycles anyway, a single cue mostly gives a head start, and the expected effect is small, as for well-learned items in biology (Creery et al. 2015).
 
 #### Slow-wave substructure
 
@@ -194,6 +211,7 @@ Implemented in `v8_cue_competition.py` together with gap detection, contradictio
 3. **Decision from evidence only:** a competitor with decisively more evidence is a prediction error ("resolvable"); a decisively stronger stored pattern is "confirmed"; anything in between stays "open". The decisive ratio is scaled by noradrenaline (unexpected uncertainty).
 4. **Revision and retraction:** the losing stored hypothesis is reverted to uncertain, its fact is retracted, the contested gap is closed.
 5. **Reconsolidation:** the reverted hypothesis needs new consolidation survivals before it can graduate again, which prevents oscillation.
+6. **Coexisting memories:** when the stronger competitor is itself consolidated, both sentences stay and the contradiction is marked `coexisting`, unless a still uncertain competitor is decisive. Similar inputs are stored as separate memories and competing memories coexist (Yassa & Stark 2011; Bouton 2004); a consolidated trace becomes labile only through a prediction error at retrieval (Nader et al. 2000; Sinclair & Barense 2019).
 
 Early in learning, the learned word boundaries and therefore the cues are noisy. This is intended: the decisive-evidence requirement keeps noise from reverting anything, and both boundaries and competitions sharpen as the lexical layer learns.
 
@@ -216,6 +234,8 @@ A position with high entropy is a boundary candidate (`uncertain_lexical_boundar
 
 `v8_stageb_ontology_cluster_observation_release` clusters the relation graph with Label Propagation and anchors cluster identity to its prototype, the most central member (Rosch). `v8_stageb_ontology_promotion_release` promotes reconfirmed stable clusters into `ontology` as association membership with the placeholder relation `member_of_cluster`; no category name is invented.
 
+Categories are built to be stable. Label Propagation runs in a fixed node order, starts from the previous partition and keeps a node's label on ties (Raghavan et al. 2007; Cordasco & Gargano 2010), so an unchanged relation graph yields unchanged clusters. A cluster is promoted only after it has been seen in at least three distinct sleep episodes, like the offline generalization of infant categories during naps (Gomez et al. 2006; Friedrich et al. 2015), and only with at least three members. Categories form over words, not over characters or syllables: a cluster is promoted only if its prototype and at least the minimum number of members are word-level units (alphabetic surfaces of at least four letters, or confirmed lexical units). Statistics over syllables serve word segmentation, while categories that carry meaning form over segmented words (Saffran, Aslin & Newport 1996; Mintz 2003; Lany & Saffran 2010). Sub-word clusters are still observed but never promoted, and an already promoted one is withdrawn with its own reason. A missing cluster weakens instead of vanishing (graded membership, Rosch 1975): it is retracted only after a grace period of 60 cycles.
+
 #### Questions (Module C)
 
 `v8_stageb_question_promotion_release` promotes a persistent, repeatedly reconfirmed gap into a question (Information-Gap Theory of curiosity). The question text is a fixed marker plus already observed surface text; no sentence is generated. `v8_stageb_question_chunk_feedback_release` boosts the source chunk of every open question and searches the corpus via FTS5 for not yet read chunks that might resolve it.
@@ -231,21 +251,29 @@ BrainStem uses **12 digital neuromodulators**, normalized to [0.0, 1.0] and deri
 
 <table>
 <tr><th>Neuromodulator</th><th>Engineering role</th></tr>
-<tr><td>Dopamine</td><td>outcome and gap-closure signal; question priority, ontology overlap tolerance, replay capacity for tagged memories, tag lifetime, share of tagged novel samples</td></tr>
-<tr><td>Serotonin</td><td>consolidation and stability; habituation resistance, cluster-stability requirement, replay capacity for consolidated anchors</td></tr>
+<tr><td>Dopamine</td><td>reward prediction error (phasic) and average reward rate (tonic target); question priority, ontology overlap tolerance, replay capacity for tagged memories, tag lifetime, share of tagged novel samples</td></tr>
+<tr><td>Serotonin</td><td>consolidation, stability and long-run reward; habituation resistance, cluster-stability requirement, replay capacity for consolidated anchors</td></tr>
 <tr><td>Glutamate</td><td>excitatory drive, exploration and learning activity</td></tr>
 <tr><td>GABA</td><td>global inhibition and E/I balance; sharpness of role competition at graduation</td></tr>
-<tr><td>Noradrenaline</td><td>error, alarm and unexpected uncertainty; existence gates, decisive ratio of competitions, replay capacity for novel items, ontology minimum cluster size (direction learned from outcomes)</td></tr>
+<tr><td>Noradrenaline</td><td>persistent pressure and surprise (unexpected uncertainty); also the error weight of the strategy phases; existence gates, decisive ratio of competitions, replay capacity for novel items, ontology minimum cluster size (direction learned from outcomes)</td></tr>
 <tr><td>Acetylcholine</td><td>novelty, attention and structural revision; relation direction, revision budget, graduation novelty pressure, ontology promotion budget, consolidation gating, cue length (pattern separation vs. completion)</td></tr>
 <tr><td>Adenosine</td><td>sleep-pressure homeostat</td></tr>
 <tr><td>Endocannabinoids</td><td>retrograde gain control (2-AG phasic, anandamide tonic)</td></tr>
 <tr><td>Cortisol</td><td>top-level stability watcher and guarded soft regulator (Stage 2 active)</td></tr>
 <tr><td>Histamine</td><td>wake and arousal</td></tr>
 <tr><td>Orexin</td><td>reading endurance and curiosity drive</td></tr>
-<tr><td>BDNF</td><td>activity-dependent growth and consolidation substrate</td></tr>
+<tr><td>BDNF</td><td>activity-dependent growth; lowers the survival threshold and strengthens reinforcement in slow-wave consolidation</td></tr>
 </table>
 
 GABA regulates system-level inhibition and competitive sharpness; it never suppresses individual words. All 12 displays are connected in the GUI.
+
+#### Signal sources, sleep tone and the plasticity chain
+
+- **Representative inputs:** replay deliberately picks the weakest items, but the global signals come from representative recent windows (the last 500 experiment outcomes and gaps, the graduation rate), so they describe the whole system rather than its weakest tail.
+- **Reward prediction error:** each cycle's reward combines new experiment outcomes, graduations and closed gaps. Phasic dopamine is 0.5 plus 1.5 times the difference between this reward and its expectation, which is learned separately for wake and sleep (as a value per state in temporal-difference learning). The slow running average of the reward is the tonic average reward rate; fast minus slow average is the learning progress that drives orexin and BDNF.
+- **Sleep tone:** during sleep noradrenaline is scaled to 0.3, acetylcholine to 0.4 and serotonin to 0.5 of their waking tone, following the firing of locus coeruleus, basal forebrain and raphe neurons in slow-wave sleep.
+- **One shared bias state:** the freshly computed biases of Phase 6a enter it at a rate of 0.1 per cycle; top-down strategy feedback (5b), replay effectiveness (6b), saturation homeostasis (6d), sleep onset (7a) and the endocannabinoids (7b) change it additively.
+- **Self-regulating meta parameters:** steps are scaled to each parameter's range and a restoring force of 0.25 per step pulls every parameter back toward its calibrated default, so a persistent drive yields a bounded offset. 2-AG dampens all regulator steps for as long as it is elevated. Adaptive boundaries contract only while a parameter is actually regulated and never below half of the calibrated width.
 
 ---
 ### Neuromodulator-Coupled Thresholds
@@ -280,13 +308,18 @@ The noradrenaline coupling of the ontology minimum cluster size is deliberately 
 ---
 ### Performance
 
-Measured on a copy of the production database (5.6 GB): about 1.3 to 1.6 s per learning cycle, on a small corpus about 0.9 s.
+On the production state of 16 November 2026 the computation takes about 2.6 s of process CPU time per learning cycle (about 5.1 s before the partial gap indexes); measuring CPU time separately from wall time is the reliable way to judge a code change here. On the storage pool used here (SSDs of different speed), the commit at the end of each cycle dominates and fluctuates between about 2.4 and 7 s without code changes. Measured alone on the pool on the compacted production copy (5.8 GB): median 2.5 s per cycle (5.95 s before the write-load fixes). Over the 5,000 cycles of the second production run the median rose from 2.7 s to 5.9 s although the file size stayed constant, so the remaining rise comes from growing learned tables rather than logs.
 
 - **Schema checks** run once per database connection instead of once per observed sentence.
 - **Incrementally maintained aggregates** (`v8_outcome_aggregates.py`): phases 5h and 5i read group-wise counts and averages over the experiment-outcome history (about 0.9 million rows) from a small table that SQLite triggers keep current on insert, update and delete, instead of rescanning the history every cycle. Results are identical to the full scans.
 - **Targeted indexes** for the per-cycle hot paths, including expression indexes whose key direction lets SQLite read them backwards for "ORDER BY expression, rowid DESC" scans.
 - **Exactly one unique index** per table column, shared by all phase modules.
 - **Cached corpus searches** for question-chunk feedback, valid until new chunks are imported.
+- **Log retention** (`v8_log_retention.py`): raw experiment event logs are kept for the last 1,000 cycles; every reader looks at most a few hundred cycles back. Before, they grew by about 3 GB per 1,000 cycles. `python -m ki_system.compact_logs <db> [--cutoff-ts EPOCH] [--vacuum]` removes an existing backlog once.
+- **Index-backed averages in phases 5b and 5d:** the active-gap averages read the few distinct statuses through the status index and compute both averages in one pass, instead of scanning the gap table several times per cycle.
+- **Partial indexes on the gap table:** almost all gaps are habituated, so `db_bootstrap.SCHEMA_PARTIAL_INDEXES` indexes only the rows each phase filter selects. SQLite uses a partial index only when the query's condition matches the index condition, so a phase that changes its filter must change its index entry too.
+- **Unique checks skip the duplicate scan** in phases 5b and 5c once the unique index exists.
+- **Fewer writes:** Phase 5h rewrites only evaluations that changed, and the global decay of reading-queue and attention scores runs every 10 cycles with the factor raised to the 10th power.
 
 ---
 ### Safety Locks and Write Paths
@@ -311,7 +344,7 @@ The learning state can be reset without re-importing the corpus (GUI button or `
 ---
 ### Sensory Deprivation and Drift Report
 
-The GUI includes a sensory-deprivation mode that skips new reading while replay, consolidation and neuromodulatory dynamics continue, with start/stop controls, cycle limits, per-cycle CSV diagnostics, live graphs and signal-level drift verdicts.
+The GUI includes a sensory-deprivation mode that skips new reading while replay, consolidation and neuromodulatory dynamics continue, with start/stop controls, cycle limits, per-cycle CSV diagnostics, live graphs and signal-level drift verdicts. The verdicts compare the mean of the first and the last tenth of the cycles rather than single values, so signals that oscillate with the sleep-wake rhythm or as a reward prediction error are not misjudged by the phase their first or last cycle falls into; a signal counts as diverging only if it moves into a boundary (below 0.02 or above 0.98) and stays there.
 
 ---
 ### Running the System
@@ -338,6 +371,14 @@ System check on an isolated snapshot of the database: `python -m ki_system.syste
 - Live 12-neuromodulator display, corpus-coverage and cycle-progress indicators, bounded logs and graphs, cooperative worker shutdown
 
 The GUI is an experimental testing interface.
+
+#### Cycle units
+
+All cycle counts in this README and in the reports under `docs/` are system cycles: one call of `AutonomousLoop.cycle()`, which runs the whole phase chain once. The GUI counts differently in its two run modes:
+- **Autonomous learning** (Import and Jobs): one "Dauerlern-Zyklus" consists of 5 system cycles, followed by a WAL checkpoint and a pause of about 2 s. 1,000 system cycles correspond to 200 GUI cycles.
+- **Drift Report** (sensory deprivation): one "Entzug-Zyklus" is one system cycle.
+
+The CSV logger is checked after every system cycle. Sleep pressure, habituation and tag windows and all other internal time constants count system cycles, not seconds.
 
 #### CSV logger and BrainStem CSV Viewer
 
@@ -388,6 +429,20 @@ A Windows `zimdump.exe` build and its DLL files must be placed in the project ro
 - **Tarokh, Leila; Carskadon, Mary A.; Achermann, Peter** (2012) _Dissipation of sleep pressure is stable across adolescence_. Neuroscience.
 - **Feinberg, Irwin; Campbell, Ian G.** (2010) _Sleep EEG changes during adolescence: an index of a fundamental brain reorganization_. Brain and Cognition.
 - **Walsh, James K.; et al.** (2008) _Slow wave sleep enhancement with gaboxadol reduces daytime sleepiness during sleep restriction_. Sleep.
+
+**Neuromodulation, reward and plasticity**
+- **Schultz, Wolfram; Dayan, Peter; Montague, P. Read** (1997) _A neural substrate of prediction and reward_. Science.
+- **Niv, Yael; Daw, Nathaniel D.; Joel, Daphna; Dayan, Peter** (2007) _Tonic dopamine: opportunity costs and the control of response vigor_. Psychopharmacology.
+- **Sutton, Richard S.; Barto, Andrew G.** (2018) _Reinforcement Learning: An Introduction_ (2nd ed.). MIT Press.
+- **Aston-Jones, Gary; Bloom, Floyd E.** (1981) _Activity of norepinephrine-containing locus coeruleus neurons in behaving rats anticipates fluctuations in the sleep-waking cycle_. Journal of Neuroscience.
+- **Trulson, Michael E.; Jacobs, Barry L.** (1979) _Raphe unit activity in freely moving cats: correlation with level of behavioral arousal_. Brain Research.
+- **Gottlieb, Jacqueline; Oudeyer, Pierre-Yves; Lopes, Manuel; Baranes, Adrien** (2013) _Information-seeking, curiosity, and attention: computational and neural mechanisms_. Trends in Cognitive Sciences.
+- **Bramham, Clive R.; Messaoudi, Elhoucine** (2005) _BDNF function in adult synaptic plasticity: the synaptic consolidation hypothesis_. Progress in Neurobiology.
+- **Lu, Yuan; Christian, Kimberly; Lu, Bai** (2008) _BDNF: a key regulator for protein synthesis-dependent LTP and long-term memory?_ Neurobiology of Learning and Memory.
+- **Abraham, Wickliffe C.; Bear, Mark F.** (1996) _Metaplasticity: the plasticity of synaptic plasticity_. Trends in Neurosciences.
+- **Turrigiano, Gina G.** (2008) _The self-tuning neuron: synaptic scaling of excitatory synapses_. Cell.
+- **Wilson, Rachel I.; Nicoll, Roger A.** (2001) _Endogenous cannabinoids mediate retrograde signalling at hippocampal synapses_. Nature.
+- **Castillo, Pablo E.; Younts, Thomas J.; Chávez, Andrés E.; Hashimotodani, Yuki** (2012) _Endocannabinoid signaling and synaptic function_. Neuron.
 
 **Retrieval competition, prediction error and reconsolidation**
 - **Anderson, Michael C.; Bjork, Robert A.; Bjork, Elizabeth L.** (1994) _Remembering can cause forgetting: Retrieval dynamics in long-term memory_. Journal of Experimental Psychology: Learning, Memory, and Cognition.
@@ -564,6 +619,66 @@ A Windows `zimdump.exe` build and its DLL files must be placed in the project ro
   author={Walsh, James K. and others},
   journal={Sleep}, volume={31}, number={5}, pages={659--672}, year={2008}
 }
+@article{schultz1997neural,
+  title={A neural substrate of prediction and reward},
+  author={Schultz, Wolfram and Dayan, Peter and Montague, P. Read},
+  journal={Science}, volume={275}, number={5306}, pages={1593--1599}, year={1997}
+}
+@article{niv2007tonic,
+  title={Tonic dopamine: opportunity costs and the control of response vigor},
+  author={Niv, Yael and Daw, Nathaniel D. and Joel, Daphna and Dayan, Peter},
+  journal={Psychopharmacology}, volume={191}, pages={507--520}, year={2007}
+}
+@book{sutton2018reinforcement,
+  title={Reinforcement Learning: An Introduction}, edition={2},
+  author={Sutton, Richard S. and Barto, Andrew G.},
+  publisher={MIT Press}, year={2018}
+}
+@article{astonjones1981activity,
+  title={Activity of norepinephrine-containing locus coeruleus neurons in behaving rats anticipates fluctuations in the sleep-waking cycle},
+  author={Aston-Jones, Gary and Bloom, Floyd E.},
+  journal={Journal of Neuroscience}, volume={1}, number={8}, pages={876--886}, year={1981}
+}
+@article{trulson1979raphe,
+  title={Raphe unit activity in freely moving cats: correlation with level of behavioral arousal},
+  author={Trulson, Michael E. and Jacobs, Barry L.},
+  journal={Brain Research}, volume={163}, pages={135--150}, year={1979}
+}
+@article{gottlieb2013information,
+  title={Information-seeking, curiosity, and attention: computational and neural mechanisms},
+  author={Gottlieb, Jacqueline and Oudeyer, Pierre-Yves and Lopes, Manuel and Baranes, Adrien},
+  journal={Trends in Cognitive Sciences}, volume={17}, number={11}, pages={585--593}, year={2013}
+}
+@article{bramham2005bdnf,
+  title={BDNF function in adult synaptic plasticity: the synaptic consolidation hypothesis},
+  author={Bramham, Clive R. and Messaoudi, Elhoucine},
+  journal={Progress in Neurobiology}, volume={76}, number={2}, pages={99--125}, year={2005}
+}
+@article{lu2008bdnf,
+  title={BDNF: a key regulator for protein synthesis-dependent LTP and long-term memory?},
+  author={Lu, Yuan and Christian, Kimberly and Lu, Bai},
+  journal={Neurobiology of Learning and Memory}, volume={89}, number={3}, pages={312--323}, year={2008}
+}
+@article{abraham1996metaplasticity,
+  title={Metaplasticity: the plasticity of synaptic plasticity},
+  author={Abraham, Wickliffe C. and Bear, Mark F.},
+  journal={Trends in Neurosciences}, volume={19}, number={4}, pages={126--130}, year={1996}
+}
+@article{turrigiano2008self,
+  title={The self-tuning neuron: synaptic scaling of excitatory synapses},
+  author={Turrigiano, Gina G.},
+  journal={Cell}, volume={135}, number={3}, pages={422--435}, year={2008}
+}
+@article{wilson2001endogenous,
+  title={Endogenous cannabinoids mediate retrograde signalling at hippocampal synapses},
+  author={Wilson, Rachel I. and Nicoll, Roger A.},
+  journal={Nature}, volume={410}, pages={588--592}, year={2001}
+}
+@article{castillo2012endocannabinoid,
+  title={Endocannabinoid signaling and synaptic function},
+  author={Castillo, Pablo E. and Younts, Thomas J. and Ch{\'a}vez, Andr{\'e}s E. and Hashimotodani, Yuki},
+  journal={Neuron}, volume={76}, number={1}, pages={70--81}, year={2012}
+}
 @article{anderson1994remembering,
   title={Remembering can cause forgetting: Retrieval dynamics in long-term memory},
   author={Anderson, Michael C. and Bjork, Robert A. and Bjork, Elizabeth L.},
@@ -649,13 +764,13 @@ A Windows `zimdump.exe` build and its DLL files must be placed in the project ro
 
 ---
 ### Development Notes
-- **Python package:** ki_system (60 modules)
+- **Python package:** ki_system (63 modules)
 - **Local project folder:** BrainStem
 - **Primary runtime:** Python 3.11 on Windows with SQLite
 - **Documentation language:** English, German
 - **Status:** highly experimental, under mathematical and architectural validation, with the productive write paths open as an experiment
 - **Engineering discipline:** backup, compile check, schema self-check, smoke test and rollback planning for structural changes
-- **Project and function status:** see the time-stamped status reports in `Audits/`
+- **Project and function status:** see the latest time-stamped project status reports in `docs/` (English and German); experiment and validation reports are kept locally and are not part of the repository yet
 - **Companion tool:** [BrainStem CSV Viewer](https://github.com/unikum-sol/BrainStem-CSV-Viewer) for offline analysis of the GUI logs
 - **AI-assisted engineering:** concept elaboration with ChatGPT; code generation with Claude Opus/Sonnet and ChatGPT Deep Thinking; code review with NotebookLM, Gemini and Copilot as critics (no sugarcoat mode)
 

@@ -164,6 +164,13 @@ def _resolvable_candidates(con, limit: int):
         weaker_id = resolution.get("weaker_id")
         if weaker_id is None:
             continue
+        # Older decisions may name a consolidated winner; consolidated
+        # memories coexist and do not revise each other.
+        stronger_id = resolution.get("stronger_id")
+        if stronger_id is not None:
+            row = con.execute("SELECT role FROM context_hypotheses WHERE id=?", (stronger_id,)).fetchone()
+            if row and row[0] == "stable_hypothesis":
+                continue
         out.append({"contradiction_id": cid, "subject": subject, "hypothesis_id": weaker_id,
                     "gap_key": details.get("gap_key")})
     return out

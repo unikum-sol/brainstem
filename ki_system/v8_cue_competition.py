@@ -169,7 +169,7 @@ def competitors(con, cue: str, own_id: int, own_excerpt: str, limit: int = 5,
     rows = con.execute(
         "SELECT id, text_excerpt, COALESCE(evidence_count,0), role FROM context_hypotheses "
         "WHERE subject >= ? AND subject < ? AND +role IN (?,?) AND COALESCE(status,'active')='active' "
-        "LIMIT ?",
+        "AND COALESCE(origin,'')<>'sleep_encoded' LIMIT ?",
         (probe, probe + "\U0010ffff", SENTENCE_ROLES[0], SENTENCE_ROLES[1], int(fetch_limit)),
     ).fetchall()
     own = (own_excerpt or "").strip()

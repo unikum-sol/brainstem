@@ -6,6 +6,7 @@ A surface contrast is NOT a logical contradiction. Repetition is NOT truth.
 import difflib
 import json
 import re
+import unicodedata
 import time
 
 SCHEMA_TABLES = {
@@ -158,6 +159,27 @@ def _observation_rows(con,checkpoint,limit):
                        "AND text_excerpt IS NOT NULL ORDER BY id LIMIT ?",(checkpoint,limit)).fetchall()
 
 
+def _fold(term):
+    return ''.join(c for c in unicodedata.normalize('NFKD', term) if not unicodedata.combining(c))
+
+
+def _rarest_terms(con, terms, k):
+    """The k terms of an observation that occur in the fewest indexed
+    observations (inverse document frequency); rare shared words identify
+    aligned alternatives better than frequent ones and keep the full-text
+    search cheap as the index grows. Literatur: Spärck Jones 1972"""
+    if len(terms) <= k:
+        return terms
+    con.execute("CREATE VIRTUAL TABLE IF NOT EXISTS temp.semantic_observation_vocab "
+                "USING fts5vocab(main, semantic_observation_fts, 'row')")
+    folded = {t: _fold(t) for t in terms}
+    keys = sorted(set(folded.values()))
+    df = dict(con.execute("SELECT term, doc FROM temp.semantic_observation_vocab WHERE term IN (" +
+                          ",".join("?" for _ in keys) + ")", keys).fetchall())
+    order = sorted(range(len(terms)), key=lambda i: (df.get(folded[terms[i]], 0), i))
+    return [terms[i] for i in sorted(order[:k])]
+
+
 def discover_text_contrasts(con):
     ensure_schema(con)
     from ki_system.v8_stageb_gap_detection_release import _upsert_gap, _neuromodulators, STATE_TABLE as GAP_STATE, ensure_schema as ensure_gap_schema
@@ -182,7 +204,8 @@ def discover_text_contrasts(con):
     created=0;examined=0;seen=set();now=int(time.time())
     for hid,text in rows:
         scan=hid
-        terms=list(dict.fromkeys(re.findall(r'\w+',text.casefold(),flags=re.UNICODE)))[:12]
+        terms=_rarest_terms(con,list(dict.fromkeys(re.findall(r'\w+',text.casefold(),flags=re.UNICODE))),
+                            max(1,int(float(state.get('query_terms',6)))))
         if not terms:continue
         query=' OR '.join('"'+t.replace('"','""')+'"' for t in terms)
         matches=con.execute('SELECT rowid FROM semantic_observation_fts WHERE semantic_observation_fts MATCH ? '

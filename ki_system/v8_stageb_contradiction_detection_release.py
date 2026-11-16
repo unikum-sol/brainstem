@@ -184,7 +184,7 @@ def run_contradiction_detection_cycle(con) -> Dict[str, Any]:
         "ORDER BY priority DESC, id DESC LIMIT ?",
         (scan_limit,),
     ).fetchall()
-    decisions = {"resolvable": 0, "confirmed": 0, "open": 0}
+    decisions = {"resolvable": 0, "confirmed": 0, "open": 0, "coexisting": 0}
 
     for gap_key, cue, stored_id in gap_rows:
         if not cue or stored_id is None:
@@ -200,6 +200,21 @@ def run_contradiction_detection_cycle(con) -> Dict[str, Any]:
             continue
         top = comps[0]
         status = _decide_competition(stored[2], top[2], decisive_ratio)
+        if status == "resolvable" and top[3] == "stable_hypothesis":
+            # Two consolidated sentences that share their opening words are
+            # different memories, not a contradiction: similar inputs are
+            # stored separately (pattern separation, Yassa & Stark 2011) and
+            # competing memories coexist (Bouton 2004; Tse et al. 2007). A
+            # consolidated trace becomes labile only through a prediction
+            # error at retrieval (Nader et al. 2000; Sevenster, Beckers &
+            # Kindt 2013; Sinclair & Barense 2019). Only a still uncertain
+            # competitor may destabilize it (advisory council of 15 November
+            # 2026).
+            uncertain = [c for c in comps if c[3] != "stable_hypothesis"]
+            if uncertain and _decide_competition(stored[2], uncertain[0][2], decisive_ratio) == "resolvable":
+                top = uncertain[0]
+            else:
+                status = "coexisting"
         decisions[status] += 1
         details = {
             "gap_key": gap_key,
@@ -208,9 +223,11 @@ def run_contradiction_detection_cycle(con) -> Dict[str, Any]:
             "evidence": {"stored": stored[2], "competitor": top[2]},
             "decisive_ratio": round(decisive_ratio, 4),
             "resolution": (
-                {"weaker_id": stored[0], "stronger_id": top[0]} if status == "resolvable"
+                {"weaker_id": stored[0], "stronger_id": top[0], "stronger_role": top[3]} if status == "resolvable"
                 else ({"weaker_id": top[0], "stronger_id": stored[0], "action": "none_prediction_confirmed"}
-                      if status == "confirmed" else "ambiguous_no_decision")
+                      if status == "confirmed"
+                      else ({"action": "coexisting_consolidated_memories", "other_id": top[0]}
+                            if status == "coexisting" else "ambiguous_no_decision"))
             ),
         }
         for hid in (stored[0], top[0]):

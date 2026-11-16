@@ -148,6 +148,53 @@ def seed_queue(connection, target=2000):
     return {"seeded": len(rows), "pending_before": pending}
 
 
+GATING_TABLE = "sleep_input_gating_state"
+# Default since 14 November 2026: full gating (no reading in sleep), chosen
+# after a three-arm comparison and an advisory council, and confirmed on
+# 15 November 2026 by the pre-registered runs in
+# Audits/Sleep_Input_Gating_Preregistration_2026-11-14.md (all criteria met in
+# both pairs). The graded variant (gain_immature 0.3, gain_mature 0.05) and no
+# gating (enabled false) stay available.
+GATING_DEFAULTS = {"enabled": "true", "gain_immature": "0.0", "gain_mature": "0.0", "base_chunks": "32"}
+
+
+def _sleep_input_gain(connection):
+    """Graded sensory gating during sleep (decision F2, advisory council of
+    14 November 2026). In sleep the thalamus attenuates sensory input but does
+    not switch it off; the sleeper stays a "vigilant sleeper" (McCormick & Bal
+    1994; Andrillon & Kouider 2020). Infants still learn during sleep, adults
+    only narrowly (Fifer et al. 2010; Tarullo et al. 2016; Arzi et al. 2012;
+    Zust et al. 2019), and input close to a reactivation can cancel its benefit
+    (Schreiner, Lehmann & Rasch 2015). Gain in sleep: from gain_immature to
+    gain_mature with maturity, times (1 - depth); depth is the position of sleep
+    pressure between the switch thresholds, so deep early sleep reads least.
+    Returns (gain, sleeping, details); gain 1.0 in wake or when disabled."""
+    connection.execute("CREATE TABLE IF NOT EXISTS " + GATING_TABLE + " (key TEXT PRIMARY KEY, value TEXT)")
+    for k, v in GATING_DEFAULTS.items():
+        connection.execute("INSERT OR IGNORE INTO " + GATING_TABLE + "(key,value) VALUES(?,?)", (k, v))
+    st = dict(connection.execute("SELECT key,value FROM " + GATING_TABLE).fetchall())
+    sw = {}
+    if _table_exists(connection, "cooperative_sleep_wake_state"):
+        sw = dict(connection.execute("SELECT key,value FROM cooperative_sleep_wake_state").fetchall())
+    sleeping = str(sw.get("state", "wake")).lower() == "sleep"
+    if not sleeping or str(st.get("enabled", "false")).lower() != "true":
+        return 1.0, sleeping, {"gated": False}
+
+    def _f(v, d):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return d
+    maturity = 0.0
+    if _table_exists(connection, "phase7a_adenosine_state"):
+        row = connection.execute("SELECT value FROM phase7a_adenosine_state WHERE key='developmental_maturity'").fetchone()
+        maturity = min(1.0, max(0.0, _f(row[0] if row else 0.0, 0.0)))
+    depth = min(1.0, max(0.0, _f(sw.get("pressure_position"), 1.0)))
+    g_imm, g_mat = _f(st.get("gain_immature"), 0.3), _f(st.get("gain_mature"), 0.05)
+    gain = max(0.0, min(1.0, (g_mat + (g_imm - g_mat) * (1.0 - maturity)) * (1.0 - depth)))
+    return gain, sleeping, {"gated": True, "maturity": round(maturity, 4), "depth": round(depth, 4), "gain": round(gain, 4)}
+
+
 def _sentences(text):
     return [part.strip() for part in _SENT_RE.split(_norm(text, 3000)) if part.strip()]
 
@@ -176,7 +223,7 @@ def _signature(hypothesis):
     return hashlib.sha1(material.encode("utf-8", "ignore")).hexdigest()
 
 
-def insert_observation(connection, chunk_id, sentence, title, neuromodulators):
+def insert_observation(connection, chunk_id, sentence, title, neuromodulators, sleep_encoded=False):
     ensure_schema(connection)
     hypothesis = _raw_hypothesis(sentence)
     signature = _signature(hypothesis)
@@ -190,10 +237,25 @@ def insert_observation(connection, chunk_id, sentence, title, neuromodulators):
         evidence_count = int(existing[1] or 1) + 1
         new_confidence = 1.0 - (1.0 / (1.0 + evidence_count))
         new_uncertainty = 1.0 / (1.0 + evidence_count)
-        connection.execute(
-            "UPDATE context_hypotheses SET evidence_count=?, confidence=?, uncertainty=?, updated_at=? WHERE id=?",
-            (evidence_count, new_confidence, new_uncertainty, now, hypothesis_id),
-        )
+        if sleep_encoded:
+            # Input during sleep sets no recency tag: the replay window of 7d
+            # orders by updated_at and must reflect wake experience (Wilson &
+            # McNaughton 1994; tags from wake: Frey & Morris 1997). Before, sleep
+            # re-observations filled the window with frequent template sentences.
+            connection.execute(
+                "UPDATE context_hypotheses SET evidence_count=?, confidence=?, uncertainty=? WHERE id=?",
+                (evidence_count, new_confidence, new_uncertainty, hypothesis_id),
+            )
+        else:
+            connection.execute(
+                "UPDATE context_hypotheses SET evidence_count=?, confidence=?, uncertainty=?, updated_at=? WHERE id=?",
+                (evidence_count, new_confidence, new_uncertainty, now, hypothesis_id),
+            )
+        if not sleep_encoded:
+            # A trace first encoded in sleep becomes eligible for replay and
+            # capture once it is confirmed in wake.
+            connection.execute("UPDATE context_hypotheses SET origin=NULL WHERE id=? AND origin='sleep_encoded'",
+                               (hypothesis_id,))
         event_type = "raw_observation_reobserved"
     else:
         cursor = connection.execute(
@@ -207,6 +269,10 @@ def insert_observation(connection, chunk_id, sentence, title, neuromodulators):
             ),
         )
         hypothesis_id = cursor.lastrowid
+        if sleep_encoded:
+            # Sleep-encoded traces are weak and implicit: flagged, not replayed
+            # or captured until confirmed in wake (Ruch, Zust & Henke 2020).
+            connection.execute("UPDATE context_hypotheses SET origin='sleep_encoded' WHERE id=?", (hypothesis_id,))
         event_type = "raw_observation_created"
     connection.execute(
         "INSERT INTO context_learning_events(hypothesis_id,event_type,role,details,dopamine,serotonin,glutamate,gaba,noradrenaline,acetylcholine,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
@@ -256,9 +322,12 @@ def observation_cycle(loop, progress=None):
             "reading_queue_seed": {"seeded": 0, "reason": "sensory_deprivation"},
             "totals": {"chunks_read": 0, "hypotheses_created_or_updated": 0},
         }]
-    seed = seed_queue(connection, 2000)
+    gain, sleeping, gating = _sleep_input_gain(connection)
+    limit = int(round(32 * gain))
+    seed = seed_queue(connection, 2000) if limit > 0 else {"seeded": 0, "reason": "sleep_input_gated"}
     neuromodulators = _neuromodulators(connection)
-    chunks = _chunks(connection, 32)
+    chunks = _chunks(connection, limit) if limit > 0 else []
+    sleep_encoded = bool(sleeping and gating.get("gated"))
     hypotheses = 0
     now = _now()
     total = max(1, len(chunks))
@@ -267,7 +336,7 @@ def observation_cycle(loop, progress=None):
             break
         chunk_hypotheses = 0
         for sentence in _sentences(chunk["text"]):
-            insert_observation(connection, chunk["id"], sentence, chunk["title"], neuromodulators)
+            insert_observation(connection, chunk["id"], sentence, chunk["title"], neuromodulators, sleep_encoded)
             hypotheses += 1
             chunk_hypotheses += 1
         connection.execute(
@@ -289,6 +358,7 @@ def observation_cycle(loop, progress=None):
         "no_word_blacklists": True,
         "learning_mode": LEARNING_MODE,
         "reading_queue_seed": seed,
+        "sleep_input_gating": gating,
         "totals": {"chunks_read": len(chunks), "hypotheses_created_or_updated": hypotheses},
     }]
 

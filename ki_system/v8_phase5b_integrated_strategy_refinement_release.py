@@ -65,6 +65,12 @@ def _ensure_table(cur: sqlite3.Cursor, table: str, create_sql: str, cols: Dict[s
 def _ensure_unique(cur: sqlite3.Cursor, table: str, col: str, changes: List[str]) -> None:
     if col not in _columns(cur, table):
         return
+    # The index already exists: it rules out duplicates, so the full GROUP BY
+    # scan (about 0.1 s per cycle on the production state) is not needed.
+    if cur.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+                   (f"idx_{table}_{col}_uniq",)).fetchone():
+        changes.append(f"unique_index:{table}.{col}")
+        return
     # Avoid creating impossible unique index when duplicates exist.
     try:
         dup = cur.execute(f"SELECT {col}, COUNT(*) FROM {table} GROUP BY {col} HAVING COUNT(*)>1 LIMIT 1").fetchone()
@@ -244,26 +250,47 @@ def apply_strategy_refinement(memory: Any = None, limit_gaps: int = 240, limit_c
     relations = _metric(cur, "relations")
     questions = _metric(cur, "questions")
 
-    # Aggregate current outcome signals.
-    avg_res = _avg(cur, "internal_learning_gaps", "resolution_score", 0.0)
-    avg_eff = _avg(cur, "internal_learning_gaps", "strategy_effectiveness_score", 0.0)
-    avg_pri = _avg(cur, "internal_learning_gaps", "priority", 0.0)
+    # Aggregate current outcome signals over the gaps that still hold
+    # attention; habituated, closed and resolved gaps no longer count.
+    # The active statuses are looked up on the status index first, so the
+    # averages read only the active gaps instead of scanning all gaps (most
+    # of them habituated; the scan grew with every cycle).
+    avg_res = avg_eff = avg_pri = 0.0
+    if _table_exists(cur, "internal_learning_gaps") and {"status", "resolution_score", "strategy_effectiveness_score",
+                                                          "priority"} <= set(_columns(cur, "internal_learning_gaps")):
+        statuses = [r[0] for r in cur.execute("SELECT DISTINCT status FROM internal_learning_gaps").fetchall()
+                    if r[0] is not None and r[0] not in ("closed", "resolved", "habituated")]
+        where = "status IS NULL" + ("".join(" OR status=?" for _ in statuses))
+        row = cur.execute("SELECT AVG(COALESCE(resolution_score,0)), AVG(COALESCE(strategy_effectiveness_score,0)), "
+                          "AVG(COALESCE(priority,0)) FROM internal_learning_gaps WHERE " + where, statuses).fetchone()
+        avg_res, avg_eff, avg_pri = (float(v or 0.0) for v in row)
+    # Learning progress (fast minus slow average reward, Phase 6a).
+    progress = _state_float(cur, "phase6a_meta_plasticity_state", "learning_progress", 0.0)
     persistent = 0
     if _table_exists(cur, "internal_learning_gaps") and "status" in _columns(cur, "internal_learning_gaps"):
         persistent = int(cur.execute("SELECT COUNT(*) FROM internal_learning_gaps WHERE status='open'").fetchone()[0] or 0)
 
-    # Strategy recommendation based on persistent gaps and outcome.
-    if avg_res < 0.12 and persistent > 100:
+    # Strategy recommendation. Exploration rises when the utility of the
+    # current strategy wanes (no learning progress while many gaps stay
+    # unresolved) and falls while learning progresses: tonic versus phasic
+    # locus coeruleus mode in the adaptive gain theory (Aston-Jones & Cohen
+    # 2005); learners stay with activities that yield learning progress and
+    # move on when progress stalls (Oudeyer et al. 2007; Gottlieb et al. 2013).
+    # Without a clear signal the value relaxes toward the middle instead of
+    # ratcheting up.
+    EXPLORATION_MID = 0.5
+    if progress <= 0.0 and avg_res < 0.12 and persistent > 100:
         recommendation = "increase_diversity_and_context_window"
         new_exploration = min(0.75, ctrl["exploration_pressure"] + 0.035)
         new_inhibition = min(0.75, ctrl["inhibition_level"] + 0.015)
-    elif avg_eff > 0.55 and avg_res > 0.25:
+    elif progress > 0.02 or (avg_eff > 0.55 and avg_res > 0.25):
         recommendation = "reinforce_successful_strategy"
-        new_exploration = max(0.15, ctrl["exploration_pressure"] - 0.01)
+        new_exploration = max(0.15, ctrl["exploration_pressure"] - 0.02)
         new_inhibition = ctrl["inhibition_level"]
     else:
         recommendation = "balanced_refinement_observe"
-        new_exploration = min(0.70, ctrl["exploration_pressure"] + 0.015)
+        e = ctrl["exploration_pressure"]
+        new_exploration = e + max(-0.015, min(0.015, EXPLORATION_MID - e))
         new_inhibition = ctrl["inhibition_level"]
 
     # Top-down strategy control: many persistent, unresolved gaps push toward
@@ -297,6 +324,7 @@ def apply_strategy_refinement(memory: Any = None, limit_gaps: int = 240, limit_c
             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (f"{target}:{now}", target, old, new, reason, ctrl["dopamine"], ctrl["serotonin"], ctrl["glutamate"], ctrl["gaba"], ctrl["noradrenaline"], ctrl["acetylcholine"],
              _json({"avg_resolution_score": avg_res, "avg_strategy_effectiveness": avg_eff, "persistent_gaps": persistent,
+                    "learning_progress": progress,
                     "applied_to_bias_target": applied, "feedback_gain": feedback_gain}), now))
 
     # Persistent gap strategies.
@@ -308,6 +336,7 @@ def apply_strategy_refinement(memory: Any = None, limit_gaps: int = 240, limit_c
             COALESCE(priority, severity, 0.5), COALESCE(resolution_score,0), COALESCE(strategy_effectiveness_score,0),
             COALESCE(evidence_count,0), COALESCE(resolution_attempts,0)
             FROM internal_learning_gaps
+            WHERE COALESCE(status,'open') NOT IN ('closed','resolved','habituated')
             ORDER BY COALESCE(resolution_score,0) ASC, COALESCE({order_col},0) DESC, id DESC
             LIMIT ?""", (limit_gaps,)).fetchall()
         for gid, gap_key, gap_type, role, priority, res_score, eff_score, evidence_count, attempts in rows:

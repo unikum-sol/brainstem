@@ -62,6 +62,10 @@ def ensure_schema(con) -> bool:
         con.execute(
             "CREATE TABLE " + STATE_TABLE + " (key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER)"
         )
+    # Surface corroboration depends only on the corpus, so a missing
+    # corroboration is rechecked only after the corpus has changed.
+    con.execute("CREATE TABLE IF NOT EXISTS stageb_relation_surface_checks ("
+                "hypothesis_id INTEGER PRIMARY KEY, corpus_marker INTEGER, checked_at INTEGER)")
     if not _table_exists(con, EVENTS_TABLE):
         con.execute(
             "CREATE TABLE " + EVENTS_TABLE + " ("
@@ -181,13 +185,15 @@ def _promote_from_graduations(con, now) -> Dict[str, int]:
     # Revisit deferred stable hypotheses round-robin: missing surface evidence
     # must not become a permanent rejection when the event checkpoint advances.
     retry_checkpoint = _int(state.get("surface_retry_checkpoint"), 0)
+    corpus_marker = _int(con.execute("SELECT COALESCE(MAX(id),0) FROM chunks").fetchone()[0], 0) if _table_exists(con, "chunks") else 0
     def retries(after):
         return con.execute("SELECT MAX(g.id),h.id,h.role FROM context_hypotheses h "
             "JOIN stageb_graduation_events g ON g.hypothesis_id=h.id "
             "WHERE h.id>? AND h.role='stable_relation_hypothesis' "
             "AND g.decision LIKE 'graduated_to_%' AND g.new_role='stable_relation_hypothesis' "
             "AND NOT EXISTS(SELECT 1 FROM relations r WHERE r.source_hypothesis_id=h.id) "
-            "GROUP BY h.id ORDER BY h.id LIMIT 50",(after,)).fetchall()
+            "AND NOT EXISTS(SELECT 1 FROM stageb_relation_surface_checks s WHERE s.hypothesis_id=h.id AND s.corpus_marker=?) "
+            "GROUP BY h.id ORDER BY h.id LIMIT 50",(after, corpus_marker)).fetchall()
     retry_rows = retries(retry_checkpoint)
     if not retry_rows:
         retry_rows = retries(0)
@@ -217,6 +223,9 @@ def _promote_from_graduations(con, now) -> Dict[str, int]:
         surface_evidence = relation_surface_evidence(con, chunk_id, source_value, target_value)
         if surface_evidence is None:
             deferred += 1
+            con.execute("INSERT INTO stageb_relation_surface_checks(hypothesis_id,corpus_marker,checked_at) VALUES(?,?,?) "
+                        "ON CONFLICT(hypothesis_id) DO UPDATE SET corpus_marker=excluded.corpus_marker, checked_at=excluded.checked_at",
+                        (hid, corpus_marker, now))
             continue
         relation_value = (relation_hint or "associated_with").strip()[:120] or "associated_with"
         existing_relation = con.execute(

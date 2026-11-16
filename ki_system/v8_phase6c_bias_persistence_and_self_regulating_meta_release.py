@@ -82,12 +82,33 @@ SCHEMA_TABLES: Dict[str, List[Tuple[str, str]]] = {
         ("driver_value",             "REAL"),
         ("reason",                   "TEXT"),
     ],
+    "phase6c_bias_history": [
+        ("id", "INTEGER PRIMARY KEY AUTOINCREMENT"),
+        ("created_at", "INTEGER"),
+        ("cycle_index", "INTEGER"),
+        ("plasticity_level", "REAL"),
+        ("exploration_bias", "REAL"),
+        ("consolidation_bias", "REAL"),
+        ("inhibition_bias", "REAL"),
+        ("revision_bias", "REAL"),
+    ],
 }
 
 SCHEMA_INDEXES: List[Tuple[str, str, str]] = [
     ("idx_phase6c_regulation_cyc",   "phase6c_regulation_events", "cycle_index"),
     ("idx_phase6c_regulation_param", "phase6c_regulation_events", "parameter_key"),
+    ("idx_phase6c_bias_history_cyc", "phase6c_bias_history", "cycle_index"),
 ]
+
+# Homeostatic restoring force of the meta parameters: each regulation pass
+# pulls every parameter a fraction of the way back to its calibrated default,
+# so a persistent drive yields a bounded offset (drive / rate) instead of
+# integrating into the boundary. Steps are scaled to the parameter's range.
+# Literatur: Turrigiano 2008; Abraham 2008
+# Calibration: with a regulator step of at most lr * span per cycle
+# (lr about 0.05), a rate of 0.25 bounds the steady offset of a persistent
+# drive to about 20 % of the parameter's range.
+META_RESTORING_RATE = 0.25
 
 
 META_PARAMETER_DEFAULTS: List[Dict[str, Any]] = [
@@ -537,6 +558,11 @@ def _regulate_meta_parameters(con: sqlite3.Connection, cycle_index: int,
     """Adapt every meta-parameter based on its declared driver botenstoff
     and driver metric. Every change is logged."""
     changes: List[Dict[str, Any]] = []
+    # 2-AG retrograde dampening of all regulator learning rates (Phase 7b);
+    # recovers on its own as 2-AG decays.
+    lr_factor = 1.0
+    if _table_exists(con, "phase7b_endocannabinoid_state"):
+        lr_factor = _clamp(_to_float(_read_kv(con, "phase7b_endocannabinoid_state").get("regulator_lr_factor"), 1.0), 0.1, 1.0)
 
     def _param_regulate(key: str, driver_metric_value: float,
                          direction_up_condition: bool,
@@ -551,12 +577,18 @@ def _regulate_meta_parameters(con: sqlite3.Connection, cycle_index: int,
         pre = p["current_value"]
         post = pre
         reason = "no_change"
+        span = max(1e-9, p["max_value"] - p["min_value"])
         if direction_up_condition:
-            post = pre + lr * bs_val
+            post = pre + lr * lr_factor * bs_val * span
             reason = up_reason
         elif direction_down_condition:
-            post = pre - lr * (1.0 - bs_val)
+            post = pre - lr * lr_factor * (1.0 - bs_val) * span
             reason = down_reason
+        restoring = META_RESTORING_RATE * (p["default_value"] - post)
+        if abs(restoring) > 1e-9:
+            post += restoring
+            if reason == "no_change":
+                reason = "homeostatic_return_to_default"
         post = max(p["min_value"], min(p["max_value"], post))
         if abs(post - pre) > 1e-9:
             _set_meta_value(con, key, post)
@@ -757,6 +789,11 @@ def run_phase6c_cycle(db_or_obj=None, cycle_index=None):
         regulated={"regulated":0,"reason":"neutral_evidence_state","evidence_state":state}
     _kv_set(con,"phase6c_state","cycle_count",cycle_index); _kv_set(con,"phase6c_state","last_cycle_at",_now()); _kv_set(con,"phase6c_state","last_evidence_state",state); _kv_set(con,"phase6c_state","canonical_single_pass",True); _kv_set(con,"phase6c_state","direct_fact_writes","disabled"); _kv_set(con,"phase6c_state","direct_relation_writes","disabled"); _kv_set(con,"phase6c_state","fact_promotion","disabled")
     saved_bias = _save_sticky_bias(con)
+    hist_vals = [_to_float(saved_bias.get(k), None) for k in STICKY_KEYS]
+    if all(v is not None for v in hist_vals):
+        con.execute("INSERT INTO phase6c_bias_history(created_at,cycle_index,plasticity_level,exploration_bias,"
+                    "consolidation_bias,inhibition_bias,revision_bias) VALUES(?,?,?,?,?,?,?)",
+                    (_now(), int(cycle_index), *[round(v, 6) for v in hist_vals]))
     con.commit()
     return {"phase":PHASE,"cycle_index":cycle_index,"status":"ok","canonical_phase6b_measurement":latest,"meta_regulation":regulated,"history_snapshot":hist,"phase7d_fairness":phase7d_fairness,"bias_bridge":{"restored":restored_bias,"saved":saved_bias},"safety":{"canonical_single_pass":True,"direct_fact_writes":"disabled","direct_relation_writes":"disabled","fact_promotion":"disabled"}}
 

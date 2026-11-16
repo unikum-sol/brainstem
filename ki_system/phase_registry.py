@@ -96,9 +96,10 @@ LOAD_ORDER = [{'module': 'v8_context_observation_learning_release',
  {'module': 'v8_stageb_ontology_cluster_observation_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_ONTOLOGY_CLUSTER_OBSERVATION'},
  {'module': 'v8_stageb_ontology_promotion_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_ONTOLOGY_PROMOTION'},
  {'module': 'v8_stageb_question_promotion_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_QUESTION_PROMOTION'},
- {'module': 'v8_stageb_question_chunk_feedback_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_QUESTION_CHUNK_FEEDBACK'}]
+ {'module': 'v8_stageb_question_chunk_feedback_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_QUESTION_CHUNK_FEEDBACK'},
+ {'module': 'v8_log_retention', 'how': 'autoload', 'target': 'LOOP', 'label': 'LOG_RETENTION_MAINTENANCE'}]
 
-EXPECTED_TOP_MODULE = "v8_stageb_question_chunk_feedback_release"
+EXPECTED_TOP_MODULE = "v8_log_retention"
 
 
 def _resolve_arg(target, autonomous_globals, AutonomousLoop):

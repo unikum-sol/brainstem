@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import tkinter as tk
 import csv
+import os
+import textwrap
 import json
 import threading
 import time
@@ -14,6 +16,7 @@ from ki_system.dialogue import DialogueManager
 from ki_system.search import semantic_search, answer
 from ki_system import v8_cycle_diagnostics_release as _cycle_diagnostics
 from ki_system import v8_wal_maintenance_release as _wal_maintenance
+from ki_system import gui_theme as _theme
 
 
 NEURO_CORE = ["dopamine", "serotonin", "glutamate", "gaba", "noradrenaline", "acetylcholine"]
@@ -31,12 +34,15 @@ NEURO_FULL = {
     "cortisol": "Cortisol", "histamine": "Histamin", "orexin": "Orexin",
     "bdnf": "BDNF (Wachstumsfaktor)",
 }
-NEURO_COLORS = {
-    "dopamine": "#e6b800", "serotonin": "#2ca02c", "glutamate": "#d95f0e",
-    "gaba": "#1f77b4", "noradrenaline": "#9467bd", "acetylcholine": "#17becf",
-    "adenosine": "#8c564b", "endocannabinoid": "#7f7f7f", "cortisol": "#d62728",
-    "histamine": "#e377c2", "orexin": "#ff7f0e", "bdnf": "#2aa198",
+NEURO_COLORS = dict(_theme.NEURO_PALETTE)
+NEURO_SHORT = {
+    "dopamine": "Dopamin", "serotonin": "Serotonin", "glutamate": "Glutamat",
+    "gaba": "GABA", "noradrenaline": "Noradrenalin", "acetylcholine": "Acetylcholin",
+    "adenosine": "Adenosin", "endocannabinoid": "Endocannabinoide", "cortisol": "Cortisol",
+    "histamine": "Histamin", "orexin": "Orexin", "bdnf": "BDNF",
 }
+
+MOOD_DISPLAY = {"Schlaeft und konsolidiert": "Schläft und konsolidiert", "Muede": "Müde"}
 
 def _clamp01(x):
     try:
@@ -168,16 +174,23 @@ def compute_mood(vals, regimes):
     return ("(^_^)", "Ausgewogen")
 
 class NeuroTooltip:
-    def __init__(self, master):
+    def __init__(self, master, theme=None):
         self.master = master
+        self.theme = theme
         self.tip = None
     def show(self, x, y, text):
         self.hide()
         self.tip = tk.Toplevel(self.master)
         self.tip.overrideredirect(True)
         self.tip.attributes("-topmost", True)
-        tk.Label(self.tip, text=text, bg="#ffffe0", relief=tk.SOLID, borderwidth=1,
-                 font=("Arial", 9)).pack()
+        if self.theme is not None:
+            p = self.theme.p
+            tk.Label(self.tip, text=text, bg=p["surface2"], fg=p["text"], relief=tk.FLAT, borderwidth=0,
+                     highlightthickness=1, highlightbackground=p["border_strong"], padx=8, pady=4,
+                     justify=tk.LEFT, font=self.theme.fonts["small"]).pack()
+        else:
+            tk.Label(self.tip, text=text, bg="#ffffe0", relief=tk.SOLID, borderwidth=1,
+                     font=("Arial", 9)).pack()
         self.tip.geometry("+%d+%d" % (x + 12, y + 12))
     def hide(self):
         if self.tip is not None:
@@ -188,59 +201,94 @@ class NeuroTooltip:
             self.tip = None
 
 class NeuromodulatorBars(ttk.Frame):
+    """All 12 neuromodulators as labelled horizontal bars in two groups
+    (core modulators | homeostasis & growth). Scales with the card width."""
     CHANGE_THRESHOLD = 0.005
+    GROUPS = (("Kern-Neuromodulatoren", NEURO_CORE), ("Homöostase, Wachheit & Wachstum", NEURO_NEW))
+    ROW_H = 27
 
-    def __init__(self, master, width=320, height=210):
-        super().__init__(master)
+    def __init__(self, master, theme=None, width=420, height=None):
+        super().__init__(master, style="Inner.TFrame")
+        self.theme = theme
         self.width = width
-        self.height = height
-        self.canvas = tk.Canvas(self, width=width, height=height, bg="white",
-                                highlightthickness=1, highlightbackground="#cccccc")
-        self.canvas.pack(anchor=tk.W, pady=(4, 4))
+        self.height = height or (24 + 6 * self.ROW_H)
+        self.canvas = tk.Canvas(self, width=width, height=self.height, highlightthickness=0, borderwidth=0)
+        if theme is not None:
+            theme.register(self.canvas, "canvas", bg="surface")
+            theme.on_change(self._rebuild)
+        self.canvas.pack(fill=tk.X, expand=True)
         self.hitboxes = []
-        self.tooltip = NeuroTooltip(self)
+        self.tooltip = NeuroTooltip(self, theme)
         self.canvas.bind("<Motion>", self._on_motion)
         self.canvas.bind("<Leave>", lambda e: self.tooltip.hide())
+        self.canvas.bind("<Configure>", self._on_resize)
         self._items = {}
         self._last_values = {}
+        self._values = {k: 0.0 for k in (NEURO_CORE + NEURO_NEW)}
         self._built = False
-        self.draw({k: 0.0 for k in (NEURO_CORE + NEURO_NEW)})
+        self._built_width = None
+        self.draw(self._values)
 
-    def _layout_row(self, keys, top_y, base_y):
-        margin = 14
-        bar_w = 26
-        gap = 18
-        x = margin
-        out = []
-        for name in keys:
-            out.append((name, x, top_y, base_y, bar_w))
-            x += bar_w + gap
-        return out
+    def _c(self, key, default):
+        return self.theme.p[key] if self.theme is not None else default
 
-    def _build_items(self, values):
-        row_h = (self.height - 20) / 2
-        layout = (self._layout_row(NEURO_CORE, 16, 16 + row_h - 24) +
-                  self._layout_row(NEURO_NEW, 16 + row_h + 10, 16 + 2 * row_h - 14))
+    def _font(self, key, default):
+        return self.theme.fonts[key] if self.theme is not None else default
+
+    @staticmethod
+    def _bar_end(tx0, tx1, value):
+        # values above zero always show at least a 3 px stub
+        end = tx0 + (tx1 - tx0) * value
+        return max(end, tx0 + 3) if value > 0.0 else tx0 + 1
+
+    def _on_resize(self, event):
+        if self._built_width is not None and abs(event.width - self._built_width) < 4:
+            return
+        self._rebuild(event.width)
+
+    def _rebuild(self, width=None):
+        self.canvas.delete("all")
+        self._items = {}
+        self._built = False
+        self._build_items(self._values, width)
+
+    def _build_items(self, values, width=None):
+        c = self.canvas
+        if not width:
+            width = int(c.winfo_width()) if int(c.winfo_width()) > 50 else self.width
+        self._built_width = width
+        gap = 32
+        col_w = (width - gap) / 2.0
+        text_c = self._c("text", "#222222"); muted = self._c("muted", "#555555")
+        subtle = self._c("subtle", "#777777"); track = self._c("track", "#eeeeee")
         self.hitboxes = []
-        for name, x, top_y, base_y, bar_w in layout:
-            value = _clamp01(values.get(name, 0.0))
-            color = NEURO_COLORS.get(name, "#888888")
-            label = NEURO_LABELS.get(name, name[:3].upper())
-            usable_h = base_y - top_y
-            h = usable_h * value
-            self.canvas.create_rectangle(x, top_y, x + bar_w, base_y, outline="#dddddd", fill="#f7f7f7")
-            fill_id = self.canvas.create_rectangle(x, base_y - h, x + bar_w, base_y, outline=color, fill=color)
-            self.canvas.create_text(x + bar_w / 2, base_y + 10, text=label, font=("Arial", 8))
-            value_id = self.canvas.create_text(x + bar_w / 2, top_y - 6, text="%.2f" % value, font=("Arial", 7))
-            self._items[name] = {
-                "fill_id": fill_id, "value_id": value_id,
-                "x": x, "top_y": top_y, "base_y": base_y, "bar_w": bar_w,
-            }
-            self._last_values[name] = value
-            self.hitboxes.append((x, x + bar_w, top_y - 12, base_y + 14, name))
+        for gi, (title, keys) in enumerate(self.GROUPS):
+            x0 = gi * (col_w + gap)
+            c.create_text(x0, 8, text=title.upper(), anchor="w", fill=subtle, font=self._font("caps", ("Arial", 8)))
+            for ri, name in enumerate(keys):
+                y = 24 + ri * self.ROW_H + self.ROW_H / 2.0
+                value = _clamp01(values.get(name, 0.0))
+                color = NEURO_COLORS.get(name, "#888888")
+                abbr = NEURO_LABELS.get(name, name[:3].upper())
+                c.create_rectangle(x0, y - 5, x0 + 4, y + 5, fill=color, outline=color)
+                c.create_text(x0 + 12, y, text=abbr, anchor="w", fill=text_c, font=self._font("bold", ("Arial", 9, "bold")))
+                c.create_text(x0 + 58, y, text=NEURO_SHORT.get(name, name), anchor="w", fill=muted,
+                              font=self._font("small", ("Arial", 8)))
+                tx0 = x0 + 172; tx1 = x0 + col_w - 50
+                if tx1 - tx0 < 40:
+                    tx1 = tx0 + 40
+                c.create_rectangle(tx0, y - 5, tx1, y + 5, fill=track, outline=track)
+                fill_id = c.create_rectangle(tx0, y - 5, self._bar_end(tx0, tx1, value), y + 5, fill=color, outline=color)
+                value_id = c.create_text(x0 + col_w, y, text="%.2f" % value, anchor="e", fill=text_c,
+                                         font=self._font("mono", ("Consolas", 9)))
+                self._items[name] = {"fill_id": fill_id, "value_id": value_id, "tx0": tx0, "tx1": tx1, "y": y}
+                self._last_values[name] = value
+                self.hitboxes.append((x0, x0 + col_w, y - self.ROW_H / 2.0, y + self.ROW_H / 2.0, name))
         self._built = True
 
     def draw(self, values):
+        for k in self._values:
+            self._values[k] = _clamp01(values.get(k, self._values[k]))
         if not self._built:
             self._build_items(values)
             return
@@ -249,18 +297,65 @@ class NeuromodulatorBars(ttk.Frame):
             last = self._last_values.get(name, None)
             if last is not None and abs(value - last) < self.CHANGE_THRESHOLD:
                 continue
-            top_y = item["top_y"]; base_y = item["base_y"]; x = item["x"]; bar_w = item["bar_w"]
-            usable_h = base_y - top_y
-            h = usable_h * value
-            self.canvas.coords(item["fill_id"], x, base_y - h, x + bar_w, base_y)
+            tx0 = item["tx0"]; tx1 = item["tx1"]; y = item["y"]
+            self.canvas.coords(item["fill_id"], tx0, y - 5, self._bar_end(tx0, tx1, value), y + 5)
             self.canvas.itemconfig(item["value_id"], text="%.2f" % value)
             self._last_values[name] = value
+
     def _on_motion(self, event):
         for x0, x1, y0, y1, key in self.hitboxes:
             if x0 <= event.x <= x1 and y0 <= event.y <= y1:
-                self.tooltip.show(self.winfo_rootx() + event.x, self.winfo_rooty() + event.y, NEURO_FULL.get(key, key))
+                self.tooltip.show(self.winfo_rootx() + event.x, self.winfo_rooty() + event.y,
+                                  "%s (%s): %.3f" % (NEURO_FULL.get(key, key), NEURO_LABELS.get(key, key),
+                                                     self._values.get(key, 0.0)))
                 return
         self.tooltip.hide()
+
+
+class SleepGauge(tk.Canvas):
+    """Adenosine sleep pressure on a 0..1 scale with the wake (lower) and
+    sleep (upper) thresholds marked and the current level as a pointer."""
+
+    def __init__(self, master, theme, height=62):
+        super().__init__(master, height=height, highlightthickness=0, borderwidth=0)
+        self.theme = theme
+        theme.register(self, "canvas", bg="surface")
+        theme.on_change(self.redraw)
+        self.state = {"value": 0.0, "lower": 0.0, "upper": 0.0, "asleep": False}
+        self.bind("<Configure>", lambda e: self.redraw())
+
+    def set(self, value, lower, upper, asleep):
+        new = {"value": _clamp01(value), "lower": _clamp01(lower), "upper": _clamp01(upper), "asleep": bool(asleep)}
+        if new != self.state:
+            self.state = new
+            self.redraw()
+
+    def redraw(self):
+        p = self.theme.p; f = self.theme.fonts
+        self.delete("all")
+        w = max(int(self.winfo_width()), 120)
+        x0, x1, y = 6, w - 6, 24
+        sx = lambda v: x0 + (x1 - x0) * v
+        st = self.state
+        self.create_rectangle(x0, y - 5, x1, y + 5, fill=p["track"], outline=p["track"])
+        if st["upper"] > st["lower"]:
+            self.create_rectangle(sx(st["lower"]), y - 5, sx(st["upper"]), y + 5, fill=p["sleep_soft"], outline=p["sleep_soft"])
+        color = p["sleep"] if st["asleep"] else p["warning"]
+        self.create_rectangle(x0, y - 5, sx(st["value"]), y + 5, fill=color, outline=color)
+        for key, label, anchor in (("lower", "Wachen ab %.3f", "n"), ("upper", "Schlaf ab %.3f", "n")):
+            xv = sx(st[key])
+            self.create_line(xv, y - 11, xv, y + 11, fill=p["text"], width=3)
+            self.create_text(xv, y + 13, text=label % st[key], anchor=anchor, fill=p["text"], font=f["small"])
+        xv = sx(st["value"])
+        self.create_polygon(xv - 6, y - 15, xv + 6, y - 15, xv, y - 7, fill=p["text"], outline=p["text"])
+        # zone captions (only where they fit and do not collide with the pointer)
+        zones = (("Wach", x0, sx(st["lower"])), ("Übergang", sx(st["lower"]), sx(st["upper"])), ("Schlaf", sx(st["upper"]), x1))
+        for name, a, b in zones:
+            tw = f["small"].measure(name) + 8
+            cx = (a + b) / 2.0
+            if b - a > tw and abs(cx - xv) > tw / 2.0 + 8:
+                self.create_text(cx, 7, text=name, fill=p["muted"], font=f["small"])
+
 
 class App(tk.Tk):
     LOGGER_FLOAT_DEADBAND = 0.0005
@@ -269,10 +364,16 @@ class App(tk.Tk):
     def __init__(self, db_path="ki_memory.sqlite3"):
         super().__init__()
         self.title("Brainstem V8 Admin")
-        self.geometry("1250x875")
+        self.geometry("1360x940")
+        self.minsize(1180, 760)
         self.db_path = str(db_path)
         self.mem = Memory(self.db_path)
         self.dialogue = DialogueManager(self.mem)
+        try:
+            theme_name = str(self.mem.get_setting("gui_theme", "dark") or "dark")
+        except Exception:
+            theme_name = "dark"
+        self.theme = _theme.Theme(self, theme_name)
         self.cancel = False
         self.auto_stop = False
         self.auto_running = False
@@ -298,7 +399,7 @@ class App(tk.Tk):
         self._cov_ts = 0.0
         self._stats_cache = None
         self._stats_ts = 0.0
-        self._current_tab_name = "Chat"
+        self._current_tab_name = "Import & Jobs"
         self._ui()
         self._gui_pending = []
         self._gui_pending_lock = threading.Lock()
@@ -310,97 +411,265 @@ class App(tk.Tk):
         self._create_floating_head()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._refresh_timer_start()
+
+    # ------------------------------------------------------------------ layout
+    # The chat tab is hidden: the dialogue function is still rudimentary and
+    # not in use, and a visible chat suggests abilities the system does not
+    # have yet. The code stays in place; set SHOW_CHAT_TAB = True to bring the
+    # tab back (it is then the first tab again).
+    SHOW_CHAT_TAB = False
+    CHAT_TAB_NAME = "Chat"
+    TAB_NAMES = ["Import & Jobs", "Suche & Antwort", "Datenbank", "Fakten/Relationen", "Export/Konfig", "Drift-Report"]
+
     def _ui(self):
+        self._app_bar()
         nb = ttk.Notebook(self)
         nb.pack(fill=tk.BOTH, expand=True)
         self.nb = nb
         self.tabs = {}
-        for n in ["Chat", "Import & Jobs", "Suche & Antwort", "Datenbank", "Fakten/Relationen", "Export/Konfig", "Drift-Report"]:
-            f = ttk.Frame(nb, padding=8)
+        names = ([self.CHAT_TAB_NAME] if self.SHOW_CHAT_TAB else []) + self.TAB_NAMES
+        for n in names:
+            f = ttk.Frame(nb, padding=(14, 12, 14, 14))
             nb.add(f, text=n)
             self.tabs[n] = f
         nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
-        self._chat_tab()
+        if self.SHOW_CHAT_TAB:
+            self._chat_tab()
         self._import_tab()
         self._search_tab()
         self._db_tab()
         self._facts_tab()
         self._export_tab()
         self._drift_tab()
+        try:
+            nb.select(self.tabs["Import & Jobs"])
+        except Exception:
+            pass
+
+    def _app_bar(self):
+        bar, self._theme_buttons, self._update_theme_button = _theme.app_header(
+            self, self.theme, "Admin-Konsole  ·  Datenbank: " + os.path.basename(self.db_path), self._choose_theme)
+        self.theme_btn = self._theme_buttons["light"]
+        ttk.Separator(bar, orient=tk.VERTICAL).pack(side=tk.RIGHT, fill=tk.Y, padx=(14, 0))
+        self.mode_pill = ttk.Label(bar, text="Bereit", style="PillIdle.TLabel")
+        self.mode_pill.pack(side=tk.RIGHT, padx=(10, 0))
+        ttk.Label(bar, text="Zustand", style="HeaderMuted.TLabel").pack(side=tk.RIGHT)
+        ttk.Separator(bar, orient=tk.VERTICAL).pack(side=tk.RIGHT, fill=tk.Y, padx=(14, 14))
+        self.header_mood = ttk.Label(bar, text="", style="HeaderMood.TLabel")
+        self.header_mood.pack(side=tk.RIGHT, padx=(10, 0))
+        ttk.Label(bar, text="Stimmung", style="HeaderMuted.TLabel").pack(side=tk.RIGHT)
+
+    def set_theme(self, name):
+        self.theme.apply(name)
+        self._update_theme_button()
+        self._style_head()
+
+    def toggle_theme(self):
+        self.set_theme("light" if self.theme.name == "dark" else "dark")
+        try:
+            self.mem.set_setting("gui_theme", self.theme.name)
+        except Exception:
+            pass
+
     def _on_tab_changed(self, event=None):
         try:
             self._current_tab_name = self.nb.tab(self.nb.select(), "text")
         except Exception:
             pass
         self.refresh()
+
+    @staticmethod
+    def _kv_row(parent, row, key, value_widget=None, value_text=""):
+        ttk.Label(parent, text=key, style="CardMuted.TLabel").grid(row=row, column=0, sticky="w", pady=2)
+        if value_widget is None:
+            value_widget = ttk.Label(parent, text=value_text, style="Card.TLabel")
+        value_widget.grid(row=row, column=1, sticky="w", padx=(12, 0), pady=2)
+        return value_widget
+
     def _chat_tab(self):
         f = self.tabs["Chat"]
-        self.chat_out = tk.Text(f, wrap=tk.WORD)
-        self.chat_out.pack(fill=tk.BOTH, expand=True)
+        c = _theme.card(f, "Dialog", "Fragen an das Gedächtnis stellen. Enter sendet.")
+        c.pack(fill=tk.BOTH, expand=True)
+        box, self.chat_out = _theme.scrolled_text(self.theme, c, font="ui")
+        box.pack(fill=tk.BOTH, expand=True)
+        self.chat_out.insert(tk.END, "Noch keine Unterhaltung. Schreibe unten eine Frage und dr\u00fccke Enter.\n\n", "hint")
+        self._chat_placeholder = True
+        row = ttk.Frame(c, style="Inner.TFrame")
+        row.pack(fill=tk.X, pady=(10, 0))
         self.chat_in = tk.StringVar()
-        ttk.Entry(f, textvariable=self.chat_in).pack(fill=tk.X)
-        ttk.Button(f, text="Senden", command=self.chat_send).pack(anchor=tk.W)
+        entry = ttk.Entry(row, textvariable=self.chat_in)
+        entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        entry.bind("<Return>", lambda e: self.chat_send())
+        ttk.Button(row, text="Senden", style="Accent.TButton", command=self.chat_send).pack(side=tk.LEFT, padx=(8, 0))
+
     def _import_tab(self):
         f = self.tabs["Import & Jobs"]
-        import_row = ttk.Frame(f)
-        import_row.pack(anchor=tk.W, pady=(0, 2))
-        ttk.Button(import_row, text="Import starten", command=self.pick_import).pack(side=tk.LEFT)
-        ttk.Label(import_row, text="Korpussprache:").pack(side=tk.LEFT, padx=(12, 4))
+        f.columnconfigure(0, weight=0, minsize=440)
+        f.columnconfigure(1, weight=1)
+        f.rowconfigure(1, weight=1)
+
+        # --- control strip ---------------------------------------------------
+        ctl = _theme.card(f, padding=(16, 10, 16, 12))
+        ctl.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+        g1 = ttk.Frame(ctl, style="Inner.TFrame"); g1.pack(side=tk.LEFT)
+        ttk.Label(g1, text="IMPORT", style="Caps.TLabel").pack(anchor=tk.W, pady=(0, 4))
+        import_row = ttk.Frame(g1, style="Inner.TFrame")
+        import_row.pack(anchor=tk.W)
+        ttk.Button(import_row, text="Import starten …", command=self.pick_import).pack(side=tk.LEFT)
+        ttk.Label(import_row, text="Korpussprache", style="CardMuted.TLabel").pack(side=tk.LEFT, padx=(14, 6))
         stored_lang = str(self.mem.get_setting("corpus_language", "de") or "de")
         self.corpus_language = tk.StringVar(value=stored_lang if stored_lang in ("de", "en") else "de")
         lang_box = ttk.Combobox(import_row, textvariable=self.corpus_language, values=("de", "en"),
                                  width=4, state="readonly")
         lang_box.pack(side=tk.LEFT)
         lang_box.bind("<<ComboboxSelected>>", self._on_corpus_language_changed)
-        ttk.Button(f, text="Import/Lernen abbrechen", command=lambda: setattr(self, "cancel", True)).pack(anchor=tk.W)
-        row = ttk.Frame(f)
-        row.pack(anchor=tk.W, pady=(4, 2))
-        self.auto_start_btn = ttk.Button(row, text="Autonom dauerhaft starten", command=self.auto_start)
+        ttk.Separator(ctl, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=20)
+        g2 = ttk.Frame(ctl, style="Inner.TFrame"); g2.pack(side=tk.LEFT)
+        ttk.Label(g2, text="AUTONOMES DAUERLERNEN  ·  LÄUFT BIS STOPP  ·  1 GUI-ZYKLUS = 5 SYSTEMZYKLEN", style="Caps.TLabel").pack(anchor=tk.W, pady=(0, 4))
+        row = ttk.Frame(g2, style="Inner.TFrame")
+        row.pack(anchor=tk.W)
+        self.auto_start_btn = ttk.Button(row, text="▶  Autonom dauerhaft starten", style="Accent.TButton", command=self.auto_start)
         self.auto_start_btn.pack(side=tk.LEFT)
-        self.auto_stop_btn = ttk.Button(row, text="Autonom stoppen", command=self.auto_stop_now, state=tk.DISABLED)
-        self.auto_stop_btn.pack(side=tk.LEFT, padx=6)
-        ttk.Label(f, text="Gesamtfortschritt (gelesene Chunks)", font=("Arial", 8)).pack(anchor=tk.W, pady=(6, 0))
-        self.bar_total = ttk.Progressbar(f, maximum=100)
-        self.bar_total.pack(fill=tk.X)
-        ttk.Label(f, text="Aktueller GUI-Zyklus (Schritt/5)", font=("Arial", 8)).pack(anchor=tk.W, pady=(4, 0))
-        self.bar_cycle = ttk.Progressbar(f, maximum=100)
-        self.bar_cycle.pack(fill=tk.X)
-        self.status = ttk.Label(f)
-        self.status.pack(anchor=tk.W, pady=(2, 0))
-        left = ttk.Frame(f)
-        left.pack(fill=tk.X, anchor=tk.NW)
-        ttk.Label(left, text="Digitale Botenstoffe", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(8, 0))
-        self.neuro_text = ttk.Label(left, text="Neuromodulatoren: -")
-        self.neuro_text.pack(anchor=tk.W)
-        self.behavior_text = ttk.Label(left, text="Regime: -")
-        self.behavior_text.pack(anchor=tk.W)
-        self.trend_text = ttk.Label(left, text="Homeostase: -")
-        self.trend_text.pack(anchor=tk.W)
-        self.integration_text = ttk.Label(left, text="Integration (phasisch/tonisch): -")
-        self.integration_text.pack(anchor=tk.W)
-        self.evidence_text = ttk.Label(left, text="Phase6a Evidenzstatus: -")
-        self.evidence_text.pack(anchor=tk.W)
-        self.neuro_bars = NeuromodulatorBars(left)
-        self.neuro_bars.pack(anchor=tk.W)
-        legend = ("Legende: DA=Dopamin  5-HT=Serotonin  GLU=Glutamat  GABA=GABA  NA=Noradrenalin  ACh=Acetylcholin\n"
-                  "ADE=Adenosin  ECB=Endocannabinoide  CORT=Cortisol  HIS=Histamin  ORX=Orexin  BDNF=Wachstumsfaktor\n"
-                  "Integrationszeile: phasisch/tonisch = Phase6a-Rohwert / final gemischter Wert (w=tonic_weight, "
-                  "cortisol-gesteuert). GLU/GABA bleiben ausschliesslich von Phase 7c verantwortet.")
-        ttk.Label(left, text=legend, font=("Arial", 8), foreground="#555555", justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 4))
-        ttk.Separator(left).pack(fill=tk.X, pady=(8, 4))
-        ttk.Label(left, text="GUI-Wertelogger (fortlaufende CSV)", font=("Arial", 10, "bold")).pack(anchor=tk.W)
-        logger_row = ttk.Frame(left)
-        logger_row.pack(anchor=tk.W, pady=(2, 0))
+        self.auto_stop_btn = ttk.Button(row, text="■  Autonom stoppen", command=self.auto_stop_now, state=tk.DISABLED)
+        self.auto_stop_btn.pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Separator(ctl, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=20)
+        g3 = ttk.Frame(ctl, style="Inner.TFrame"); g3.pack(side=tk.LEFT)
+        ttk.Label(g3, text="LAUFENDEN VORGANG", style="Caps.TLabel").pack(anchor=tk.W, pady=(0, 4))
+        self.abort_btn = ttk.Button(g3, text="Import/Lernen abbrechen", command=lambda: setattr(self, "cancel", True),
+                                    state=tk.DISABLED)
+        self.abort_btn.pack(anchor=tk.W)
+
+        # --- left column -----------------------------------------------------
+        left_col = ttk.Frame(f)
+        left_col.grid(row=1, column=0, sticky="nsew", padx=(0, 12))
+        prog = _theme.card(left_col, "Fortschritt")
+        prog.pack(fill=tk.X)
+        r1 = ttk.Frame(prog, style="Inner.TFrame"); r1.pack(fill=tk.X)
+        ttk.Label(r1, text="Gesamtfortschritt (gelesene Chunks)", style="CardMuted.TLabel").pack(side=tk.LEFT)
+        self.total_pct_label = ttk.Label(r1, text="0.0 %", style="CardBold.TLabel")
+        self.total_pct_label.pack(side=tk.RIGHT)
+        self.bar_total = ttk.Progressbar(prog, maximum=100)
+        self.bar_total.pack(fill=tk.X, pady=(4, 10))
+        r2 = ttk.Frame(prog, style="Inner.TFrame"); r2.pack(fill=tk.X)
+        ttk.Label(r2, text="Aktueller GUI-Zyklus (Schritt/5)", style="CardMuted.TLabel").pack(side=tk.LEFT)
+        self.cycle_label = ttk.Label(r2, text="0 / 5", style="CardBold.TLabel")
+        self.cycle_label.pack(side=tk.RIGHT)
+        self.bar_cycle = ttk.Progressbar(prog, maximum=100, style="Success.Horizontal.TProgressbar")
+        self.bar_cycle.pack(fill=tk.X, pady=(4, 12))
+        tiles = ttk.Frame(prog, style="Inner.TFrame"); tiles.pack(fill=tk.X)
+        self.kpi = {}
+        for i, (key, label) in enumerate((("chunks", "Chunks gelesen"), ("facts", "Fakten"), ("relations", "Relationen"),
+                                          ("ontology", "Ontologie"), ("questions", "Fragen"), ("hypotheses", "Hypothesen"))):
+            tiles.columnconfigure(i % 3, weight=1, uniform="kpi")
+            t = ttk.Frame(tiles, style="Tile.TFrame", padding=(10, 4, 10, 5))
+            t.grid(row=i // 3, column=i % 3, sticky="ew", padx=(0 if i % 3 == 0 else 6, 0), pady=(0, 6))
+            self.kpi[key] = ttk.Label(t, text="-", style="TileValue.TLabel")
+            self.kpi[key].pack(anchor=tk.W)
+            ttk.Label(t, text=label, style="TileLabel.TLabel").pack(anchor=tk.W)
+        self.status = ttk.Label(prog, text="Bereit.", style="CardSmall.TLabel", wraplength=400, justify=tk.LEFT)
+        self.status.pack(anchor=tk.W, pady=(4, 0))
+
+        sleep = _theme.card(left_col, "Schlaf & Reife")
+        sleep.pack(fill=tk.X, pady=(12, 0))
+        self.sleep_pill = ttk.Label(sleep.header, text="n/a", style="PillIdle.TLabel")
+        self.sleep_pill.pack(side=tk.RIGHT)
+        self.sleep_gauge = SleepGauge(sleep, self.theme)
+        self.sleep_gauge.pack(fill=tk.X, pady=(2, 6))
+        grid = ttk.Frame(sleep, style="Inner.TFrame"); grid.pack(fill=tk.X)
+        self.sleep_values = {}
+        for i, (key, label) in enumerate((("pressure", "Schlafdruck (Adenosin)"), ("dwell", "Verweildauer im Zustand"),
+                                          ("reason", "Letzter Wechsel"))):
+            self.sleep_values[key] = self._kv_row(grid, i, label)
+        r3 = ttk.Frame(sleep, style="Inner.TFrame"); r3.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(r3, text="Entwicklungsreife", style="CardMuted.TLabel").pack(side=tk.LEFT)
+        self.maturity_label = ttk.Label(r3, text="0.0 %", style="CardBold.TLabel")
+        self.maturity_label.pack(side=tk.RIGHT)
+        self.bar_maturity = ttk.Progressbar(sleep, maximum=100, style="Sleep.Horizontal.TProgressbar")
+        self.bar_maturity.pack(fill=tk.X, pady=(4, 0))
+
+        logc = _theme.card(left_col, "GUI-Wertelogger (fortlaufende CSV)",
+                           "Alle angezeigten Werte als gui_log_<Zeit>.csv (f\u00fcr den BrainStem CSV Viewer).")
+        logc.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
+        logger_row = ttk.Frame(logc, style="Inner.TFrame")
+        logger_row.pack(fill=tk.X)
+        ttk.Button(logger_row, text="Ordner \u00f6ffnen", style="Small.TButton", width=14,
+                   command=lambda: self._open_folder(os.path.abspath(os.getcwd()))).pack(side=tk.RIGHT)
         self.gui_logger_enabled = tk.BooleanVar(value=False)
-        ttk.Checkbutton(logger_row, text="Logger aktiv", variable=self.gui_logger_enabled,
+        ttk.Checkbutton(logger_row, text="Logger aktiv", variable=self.gui_logger_enabled, style="Card.TCheckbutton",
                         command=self._logger_toggle).pack(side=tk.LEFT)
         self.gui_logger_changes_only = tk.BooleanVar(value=True)
-        ttk.Checkbutton(logger_row, text="Nur bei Aenderung loggen",
-                        variable=self.gui_logger_changes_only).pack(side=tk.LEFT, padx=(12, 0))
-        self.logger_status = ttk.Label(left, text="Logger inaktiv")
-        self.logger_status.pack(anchor=tk.W, pady=(2, 4))
-        self.log = tk.Text(f, wrap=tk.WORD)
-        self.log.pack(fill=tk.BOTH, expand=True)
+        ttk.Checkbutton(logger_row, text="Nur bei Änderung loggen", style="Card.TCheckbutton",
+                        variable=self.gui_logger_changes_only).pack(side=tk.LEFT, padx=(16, 0))
+        self.logger_status = ttk.Label(logc, text="Logger inaktiv", style="StatusIdle.TLabel", wraplength=400, justify=tk.LEFT)
+        self.logger_status.pack(anchor=tk.W, pady=(8, 0))
+
+        # --- right column ----------------------------------------------------
+        right_col = ttk.Frame(f)
+        right_col.grid(row=1, column=1, sticky="nsew")
+        neuro = _theme.card(right_col, "Digitale Botenstoffe")
+        neuro.pack(fill=tk.X)
+        ttk.Label(neuro.header, text="Maus über einen Balken zeigt Name und Wert", style="CardSmall.TLabel").pack(side=tk.RIGHT)
+        self.neuro_bars = NeuromodulatorBars(neuro, self.theme)
+        self.neuro_bars.pack(fill=tk.X)
+        ttk.Separator(neuro).pack(fill=tk.X, pady=(10, 8))
+        details = ttk.Frame(neuro, style="Inner.TFrame"); details.pack(fill=tk.X)
+        details.columnconfigure(1, weight=1)
+        self.behavior_text = self._kv_row(details, 0, "Regime", ttk.Label(details, text="-", style="Card.TLabel"))
+        self.integration_text = self._kv_row(details, 1, "Integration", ttk.Label(details, text="-", style="Card.TLabel"))
+        self.evidence_text = self._kv_row(details, 2, "Phase-6a-Evidenz", ttk.Label(details, text="-", style="Card.TLabel"))
+        self.neuro_text = self._kv_row(details, 3, "Kernwerte", ttk.Label(details, text="-", style="Card.TLabel"))
+        self.trend_text = self._kv_row(details, 4, "Hom\u00f6ostase", ttk.Label(details, text="-", style="Card.TLabel"))
+        self._numeric_rows = [w for w in details.grid_slaves() if int(w.grid_info()["row"]) in (3, 4)]
+        self._numeric_visible = tk.BooleanVar(value=False)
+        self.numeric_toggle = ttk.Button(neuro.header, style="Link.TButton", command=self._toggle_numeric_rows)
+        self.numeric_toggle.pack(side=tk.RIGHT, padx=(0, 16))
+        self._toggle_numeric_rows(initial=True)
+        legend = ("Integration: phasisch/tonisch = Phase-6a-Rohwert / final gemischter Wert (w = tonic_weight, "
+                  "cortisol-gesteuert). GLU/GABA bleiben ausschließlich von Phase 7c verantwortet.")
+        self.neuro_legend = ttk.Label(neuro, text=legend, style="CardSmall.TLabel", wraplength=760, justify=tk.LEFT)
+        self.neuro_legend.pack(anchor=tk.W, pady=(8, 0))
+        def _wrap_details(e):
+            self.neuro_legend.configure(wraplength=max(300, e.width - 40))
+            for w in (self.behavior_text, self.integration_text, self.evidence_text, self.neuro_text, self.trend_text):
+                w.configure(wraplength=max(240, e.width - 180))
+        neuro.bind("<Configure>", _wrap_details)
+
+        logcard = _theme.card(right_col, "Protokoll")
+        logcard.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
+        self.log_filter = tk.StringVar(value="Alle Meldungen")
+        lf = ttk.Combobox(logcard.header, textvariable=self.log_filter, state="readonly", width=22,
+                          values=("Alle Meldungen", "Nur Warnungen und Fehler"))
+        lf.bind("<<ComboboxSelected>>", lambda e: self._apply_log_filter())
+        ttk.Button(logcard.header, text="Leeren", style="Small.TButton", width=7,
+                   command=lambda: self.log.delete("1.0", tk.END)).pack(side=tk.RIGHT)
+        ttk.Button(logcard.header, text="Kopieren", style="Small.TButton", width=9,
+                   command=lambda: self._copy_text(self.log.get("1.0", "end-1c"), "Protokoll")).pack(side=tk.RIGHT, padx=(0, 6))
+        lf.pack(side=tk.RIGHT, padx=(0, 6))
+        ttk.Label(logcard.header, text="Neueste 200 Zeilen", style="CardSmall.TLabel").pack(side=tk.RIGHT, padx=(0, 12))
+        box, self.log = _theme.scrolled_text(self.theme, logcard, font="mono", height=6)
+        box.pack(fill=tk.BOTH, expand=True)
+        _theme.snap_lines(self.log)
+        self.log.bind("<Configure>", lambda e: setattr(self, "_log_chars", max(40, int((e.width - 30) / max(1, self.theme.fonts["mono"].measure("0"))))), add="+")
+
+    def _copy_text(self, text, what):
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(text)
+            self.println("(i) %s in die Zwischenablage kopiert." % what)
+        except Exception:
+            pass
+
+    def _toggle_numeric_rows(self, initial=False):
+        if not initial:
+            self._numeric_visible.set(not self._numeric_visible.get())
+        show = self._numeric_visible.get()
+        for w in self._numeric_rows:
+            if show:
+                w.grid()
+            else:
+                w.grid_remove()
+        self.numeric_toggle.configure(text=("\u25be  Werte als Text ausblenden" if show else "\u25b8  Werte als Text"))
+
     def _on_corpus_language_changed(self, event=None):
         value = self.corpus_language.get()
         if value not in ("de", "en"):
@@ -408,54 +677,364 @@ class App(tk.Tk):
             self.corpus_language.set(value)
         self.mem.set_setting("corpus_language", value)
         self.println("Korpussprache auf '" + value + "' gesetzt (wirkt ab dem naechsten Zyklus).")
+
     def _search_tab(self):
         f = self.tabs["Suche & Antwort"]
+        c = _theme.card(f, "Suche & Antwort", "Suchen (Enter): Trefferliste der passendsten Textstellen.   "
+                                              "Antwort: zusammengesetzte Antwort mit Belegen (JSON).")
+        c.pack(fill=tk.BOTH, expand=True)
+        row = ttk.Frame(c, style="Inner.TFrame"); row.pack(fill=tk.X, pady=(0, 10))
         self.q = tk.StringVar()
-        ttk.Entry(f, textvariable=self.q).pack(fill=tk.X)
-        ttk.Button(f, text="Suchen", command=self.do_search).pack(anchor=tk.W)
-        ttk.Button(f, text="Antwort", command=self.do_answer).pack(anchor=tk.W)
-        self.out = tk.Text(f, wrap=tk.WORD)
-        self.out.pack(fill=tk.BOTH, expand=True)
+        entry = ttk.Entry(row, textvariable=self.q)
+        entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        entry.bind("<Return>", lambda e: self.do_search())
+        ttk.Button(row, text="Suchen", style="Accent.TButton", command=self.do_search).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(row, text="Antwort", command=self.do_answer).pack(side=tk.LEFT, padx=(8, 0))
+        box, self.out = _theme.scrolled_text(self.theme, c, font="ui")
+        box.pack(fill=tk.BOTH, expand=True)
+        self.out.insert(tk.END, "Noch keine Ergebnisse. Suchbegriff eingeben und „Suchen“ oder „Antwort“ wählen.", "hint")
+
+    def _table(self, parent, columns, lead=None):
+        """Treeview with themed headings, scrollbar, zebra rows, sorting,
+        a text filter, ellipsis for long cells and a full-text tooltip.
+        `lead` = (title, width, source_index, fn) shows an image column in
+        front (the Treeview tree column) and hides the source column."""
+        box = ttk.Frame(parent, style="Inner.TFrame")
+        tree = ttk.Treeview(box, columns=[c[0] for c in columns], show=("tree headings" if lead else "headings"))
+        for cid, title, width, anchor, stretch in columns:
+            tree.heading(cid, text=title, anchor=anchor, command=lambda c=cid, t=tree: self._sort_tree(t, c, toggle=True))
+            tree.column(cid, width=width, anchor=anchor, stretch=stretch, minwidth=50)
+        tree._lead_fn = None
+        tree._lead_idx = None
+        if lead:
+            title, width, src, fn = lead
+            tree.heading("#0", text=title, anchor=tk.W, command=lambda t=tree: self._sort_tree(t, "#0", toggle=True))
+            tree.column("#0", width=width, minwidth=width, stretch=False, anchor=tk.W)
+            tree["displaycolumns"] = [c[0] for i, c in enumerate(columns) if i != src]
+            tree._lead_fn = fn
+            tree._lead_idx = src
+        sb = ttk.Scrollbar(box, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        sb.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tree._sort = None
+        tree._rows_cache = None
+        tree._full = {}
+        tree._filter = tk.StringVar()
+        tree._titles = {c[0]: c[1] for c in columns}
+        if lead:
+            tree._titles["#0"] = lead[0]
+        tree._render = {}
+        tip = NeuroTooltip(tree, self.theme)
+        tip._cell = None
+        def _motion(event, t=tree):
+            item = t.identify_row(event.y); col = t.identify_column(event.x)
+            if not item or not col:
+                tip.hide(); tip._cell = None; return
+            if (item, col) == tip._cell:
+                return
+            tip._cell = (item, col)
+            try:
+                text = str(t._full[item][int(col[1:]) - 1])
+            except Exception:
+                text = ""
+            if text != str(t.set(item, t["columns"][int(col[1:]) - 1])):
+                tip.show(event.x_root, event.y_root, textwrap.fill(text, 90))
+            else:
+                tip.hide()
+        tree.bind("<Motion>", _motion)
+        tree.bind("<Leave>", lambda e: (tip.hide(), setattr(tip, "_cell", None)))
+        tree.bind("<ButtonRelease-1>", lambda e, t=tree: self.after(30, lambda: self._render_tree(t)), add="+")
+        tree.bind("<Configure>", lambda e, t=tree: self.after_idle(lambda: self._render_tree(t)), add="+")
+        self._zebra(tree)
+        self.theme.on_change(lambda t=tree: self._zebra(t))
+        return box, tree
+
+    def _table_toolbar(self, card, tree, noun):
+        bar = ttk.Frame(card, style="Inner.TFrame"); bar.pack(fill=tk.X, pady=(0, 10))
+        ttk.Button(bar, text="Aktualisieren", command=self.refresh).pack(side=tk.LEFT)
+        ttk.Label(bar, text="Filter (alle Spalten)", style="CardMuted.TLabel").pack(side=tk.LEFT, padx=(18, 6))
+        entry = ttk.Entry(bar, textvariable=tree._filter, width=36)
+        entry.pack(side=tk.LEFT, ipady=1)
+        ttk.Button(bar, text="\u2715", style="Small.TButton", width=2, command=lambda: tree._filter.set("")).pack(side=tk.LEFT, padx=(4, 0))
+        count = ttk.Label(bar, text="", style="CardMuted.TLabel")
+        count.pack(side=tk.RIGHT)
+        tree._count_label = count
+        tree._noun = noun
+        tree._filter.trace_add("write", lambda *a, t=tree: self._apply_filter(t))
+        return count
+
+    def _zebra(self, tree):
+        tree.tag_configure("odd", background=self.theme.p["zebra"])
+        tree.tag_configure("even", background=self.theme.p["field"])
+
+    def _cell_text(self, tree, col_index, value):
+        """Shorten a cell to the column width with an ellipsis."""
+        text = str(value)
+        cid = tree["columns"][col_index]
+        width = max(40, int(tree.column(cid, "width")) - 16)
+        font = self.theme.fonts["ui"]
+        if font.measure(text) <= width:
+            return text
+        lo, hi = 0, len(text)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if font.measure(text[:mid] + "…") <= width:
+                lo = mid
+            else:
+                hi = mid - 1
+        return text[:lo].rstrip() + "…"
+
+    def _render_tree(self, tree):
+        widths = tuple(int(tree.column(c, "width")) for c in tree["columns"])
+        for item in tree.get_children(""):
+            full = tree._full.get(item)
+            if full is None:
+                continue
+            if tree._render.get(item) == widths:
+                continue
+            tree.item(item, values=[self._cell_text(tree, i, v) for i, v in enumerate(full)])
+            tree._render[item] = widths
+
+    def _sort_tree(self, tree, col, toggle=False):
+        if toggle:
+            prev = tree._sort
+            tree._sort = (col, (not prev[1]) if prev and prev[0] == col else False)
+        if tree._sort:
+            col, rev = tree._sort
+            idx = tree._lead_idx if col == "#0" else list(tree["columns"]).index(col)
+            def key(item):
+                v = tree._full.get(item, ("",) * (idx + 1))[idx]
+                try:
+                    return (0, float(str(v).split()[0]), "")
+                except (TypeError, ValueError, IndexError):
+                    return (1, 0.0, str(v).lower())
+            items = sorted(tree.get_children(""), key=key, reverse=rev)
+            for i, item in enumerate(items):
+                tree.move(item, "", i)
+        for i, item in enumerate(tree.get_children("")):
+            tree.item(item, tags=("odd" if i % 2 else "even",))
+        for cid, title in tree._titles.items():
+            arrow = ""
+            if tree._sort and cid == tree._sort[0]:
+                arrow = " ▼" if tree._sort[1] else " ▲"
+            tree.heading(cid, text=title + arrow)
+
+    def _apply_filter(self, tree):
+        rows = tree._rows_cache or []
+        needle = tree._filter.get().strip().lower()
+        shown = [r for r in rows if not needle or any(needle in str(v).lower() for v in r)]
+        top = tree.yview()[0] if tree.get_children() else 0.0
+        tree.delete(*tree.get_children())
+        tree._full = {}
+        tree._render = {}
+        for values in shown:
+            if tree._lead_fn is not None:
+                text, image = tree._lead_fn(values)
+                item = tree.insert("", tk.END, values=values, text=text, image=image)
+            else:
+                item = tree.insert("", tk.END, values=values)
+            tree._full[item] = values
+        self._sort_tree(tree, None)
+        self._render_tree(tree)
+        tree.yview_moveto(top)
+        total = "%d %s" % (len(rows), tree._noun)
+        tree._count_label.configure(text=(("%d von " % len(shown)) + total if needle else total) + "  (neueste, max. 2000)")
+
+    def _fill_tree(self, tree, rows, count_label, noun):
+        if rows == tree._rows_cache:
+            return
+        tree._rows_cache = rows
+        self._apply_filter(tree)
+
+    @staticmethod
+    def _conf_cell(value):
+        try:
+            v = float(value or 0.0)
+        except (TypeError, ValueError):
+            v = 0.0
+        return "%.2f" % v
+
+    def _paint_conf_images(self):
+        """Five-segment confidence bars as images for the facts table."""
+        if not hasattr(self, "_conf_imgs"):
+            self._conf_imgs = [tk.PhotoImage(master=self, width=66, height=14) for _ in range(6)]
+        p = self.theme.p
+        for level, img in enumerate(self._conf_imgs):
+            img.blank()
+            for seg in range(5):
+                x0 = seg * 13
+                if seg < level:
+                    color = p["warning"] if level <= 1 else (p["accent"] if level <= 3 else p["success"])
+                    img.put(color, to=(x0, 2, x0 + 11, 12))
+                else:
+                    img.put(p["border_strong"], to=(x0, 2, x0 + 11, 12))
+                    img.put(p["track"], to=(x0 + 1, 3, x0 + 10, 11))
+
+    def _paint_legend_swatches(self):
+        for sw, key in self._legend_swatches:
+            sw.delete("all")
+            sw.create_rectangle(1, 2, 12, 12, fill=self.theme.p[key], outline=self.theme.p[key])
+
+    def _apply_log_filter(self):
+        only_problems = self.log_filter.get().startswith("Nur")
+        self.log.tag_configure("cat_plain", elide=only_problems)
+        self.log.see(tk.END)
+
+    def _conf_lead(self, values):
+        try:
+            v = float(values[3])
+        except (TypeError, ValueError, IndexError):
+            v = 0.0
+        return ("  %.2f" % v, self._conf_imgs[int(round(max(0.0, min(1.0, v)) * 5))])
+
     def _db_tab(self):
         f = self.tabs["Datenbank"]
-        ttk.Button(f, text="Aktualisieren", command=self.refresh).pack(anchor=tk.W)
-        self.docs = ttk.Treeview(f, columns=("id", "title", "kind", "path"), show="headings")
-        for c in ("id", "title", "kind", "path"):
-            self.docs.heading(c, text=c)
-        self.docs.pack(fill=tk.BOTH, expand=True)
+        c = _theme.card(f, "Dokumente", "Importierte Quellen. Spaltenkopf sortiert, Filter durchsucht alle Spalten, "
+                                       "Maus über gekürzter Zelle zeigt den Volltext.")
+        c.pack(fill=tk.BOTH, expand=True)
+        box, self.docs = self._table(c, [("id", "ID", 70, tk.E, False), ("title", "Titel", 360, tk.W, True),
+                                          ("kind", "Art", 90, tk.W, False), ("path", "Pfad", 520, tk.W, True)])
+        self.docs_count = self._table_toolbar(c, self.docs, "Dokumente")
+        box.pack(fill=tk.BOTH, expand=True)
+
     def _facts_tab(self):
         f = self.tabs["Fakten/Relationen"]
-        self.facts = ttk.Treeview(f, columns=("s", "r", "v", "conf"), show="headings")
-        for c in ("s", "r", "v", "conf"):
-            self.facts.heading(c, text=c)
-        self.facts.pack(fill=tk.BOTH, expand=True)
+        c = _theme.card(f, "Fakten & Relationen", "Gelernte Aussagen (Subjekt, Relation, Wert) mit Konfidenz. Spaltenkopf sortiert, "
+                                                  "Filter durchsucht alle Spalten, Maus über gekürzter Zelle zeigt den Volltext.")
+        c.pack(fill=tk.BOTH, expand=True)
+        self._legend_swatches = []
+        self._paint_conf_images()
+        self.theme.on_change(self._paint_conf_images)
+        box, self.facts = self._table(c, [("s", "Subjekt", 300, tk.W, True), ("r", "Relation", 130, tk.W, False),
+                                           ("v", "Wert", 520, tk.W, True), ("conf", "Konfidenz", 100, tk.E, False)],
+                                      lead=("Konfidenz (0\u20131)", 140, 3, self._conf_lead))
+        self.facts_count = self._table_toolbar(c, self.facts, "Fakten")
+        legend = ttk.Frame(c, style="Inner.TFrame")
+        legend.pack(side=tk.BOTTOM, fill=tk.X, pady=(8, 0))
+        ttk.Label(legend, text="KONFIDENZ-BALKEN", style="Caps.TLabel").pack(side=tk.LEFT, padx=(0, 10))
+        for key, text in (("warning", "niedrig (unter 0.30)"), ("accent", "mittel (0.30 bis 0.69)"), ("success", "hoch (ab 0.70)")):
+            sw = tk.Canvas(legend, width=14, height=14)
+            self.theme.register(sw, "canvas", bg="surface")
+            sw.pack(side=tk.LEFT, padx=(0, 6))
+            self._legend_swatches.append((sw, key))
+            ttk.Label(legend, text=text, style="CardMuted.TLabel").pack(side=tk.LEFT, padx=(0, 18))
+        self._paint_legend_swatches()
+        self.theme.on_change(self._paint_legend_swatches)
+        box.pack(fill=tk.BOTH, expand=True)
+
     def _export_tab(self):
         f = self.tabs["Export/Konfig"]
-        ttk.Label(f, text="Export").pack(anchor=tk.W)
-        ttk.Button(f, text="Export JSON", command=self._safe_export_json).pack(anchor=tk.W, pady=(4, 0))
-        ttk.Button(f, text="Export Fakten CSV", command=self._safe_export_facts).pack(anchor=tk.W, pady=(4, 8))
-        ttk.Separator(f).pack(fill=tk.X, pady=8)
-        ttk.Label(f, text="Max. ZIM-Artikel beim Import").pack(anchor=tk.W)
+        f.columnconfigure(0, weight=1, uniform="exp")
+        f.columnconfigure(1, weight=1, uniform="exp")
+        exp = _theme.card(f, "Export", "Schreibt die Dateien in das Arbeitsverzeichnis des Programms.")
+        exp.grid(row=1, column=0, sticky="nsew", padx=(0, 6))
+        for text, cmd, hint in (("Export JSON", self._safe_export_json, "export_ki_system.json"),
+                                ("Export Fakten CSV", self._safe_export_facts, "facts.csv")):
+            r = ttk.Frame(exp, style="Inner.TFrame"); r.pack(fill=tk.X, pady=(0, 8))
+            ttk.Button(r, text=text, command=cmd, width=20).pack(side=tk.LEFT)
+            ttk.Label(r, text="→  " + hint, style="CardMuted.TLabel").pack(side=tk.LEFT, padx=(12, 0))
+
+        cfg = _theme.card(f, "Import-Konfiguration", "Obergrenze für Artikel pro ZIM-Import.")
+        cfg.grid(row=1, column=1, sticky="nsew", padx=(6, 0))
+        ttk.Label(cfg, text="Max. ZIM-Artikel beim Import", style="Card.TLabel").pack(anchor=tk.W)
+        r = ttk.Frame(cfg, style="Inner.TFrame"); r.pack(fill=tk.X, pady=(6, 0))
         self.max_articles = tk.IntVar(value=int(self.mem.get_setting("max_articles", 2000) or 2000))
-        ttk.Spinbox(f, from_=1, to=1000000, textvariable=self.max_articles, width=12).pack(anchor=tk.W, pady=(4, 4))
-        ttk.Button(f, text="Speichern", command=self.save_config).pack(anchor=tk.W)
-        self.config_status = ttk.Label(f, text="Aktueller Wert: " + str(self.mem.get_setting("max_articles", 2000)))
-        self.config_status.pack(anchor=tk.W, pady=(8, 0))
-        ttk.Separator(f).pack(fill=tk.X, pady=12)
-        ttk.Label(f, text="Achtung: entfernt alle gelernten Daten, ZIM-Korpus bleibt erhalten.",
-        foreground="#b00000").pack(anchor=tk.W)
-        self.reset_btn = ttk.Button(f, text="Lernsystem zuruecksetzen (Korpus bleibt)", command=self.reset_learning_gui)
-        self.reset_btn.pack(anchor=tk.W, pady=(4, 0))
+        ttk.Spinbox(r, from_=1, to=1000000, textvariable=self.max_articles, width=12).pack(side=tk.LEFT)
+        ttk.Button(r, text="Speichern", style="Accent.TButton", command=self.save_config).pack(side=tk.LEFT, padx=(8, 0))
+        self.config_value = ttk.Label(cfg, text="Aktueller Wert: " + str(self.mem.get_setting("max_articles", 2000)),
+                                      style="CardMuted.TLabel")
+        self.config_value.pack(anchor=tk.W, pady=(8, 0))
+
+        f.rowconfigure(4, weight=1)
+        fb = ttk.Frame(f, style="Footer.TFrame", padding=(14, 8, 14, 8))
+        fb.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(16, 0))
+        ttk.Label(fb, text="LETZTE AKTION", style="FooterCaps.TLabel").pack(side=tk.LEFT, padx=(0, 12))
+        self.config_status = ttk.Label(fb, text="\u25cb  Noch keine Aktion in dieser Sitzung", style="FootStatusIdle.TLabel")
+        self.config_status.pack(side=tk.LEFT)
+
+        info = _theme.card(f, "Dateien & Speicherorte", "Wohin Exporte, CSV-Logs und Sicherungen geschrieben werden.")
+        info.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        grid = ttk.Frame(info, style="Inner.TFrame"); grid.pack(fill=tk.X)
+        grid.columnconfigure(1, weight=1)
+        project = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        backup = os.path.join(os.path.dirname(project), os.path.basename(project) + "_fullbackup_before_learning_reset_<Datum_Uhrzeit>")
+        for i, (label, path, folder) in enumerate((("Datenbank", os.path.abspath(self.db_path), os.path.dirname(os.path.abspath(self.db_path))),
+                                                   ("Exporte & CSV-Logs", os.path.abspath(os.getcwd()), os.path.abspath(os.getcwd())),
+                                                   ("Reset-Backup", backup, os.path.dirname(project)))):
+            ttk.Label(grid, text=label, style="CardMuted.TLabel").grid(row=i, column=0, sticky="w", pady=3)
+            plabel = ttk.Label(grid, text=self._middle_ellipsis(path, 130), style="Card.TLabel")
+            plabel.grid(row=i, column=1, sticky="w", padx=(12, 8), pady=3)
+            ptip = NeuroTooltip(plabel, self.theme)
+            plabel.bind("<Enter>", lambda e, t=ptip, p=path: t.show(e.x_root, e.y_root, p))
+            plabel.bind("<Leave>", lambda e, t=ptip: t.hide())
+            ttk.Button(grid, text="Kopieren", style="Small.TButton", width=9,
+                       command=lambda p=path, l=label: self._copy_path(p, l)).grid(row=i, column=2, padx=(0, 6), pady=3)
+            ttk.Button(grid, text="Ordner öffnen", style="Small.TButton", width=14,
+                       command=lambda d=folder: self._open_folder(d)).grid(row=i, column=3, pady=3)
+
+        dz = _theme.card(f, "Gefahrenzone", style="Danger.Card.TFrame", title_style="Danger.CardTitle.TLabel")
+        dz.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(16, 0))
+        ttk.Label(dz, text="Achtung: entfernt alle gelernten Daten, ZIM-Korpus bleibt erhalten.",
+                  style="Card.TLabel").pack(anchor=tk.W)
+        ttk.Label(dz, text="Vorher wird automatisch ein Backup (Projektkopie neben dem Projektordner) angelegt und eine "
+                           "Sicherheitsabfrage gestellt. Während Import, Lernen oder Drift-Test ist der Knopf gesperrt.",
+                  style="CardSmall.TLabel", wraplength=1100, justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 10))
+        self.reset_btn = ttk.Button(dz, text="Lernsystem zurücksetzen (Korpus bleibt) …", style="Danger.TButton",
+                                    command=self.reset_learning_gui)
+        self.reset_btn.pack(anchor=tk.W)
+
+    def _choose_theme(self, name):
+        if name != self.theme.name:
+            self.toggle_theme()
+
+    @staticmethod
+    def _middle_ellipsis(text, limit):
+        text = str(text)
+        if len(text) <= limit:
+            return text
+        keep = (limit - 1) // 2
+        return text[:keep] + "…" + text[-(limit - 1 - keep):]
+
+    def _copy_path(self, path, label):
+        try:
+            self.clipboard_clear(); self.clipboard_append(path)
+            self._feedback("%s-Pfad kopiert" % label)
+        except Exception as exc:
+            self._feedback("Kopieren fehlgeschlagen: " + str(exc), ok=False)
+
+    def _open_folder(self, folder):
+        try:
+            os.startfile(folder)
+            self._feedback("Ordner geöffnet: " + folder)
+        except Exception as exc:
+            self._feedback("Ordner nicht geöffnet: " + str(exc), ok=False)
+
+    def _feedback(self, text, ok=True):
+        try:
+            self.config_status.configure(text=("\u2713  " if ok else "\u2715  ") + text + "   \u00b7   " +
+                                         datetime.now().strftime("%H:%M:%S"),
+                                         style="FootStatusRun.TLabel" if ok else "FootStatusStop.TLabel")
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------ mood window
     def _create_floating_head(self):
         self.head = tk.Toplevel(self)
         self.head.overrideredirect(True)
         self.head.attributes("-topmost", True)
-        frame = tk.Frame(self.head, bg="#f0f0f0", relief=tk.RIDGE, borderwidth=2)
+        frame = tk.Frame(self.head, relief=tk.FLAT, borderwidth=0, highlightthickness=1)
         frame.pack()
-        self.mood_emoji = tk.Label(frame, text="(^_^)", font=("Consolas", 22, "bold"), bg="#f0f0f0", width=11, anchor="center")
-        self.mood_emoji.pack(padx=6, pady=(6, 0))
-        self.mood_name = tk.Label(frame, text="Ausgewogen", font=("Arial", 10), bg="#f0f0f0", anchor="center")
-        self.mood_name.pack(padx=6, pady=(0, 6))
+        self._head_frame = frame
+        self.mood_caption = tk.Label(frame, text="STIMMUNG", anchor="center")
+        self.mood_caption.pack(padx=12, pady=(8, 0))
+        self.mood_emoji = tk.Label(frame, text="(^_^)", width=11, anchor="center")
+        self.mood_emoji.pack(padx=12, pady=(0, 0))
+        self.mood_name = tk.Label(frame, text="Ausgewogen", anchor="center")
+        self.mood_name.pack(padx=12, pady=(0, 2))
+        self.mood_detail = tk.Label(frame, text="", anchor="center")
+        self.mood_detail.pack(padx=12, pady=(0, 10))
+        self._style_head()
         self.update_idletasks()
         try:
             hx = self.winfo_x() + self.winfo_width() + 8
@@ -464,9 +1043,23 @@ class App(tk.Tk):
             hx, hy = 100, 100
         self.head.geometry("+%d+%d" % (hx, hy))
         self._drag = {"x": 0, "y": 0}
-        for w in (self.head, frame, self.mood_emoji, self.mood_name):
+        for w in (self.head, frame, self.mood_caption, self.mood_emoji, self.mood_name, self.mood_detail):
             w.bind("<Button-1>", self._head_press)
             w.bind("<B1-Motion>", self._head_drag)
+
+    def _style_head(self):
+        if getattr(self, "_head_frame", None) is None:
+            return
+        p = self.theme.p; fonts = self.theme.fonts
+        try:
+            self._head_frame.configure(bg=p["surface"], highlightbackground=p["border_strong"], highlightcolor=p["border_strong"])
+            self.mood_caption.configure(bg=p["surface"], fg=p["subtle"], font=fonts["caps"])
+            self.mood_emoji.configure(bg=p["surface"], fg=p["text"], font=fonts["face"])
+            self.mood_name.configure(bg=p["surface"], fg=p["text"], font=fonts["bold"])
+            self.mood_detail.configure(bg=p["surface"], fg=p["muted"], font=fonts["small"])
+        except Exception:
+            pass
+
     def _head_press(self, event):
         self._drag["x"] = event.x_root - self.head.winfo_x()
         self._drag["y"] = event.y_root - self.head.winfo_y()
@@ -496,6 +1089,7 @@ class App(tk.Tk):
         try:
             if hasattr(self, "status"):
                 self.status.configure(text=text)
+            self._update_mode_pill()
         except Exception:
             pass
         try:
@@ -605,22 +1199,23 @@ class App(tk.Tk):
     def _safe_export_json(self):
         try:
             self.mem.export_json("export_ki_system.json")
-            self.config_status.configure(text="Export JSON gespeichert: export_ki_system.json")
+            self._feedback("Export JSON gespeichert: export_ki_system.json")
         except Exception as e:
-            self.config_status.configure(text="Export JSON Fehler: " + str(e))
+            self._feedback("Export JSON Fehler: " + str(e), ok=False)
     def _safe_export_facts(self):
         try:
             self.mem.export_facts_csv("facts.csv")
-            self.config_status.configure(text="Fakten CSV gespeichert: facts.csv")
+            self._feedback("Fakten CSV gespeichert: facts.csv")
         except Exception as e:
-            self.config_status.configure(text="Fakten CSV Fehler: " + str(e))
+            self._feedback("Fakten CSV Fehler: " + str(e), ok=False)
     def save_config(self):
         try:
             value = max(1, int(self.max_articles.get()))
             self.mem.set_setting("max_articles", value)
-            self.config_status.configure(text="Aktueller Wert: %d" % value)
+            self._feedback("Gespeichert. Aktueller Wert: %d" % value)
+            self.config_value.configure(text="Aktueller Wert: %d" % value)
         except Exception as e:
-            self.config_status.configure(text="Speichern fehlgeschlagen: " + str(e))
+            self._feedback("Speichern fehlgeschlagen: " + str(e), ok=False)
     def reset_learning_gui(self):
         from tkinter import messagebox
         busy = self._busy_operation_name()
@@ -655,10 +1250,52 @@ class App(tk.Tk):
         import threading
         self._reset_thread = threading.Thread(target=_worker, name="brainstem-reset", daemon=False)
         self._reset_thread.start()           
+    @staticmethod
+    def _log_tag(line):
+        text = line.strip()
+        upper = text.upper()
+        if text.startswith("!!") or "FEHLER" in upper or "ABGEBROCHEN" in upper:
+            return "err"
+        if text.startswith("==="):
+            return "head"
+        if "degradiert" in text or "WARN" in upper or "uebersprungen" in text and not text.startswith("(i)"):
+            return "warn"
+        if text.startswith("(i)"):
+            return "info"
+        if text.startswith("FERTIG") or "gestartet" in text:
+            return "ok"
+        return ()
+
+    def _log_display_lines(self, line):
+        """Display-only layout: long ' | '-separated status lines are broken
+        at their separators instead of mid-value (log text is unchanged)."""
+        width = getattr(self, "_log_chars", 120)
+        if len(line) <= width or " | " not in line:
+            return [line]
+        parts = line.split(" | ")
+        out, cur = [], parts[0]
+        for part in parts[1:]:
+            if len(cur) + 3 + len(part) <= width:
+                cur += " | " + part
+            else:
+                out.append(cur)
+                cur = "    " + part
+        out.append(cur)
+        return out
+
     def println(self, msg):
         def _do():
             try:
-                self.log.insert(tk.END, str(msg) + "\n")
+                for line in str(msg).split("\n"):
+                    tag = self._log_tag(line)
+                    base = ((tag,) if tag else ()) + ("wrapind", "cat_problem" if tag in ("err", "warn") else "cat_plain")
+                    for shown in self._log_display_lines(line):
+                        pieces = shown.split(" | ")
+                        for k, piece in enumerate(pieces):
+                            if k:
+                                self.log.insert(tk.END, " | ", base + ("sep",))
+                            self.log.insert(tk.END, piece, base)
+                        self.log.insert(tk.END, "\n", base)
                 total = int(self.log.index("end-1c").split(".")[0])
                 if total > 200:
                     self.log.delete("1.0", "%d.0" % (total - 200 + 1))
@@ -740,9 +1377,12 @@ class App(tk.Tk):
             lines.append("(Diagnose nicht verfuegbar: " + str(e) + ")")
         return "\n".join(lines)
     def progress(self, c, t, msg=""):
-        self._gui_enqueue(lambda: (self.bar_cycle.configure(value=c / max(1, t) * 100), self.status.configure(text='%s/%s %s' % (c, t, msg))))
+        self._gui_enqueue(lambda: (self.bar_cycle.configure(value=c / max(1, t) * 100),
+                                   self.cycle_label.configure(text="%s / %s" % (c, t)),
+                                   self.status.configure(text='%s/%s %s' % (c, t, msg))))
     def _set_cycle_bar(self, step, total):
-        self._gui_enqueue(lambda: self.bar_cycle.configure(value=step / max(1, total) * 100))
+        self._gui_enqueue(lambda: (self.bar_cycle.configure(value=step / max(1, total) * 100),
+                                   self.cycle_label.configure(text="%d / %d" % (step, total))))
     def _corpus_stats(self):
         now = time.time()
         if self._cov_cache is not None and (now - self._cov_ts) < 10.0:
@@ -790,7 +1430,15 @@ class App(tk.Tk):
             note = ""
             if not r.persisted and r.skip_reason and r.skip_reason != "memory_readonly":
                 note = "\n[Hinweis: Konversation wurde NICHT gespeichert - " + r.skip_reason + "]"
-            self.chat_out.insert(tk.END, "Du: " + t + "\n\nAntwort:\n" + r.response + note + "\n\n")
+            if getattr(self, "_chat_placeholder", False):
+                self.chat_out.delete("1.0", tk.END)
+                self._chat_placeholder = False
+            self.chat_out.insert(tk.END, "Du: ", "you")
+            self.chat_out.insert(tk.END, t + "\n\n")
+            self.chat_out.insert(tk.END, "Antwort:\n", ("bot", "answer"))
+            self.chat_out.insert(tk.END, r.response + note + "\n", "answer")
+            self.chat_out.insert(tk.END, "\n")
+            self.chat_out.see(tk.END)
             self.chat_in.set("")
     def pick_import(self):
         busy = self._busy_operation_name()
@@ -821,6 +1469,7 @@ class App(tk.Tk):
             self.auto_stop_btn.configure(state=tk.NORMAL if r else tk.DISABLED)
             if hasattr(self, "reset_btn"):
                 self.reset_btn.configure(state=tk.DISABLED if r else tk.NORMAL)
+            self._update_mode_pill()
         self._gui_enqueue(_apply)        
     def _get_worker_memory(self):
         if getattr(self, "_worker_mem", None) is None:
@@ -909,11 +1558,11 @@ class App(tk.Tk):
             self.println("Autonomes Dauerlernen gestoppt.")
     def do_search(self):
         self.out.delete("1.0", tk.END)
-        for h in semantic_search(self.mem, self.q.get(), 25):
-            self.out.insert(tk.END, "%.3f [%s] %s | Chunk %s\n%s\n\n" % (h.score, h.method, h.title, h.chunk_id, h.text[:1000]))
+        hits = list(semantic_search(self.mem, self.q.get(), 25))
+        _theme.render_hits(self.out, hits, self.q.get())
     def do_answer(self):
         self.out.delete("1.0", tk.END)
-        self.out.insert(tk.END, json.dumps(answer(self.mem, self.q.get()), ensure_ascii=False, indent=2))
+        self.out.insert(tk.END, json.dumps(answer(self.mem, self.q.get()), ensure_ascii=False, indent=2), "mono")
     def _neuro_con(self):
         for attr in ("db", "con", "conn", "connection", "sqlite"):
             c = getattr(self.mem, attr, None)
@@ -1007,6 +1656,24 @@ class App(tk.Tk):
             self._logger_start()
         else:
             self._logger_stop()
+        self._logger_pill()
+
+    def _logger_pill(self):
+        try:
+            text = str(self.logger_status.cget("text"))
+            if "Fehler" in text:
+                style, dot = "StatusStop.TLabel", "\u25cf"
+            elif getattr(self, "_logger_file", None) is not None:
+                style, dot = "StatusRun.TLabel", "\u25cf"
+            else:
+                style, dot = "StatusIdle.TLabel", "\u25cb"
+            if not text.startswith(("\u25cf", "\u25cb")):
+                text = dot + "  " + text
+            elif text[0] != dot:
+                text = dot + text[1:]
+            self.logger_status.configure(style=style, text=text)
+        except Exception:
+            pass
 
     def _logger_start(self):
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -1149,16 +1816,15 @@ class App(tk.Tk):
                     con.close()
                 except Exception:
                     pass
-        core_line = " | ".join("%s %.2f" % (NEURO_LABELS[k], vals.get(k, 0.0)) for k in NEURO_CORE)
-        self.neuro_text.configure(text="Neuromodulatoren: " + core_line)
-        self.behavior_text.configure(text="Regime: Orexin %s (%.2f) | BDNF %s (%.2f) | Cortisol %s (%.2f) | Schlaf: %s (%d Zyklen, Druck %d%%, Reife %d%%)" % (
-            regimes.get("orexin", "n/a"), vals.get("orexin", 0.0),
-            regimes.get("bdnf", "n/a"), vals.get("bdnf", 0.0),
-            regimes.get("cortisol", "n/a"), vals.get("cortisol", 0.0),
-            regimes.get("sleep_state", "n/a"), regimes.get("sleep_dwell", 0),
-            int(round(100 * regimes.get("sleep_position", 0.0))), int(round(100 * regimes.get("maturity", 0.0)))))
-        self.trend_text.configure(text="Homeostase: ADE %.2f | ECB %.2f | HIS %.2f" % (
-            vals.get("adenosine", 0.0), vals.get("endocannabinoid", 0.0), vals.get("histamine", 0.0)))
+        sep = "   ·   "
+        self.neuro_text.configure(text=sep.join("%s %.2f" % (NEURO_LABELS[k], vals.get(k, 0.0)) for k in NEURO_CORE))
+        self.behavior_text.configure(text=sep.join((
+            "Orexin %s (%.2f)" % (regimes.get("orexin", "n/a"), vals.get("orexin", 0.0)),
+            "BDNF %s (%.2f)" % (regimes.get("bdnf", "n/a"), vals.get("bdnf", 0.0)),
+            "Cortisol %s (%.2f)" % (regimes.get("cortisol", "n/a"), vals.get("cortisol", 0.0)),
+            "Histamin %s (%.2f)" % (regimes.get("histamine", "n/a"), vals.get("histamine", 0.0)))))
+        self.trend_text.configure(text="ADE %.2f%sECB %.2f%sHIS %.2f" % (
+            vals.get("adenosine", 0.0), sep, vals.get("endocannabinoid", 0.0), sep, vals.get("histamine", 0.0)))
         con2, should_close2 = self._neuro_con()
         try:
             integ = read_integration_transparency(con2)
@@ -1169,19 +1835,81 @@ class App(tk.Tk):
                 except Exception:
                     pass
         tw = integ.get("tonic_weight", 0.18)
-        integ_line = "Integration (phasisch/tonisch, w=%.2f): " % tw + " | ".join(
+        self.integration_text.configure(text=("phasisch/tonisch, w = %.2f%s" % (tw, sep)) + sep.join(
             "%s %.2f/%.2f" % (NEURO_LABELS[k], integ.get(k + "_phasic", 0.0), vals.get(k, 0.0))
-            for k in ("dopamine", "serotonin", "noradrenaline", "acetylcholine")
-        )
-        self.integration_text.configure(text=integ_line)
-        self.evidence_text.configure(
-            text="Phase6a Evidenzstatus: %s" % integ.get("phase6a_evidence_state", "n/a"))
+            for k in ("dopamine", "serotonin", "noradrenaline", "acetylcholine")))
+        self.evidence_text.configure(text=str(integ.get("phase6a_evidence_state", "n/a")))
+        self._update_sleep_panel(vals, regimes)
         emoji, name = compute_mood(vals, regimes)
+        name = MOOD_DISPLAY.get(name, name)  # UI-only spelling; CSV keeps compute_mood()
         if self.mood_emoji is not None:
             self.mood_emoji.configure(text=emoji)
         if self.mood_name is not None:
             self.mood_name.configure(text=name)
+        if getattr(self, "header_mood", None) is not None:
+            self.header_mood.configure(text="%s  %s" % (emoji, name))
         self.neuro_bars.draw(vals)
+
+    def _update_sleep_panel(self, vals, regimes):
+        state = regimes.get("sleep_state", "n/a")
+        pressure = int(round(100 * regimes.get("sleep_position", 0.0)))
+        if state == "sleep":
+            self.sleep_pill.configure(text="☾  Schlaf  ·  Druck %d %%" % pressure, style="PillSleep.TLabel")
+        elif state == "wake":
+            self.sleep_pill.configure(text="☀  Wach  ·  Druck %d %%" % pressure, style="PillWarn.TLabel")
+        else:
+            self.sleep_pill.configure(text="Zustand n/a", style="PillIdle.TLabel")
+        ade = vals.get("adenosine", 0.0)
+        upper = regimes.get("sleep_upper", 0.0); lower = regimes.get("sleep_lower", 0.0)
+        self.sleep_gauge.set(ade, lower, upper, regimes.get("_asleep", False))
+        self.sleep_values["pressure"].configure(text="%.3f   ·   Druck %d %%" % (ade, int(round(100 * regimes.get("sleep_position", 0.0)))))
+        dwell = regimes.get("sleep_dwell", 0)
+        self.sleep_values["dwell"].configure(text="%d %s" % (dwell, "Zyklus" if dwell == 1 else "Zyklen"))
+        self.sleep_values["reason"].configure(text=str(regimes.get("sleep_reason", "n/a")))
+        if getattr(self, "mood_detail", None) is not None:
+            self.mood_detail.configure(text="%s   \u00b7   Schlafdruck %d %%" % (
+                {"sleep": "Schlaf", "wake": "Wach"}.get(state, "n/a"), int(round(100 * regimes.get("sleep_position", 0.0)))))
+        mat = 100.0 * regimes.get("maturity", 0.0)
+        self.bar_maturity.configure(value=mat)
+        self.maturity_label.configure(text="%.1f %%" % mat)
+
+    def _chunk_rate(self, covered):
+        """Reading speed while learning/importing, from the coverage history."""
+        now = time.time()
+        hist = getattr(self, "_rate_hist", None)
+        if hist is None or not (self.auto_running or self.mode == "import"):
+            self._rate_hist = [(now, covered)]
+            return ""
+        hist.append((now, covered))
+        while len(hist) > 2 and now - hist[1][0] >= 300:
+            hist.pop(0)
+        dt = now - hist[0][0]
+        if dt < 20:
+            return ""
+        return "   \u00b7   \u2248 %.0f Chunks/min" % (60.0 * (covered - hist[0][1]) / dt)
+
+    def _mode_text(self):
+        if getattr(self, "_closing", False):
+            return "\u25cf  Wird beendet", "PillStop.TLabel"
+        if self.mode == "import":
+            return "\u25cf  Import l\u00e4uft", "PillWarn.TLabel"
+        if self.auto_running:
+            return "\u25cf  Autonomes Lernen l\u00e4uft", "PillInfo.TLabel"
+        if getattr(self, "drift_running", False):
+            return "\u25cf  Drift-Test l\u00e4uft", "PillSleep.TLabel"
+        return "\u25cf  Bereit", "PillRun.TLabel"
+
+    def _update_mode_pill(self):
+        try:
+            text, style = self._mode_text()
+            self.mode_pill.configure(text=text, style=style)
+            if getattr(self, "mode_pill_ctl", None) is not None:
+                self.mode_pill_ctl.configure(text=text, style=style)
+            if getattr(self, "abort_btn", None) is not None:
+                busy = self.mode == "import" or self.auto_running
+                self.abort_btn.configure(state=tk.NORMAL if busy else tk.DISABLED)
+        except Exception:
+            pass
     REFRESH_INTERVAL_MS = 2000
 
     def refresh(self):
@@ -1216,30 +1944,57 @@ class App(tk.Tk):
         self.drift_running = False
         self.drift_stop = False
         self.drift_rows = []
-        ttk.Label(f, text="Sensorischer Entzug / Drift-Kalibrierung", font=("Arial", 10, "bold")).pack(anchor=tk.W)
-        ttk.Label(f, text="Input AUS (keine neuen Chunks), innere Dynamik laeuft weiter. Log als CSV im Projekt-Root.",
-                  foreground="#555555").pack(anchor=tk.W, pady=(0, 6))
-        ctl = ttk.Frame(f)
-        ctl.pack(anchor=tk.W, pady=(2, 4))
-        self.drift_start_btn = ttk.Button(ctl, text="Start", command=self.drift_start)
+        f.columnconfigure(0, weight=1)
+        f.rowconfigure(1, weight=3)
+        f.rowconfigure(2, weight=0)
+        top = _theme.card(f, "Sensorischer Entzug / Drift-Kalibrierung",
+                          "Input AUS (keine neuen Chunks), innere Dynamik läuft weiter. Log als CSV im Projekt-Root. "
+                          "Gezählt werden Systemzyklen.")
+        top.grid(row=0, column=0, sticky="ew")
+        ctl = ttk.Frame(top, style="Inner.TFrame")
+        ctl.pack(fill=tk.X)
+        self.drift_start_btn = ttk.Button(ctl, text="▶  Start", style="Accent.TButton", command=self.drift_start)
         self.drift_start_btn.pack(side=tk.LEFT)
-        self.drift_stop_btn = ttk.Button(ctl, text="Stop", command=self.drift_stop_now, state=tk.DISABLED)
-        self.drift_stop_btn.pack(side=tk.LEFT, padx=6)
+        self.drift_stop_btn = ttk.Button(ctl, text="■  Stop", command=self.drift_stop_now, state=tk.DISABLED)
+        self.drift_stop_btn.pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Separator(ctl, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=18)
         self.drift_limit_on = tk.BooleanVar(value=False)
-        ttk.Checkbutton(ctl, text="Zyklenzahl begrenzen", variable=self.drift_limit_on,
-                        command=self._drift_toggle_limit).pack(side=tk.LEFT, padx=(12, 4))
+        ttk.Checkbutton(ctl, text="Zyklenzahl begrenzen", variable=self.drift_limit_on, style="Card.TCheckbutton",
+                        command=self._drift_toggle_limit).pack(side=tk.LEFT, padx=(0, 8))
         self.drift_cycles = tk.IntVar(value=100)
         self.drift_spin = ttk.Spinbox(ctl, from_=1, to=9999, textvariable=self.drift_cycles, width=8, state=tk.DISABLED)
         self.drift_spin.pack(side=tk.LEFT)
-        self.drift_status = ttk.Label(f, text="Bereit.")
-        self.drift_status.pack(anchor=tk.W, pady=(2, 4))
-        self.drift_canvas = tk.Canvas(f, width=760, height=240, bg="white",
-                                      highlightthickness=1, highlightbackground="#cccccc")
-        self.drift_canvas.pack(anchor=tk.W, pady=(2, 4))
-        ttk.Label(f, text="Kurven: exploration_bias (rot) | adenosine (braun) | plasticity (blau) | effectiveness (gruen) | histamine (magenta)",
-                  font=("Arial", 8), foreground="#555555").pack(anchor=tk.W)
-        self.drift_report = tk.Text(f, wrap=tk.WORD, height=12)
-        self.drift_report.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
+        ttk.Label(ctl, text="Systemzyklen", style="CardMuted.TLabel").pack(side=tk.LEFT, padx=(8, 0))
+        st = ttk.Frame(top, style="Inner.TFrame"); st.pack(fill=tk.X, pady=(10, 0))
+        ttk.Label(st, text="STATUS", style="Caps.TLabel").pack(side=tk.LEFT, padx=(0, 10))
+        self.drift_status = ttk.Label(st, text="Bereit.", style="Card.TLabel")
+        self.drift_status.pack(side=tk.LEFT)
+
+        graph = _theme.card(f, "Verlauf", "Alle Größen auf 0 bis 1 normiert. Linienstil und Farbe unterscheiden die Kurven.")
+        graph.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
+        legend = ttk.Frame(graph, style="Inner.TFrame"); legend.pack(fill=tk.X, pady=(0, 6))
+        self.drift_legend_values = {}
+        self._drift_swatches = []
+        for key, label, color, dash in _theme.DRIFT_SERIES:
+            item = ttk.Frame(legend, style="Inner.TFrame"); item.pack(side=tk.LEFT, padx=(0, 22))
+            sw = tk.Canvas(item, width=28, height=12)
+            self.theme.register(sw, "canvas", bg="surface")
+            sw.pack(side=tk.LEFT, padx=(0, 6))
+            self._drift_swatches.append((sw, color, dash))
+            ttk.Label(item, text=label, style="Card.TLabel").pack(side=tk.LEFT)
+            v = ttk.Label(item, text="", style="CardBold.TLabel")
+            v.pack(side=tk.LEFT, padx=(6, 0))
+            self.drift_legend_values[key] = v
+        self.drift_canvas = tk.Canvas(graph, height=220)
+        self.theme.register(self.drift_canvas, "canvas", bg="field")
+        self.drift_canvas.pack(fill=tk.BOTH, expand=True)
+        self.drift_canvas.bind("<Configure>", lambda e: self._drift_draw())
+        self.theme.on_change(self._drift_draw)
+
+        rep = _theme.card(f, "Bericht & Zyklusprotokoll")
+        rep.grid(row=2, column=0, sticky="nsew", pady=(12, 0))
+        box, self.drift_report = _theme.scrolled_text(self.theme, rep, font="mono", height=4)
+        box.pack(fill=tk.BOTH, expand=True)
     def _drift_toggle_limit(self):
         self.drift_spin.configure(state=(tk.NORMAL if self.drift_limit_on.get() else tk.DISABLED))
     def drift_stop_now(self):
@@ -1253,12 +2008,16 @@ class App(tk.Tk):
             from tkinter import messagebox
             messagebox.showwarning("Drift-Report", "Bitte zuerst laufenden Vorgang beenden: " + busy)
             return
+        # Read the Tk settings here, in the main thread; the worker thread must
+        # not touch Tk variables.
+        self._drift_cfg = (bool(self.drift_limit_on.get()), int(self.drift_cycles.get()))
         self.drift_running = True
         self.drift_stop = False
         self.drift_rows = []
         self.drift_start_btn.configure(state=tk.DISABLED)
         self.drift_stop_btn.configure(state=tk.NORMAL)
         self.drift_report.delete("1.0", tk.END)
+        self._update_mode_pill()
         self._drift_thread = threading.Thread(target=self._drift_worker, name="brainstem-drift", daemon=False)
         self._drift_thread.start()
     def _drift_worker(self):
@@ -1276,8 +2035,8 @@ class App(tk.Tk):
             return
         con = sqlite3.connect(self.db_path, timeout=60.0)
         loop = AutonomousLoop(self._get_worker_memory())
-        limit_on = bool(self.drift_limit_on.get())
-        cycles = int(self.drift_cycles.get()) if limit_on else None
+        limit_on, limit_cycles = getattr(self, "_drift_cfg", (False, 100))
+        cycles = limit_cycles if limit_on else None
         def cycle_fn():
             loop.cycle()
         def stop_flag():
@@ -1318,15 +2077,41 @@ class App(tk.Tk):
         self.after(0, lambda: (self.drift_start_btn.configure(state=tk.NORMAL),
                                self.drift_stop_btn.configure(state=tk.DISABLED)))
         self.after(0, self.refresh)
+        self.after(0, self._update_mode_pill)
     def _drift_draw(self):
         c = self.drift_canvas
+        p = self.theme.p; fonts = self.theme.fonts
+        for sw, color, dash in getattr(self, "_drift_swatches", []):
+            sw.delete("all")
+            _theme.dashed_line(sw, [2, 6, 26, 6], self.theme.series_color(color), 3, dash)
         c.delete("all")
-        w = int(c["width"]); h = int(c["height"]); pad = 12
-        c.create_rectangle(pad, pad, w - pad, h - pad, outline="#dddddd")
+        w = max(int(c.winfo_width()), 200); h = max(int(c.winfo_height()), 120)
+        left, right, top, bottom = 48, 18, 22, 26
+        pw = w - left - right; ph = h - top - bottom
+        for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
+            y = top + ph - frac * ph
+            c.create_line(left, y, left + pw, y, fill=p["grid"] if frac not in (0.0,) else p["border_strong"],
+                          dash=(2, 4) if frac not in (0.0, 1.0) else None)
+            c.create_text(left - 8, y, text="%.2f" % frac, anchor="e", fill=p["subtle"], font=fonts["small"])
         rows = self.drift_rows
         n = len(rows)
+        c.create_text(left + pw, 2, text="Entzug-Zyklus (Systemzyklen) \u2192", anchor="ne", fill=p["subtle"], font=fonts["small"])
         if n < 2:
+            c.create_text(left + pw / 2.0, top + ph / 2.0, fill=p["muted"], font=fonts["ui"],
+                          text="Noch keine Daten. „Start“ beginnt einen Entzugslauf; die Kurven erscheinen ab dem 2. Zyklus.")
+            for key, v in getattr(self, "drift_legend_values", {}).items():
+                v.configure(text="")
             return
+        step = next((st for st in (1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000) if n / float(st) <= 8), 10000)
+        for cyc in [1] + list(range(step, n + 1, step)):
+            x = left + pw * ((cyc - 1) / float(max(1, n - 1)))
+            c.create_line(x, top + ph, x, top + ph + 4, fill=p["border_strong"])
+            if abs(cyc - n) * pw / float(max(1, n - 1)) > 24 or cyc == n:
+                c.create_text(x, top + ph + 6, text=str(cyc), anchor="n", fill=p["subtle"], font=fonts["small"])
+        if (n - 1) % step:
+            x = left + pw
+            c.create_line(x, top + ph, x, top + ph + 4, fill=p["border_strong"])
+            c.create_text(x, top + ph + 6, text=str(n), anchor="n", fill=p["text"], font=fonts["small"])
         maxpts = 200
         if n > maxpts:
             step = n / float(maxpts)
@@ -1336,21 +2121,21 @@ class App(tk.Tk):
         else:
             idxs = list(range(n))
         m = len(idxs)
-        series = [("exploration_bias", "#d62728"), ("adenosine", "#8c564b"),
-                  ("plasticity_level", "#1f77b4"), ("effectiveness", "#2ca02c"), ("histamine", "#e377c2")]
-        for key, color in series:
+        for key, label, color, dash in _theme.DRIFT_SERIES:
             pts = []
+            v = 0.0
             for j, i in enumerate(idxs):
                 v = rows[i].get(key, 0.0)
                 try: v = float(v)
                 except Exception: v = 0.0
                 if v < 0.0: v = 0.0
                 if v > 1.0: v = 1.0
-                x = pad + (w - 2 * pad) * (j / max(1, m - 1))
-                y = (h - pad) - v * (h - 2 * pad)
-                pts.append((x, y))
-            for k in range(1, len(pts)):
-               c.create_line(pts[k - 1][0], pts[k - 1][1], pts[k][0], pts[k][1], fill=color, width=2)
+                x = left + pw * (j / max(1, m - 1))
+                y = top + ph - v * ph
+                pts.extend((x, y))
+            _theme.dashed_line(c, pts, self.theme.series_color(color), 2.5, dash)
+            if key in getattr(self, "drift_legend_values", {}):
+                self.drift_legend_values[key].configure(text="%.3f" % v)
     def _drift_log_line(self, msg):
         try:
             self.drift_report.insert(tk.END, str(msg) + "\n")
@@ -1369,8 +2154,19 @@ class App(tk.Tk):
             covered, total, hypo = self._corpus_stats()
             pct = (100.0 * covered / total) if total else 0.0
             st = self._cached_stats()
-            self.status.configure(text="Chunks gelesen %d/%d (%.1f%%) | Fakten %d | Relationen %d | Ontologie %d | Fragen %d | Hypothesen %d" % (
-                covered, total, pct, st.get("facts", 0), st.get("relations", 0), st.get("ontology", 0), st.get("questions", 0), hypo))
+            try:
+                self.kpi["chunks"].configure(text="%d / %d" % (covered, total))
+                for key in ("facts", "relations", "ontology", "questions"):
+                    self.kpi[key].configure(text="%d" % st.get(key, 0))
+                self.kpi["hypotheses"].configure(text="%d" % hypo)
+                self.total_pct_label.configure(text="%.1f %%" % pct)
+            except Exception:
+                pass
+            self._update_mode_pill()
+            if self.mode != "import" and not getattr(self, "_closing", False):
+                rate = self._chunk_rate(covered)
+                self.status.configure(text="%s%s   \u00b7   Anzeige aktualisiert %s" % (
+                    self._mode_text()[0].replace("\u25cf  ", ""), rate, datetime.now().strftime("%H:%M:%S")))
             try:
                 self.bar_total.configure(value=pct)
             except Exception:
@@ -1379,21 +2175,20 @@ class App(tk.Tk):
                 try:
                     self._update_neuro_dashboard()
                 except Exception as exc:
-                    self.neuro_text.configure(text="Neuromodulatoren: nicht verfuegbar: " + str(exc))
+                    self.neuro_text.configure(text="Neuromodulatoren nicht verfuegbar: " + str(exc))
             if hasattr(self, "gui_logger_enabled"):
                 self._logger_write_row_if_enabled()
+                self._logger_pill()
             if hasattr(self, "docs") and self._current_tab_name == "Datenbank":
-                self.docs.delete(*self.docs.get_children())
-                for d in self.mem.rows("SELECT * FROM documents ORDER BY created_at DESC LIMIT 2000"):
-                    self.docs.insert("", tk.END, values=(d["id"], d["title"], d["kind"], d["path"]))
+                rows = [(d["id"], d["title"], d["kind"], d["path"])
+                        for d in self.mem.rows("SELECT * FROM documents ORDER BY created_at DESC LIMIT 2000")]
+                self._fill_tree(self.docs, rows, self.docs_count, "Dokumente")
             if hasattr(self, "facts") and self._current_tab_name == "Fakten/Relationen":
-                self.facts.delete(*self.facts.get_children())
-                for f in self.mem.rows("SELECT * FROM facts ORDER BY created_at DESC LIMIT 2000"):
-                    self.facts.insert("", tk.END, values=(f["subject"], f["relation"], f["value"], round(f["confidence"], 2)))
+                rows = [(f["subject"], f["relation"], f["value"], self._conf_cell(f["confidence"]))
+                        for f in self.mem.rows("SELECT * FROM facts ORDER BY created_at DESC LIMIT 2000")]
+                self._fill_tree(self.facts, rows, self.facts_count, "Fakten")
         finally:
             self._refresh_running = False
-
-
     def _gui_enqueue(self, callback):
         if not callable(callback): return
         lock=getattr(self, '_gui_pending_lock', None)

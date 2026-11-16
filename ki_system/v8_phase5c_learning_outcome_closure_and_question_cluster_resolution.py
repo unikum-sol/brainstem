@@ -40,6 +40,12 @@ def _add_col(cur, table, col, spec, changes):
 
 def _safe_unique(cur, table, col, changes):
     if not _table_exists(cur, table) or col not in _cols(cur, table): return
+    # The index already exists: it rules out duplicates, so the full GROUP BY
+    # scan (about 0.1 s per cycle on the production state) is not needed.
+    if cur.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+                   (f"idx_{table}_{col}_uniq",)).fetchone():
+        changes.append(f"unique_index:{table}.{col}")
+        return
     dup = cur.execute(f"SELECT {col}, COUNT(*) FROM {table} WHERE {col} IS NOT NULL GROUP BY {col} HAVING COUNT(*)>1 LIMIT 1").fetchone()
     if dup:
         changes.append(f"skip_unique_duplicates:{table}.{col}")

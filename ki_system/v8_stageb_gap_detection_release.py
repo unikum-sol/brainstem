@@ -69,7 +69,20 @@ def _columns(con, table):
     return {row[1] for row in con.execute("PRAGMA table_info(" + table + ")").fetchall()}
 
 
+# Gap-detection cycle used as the clock of time-based habituation; set at the
+# start of each detection cycle and read by every caller of _upsert_gap.
+_CURRENT_CYCLE = None
+
+
+def _current_cycle(con) -> int:
+    if _CURRENT_CYCLE is not None:
+        return _CURRENT_CYCLE
+    return _int(_read_kv(con, STATE_TABLE).get("cycle_count"), 0)
+
+
 def ensure_schema(con) -> bool:
+    if _table_exists(con, "internal_learning_gaps") and "last_gain_cycle" not in _columns(con, "internal_learning_gaps"):
+        con.execute("ALTER TABLE internal_learning_gaps ADD COLUMN last_gain_cycle INTEGER")
     if not _table_exists(con, STATE_TABLE):
         con.execute(
             "CREATE TABLE " + STATE_TABLE + " (key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER)"
@@ -147,13 +160,15 @@ def _upsert_gap(con, gap_key, gap_type, gap_reason, role, priority, severity,
     # Literatur: Ueda et al. 2021; Smart et al. 2026
     existing = con.execute(
         "SELECT id, evidence_count, resolution_attempts, status, "
-        "COALESCE(evidence_count_at_last_gain,0), COALESCE(stagnant_streak,0), habituated_at "
+        "COALESCE(evidence_count_at_last_gain,0), COALESCE(stagnant_streak,0), habituated_at, last_gain_cycle "
         "FROM internal_learning_gaps WHERE gap_key=?",
         (gap_key,),
     ).fetchone()
     if existing:
-        gid, prior_ev, prior_attempts, cur_status, prior_gain_ev, prior_streak, prior_habituated_at = existing
+        gid, prior_ev, prior_attempts, cur_status, prior_gain_ev, prior_streak, prior_habituated_at, prior_gain_cycle = existing
         gained = evidence_count > prior_gain_ev
+        cycle_now = _current_cycle(con)
+        new_gain_cycle = cycle_now if (gained or prior_gain_cycle is None) else prior_gain_cycle
         if gained:
             new_gain_ev, new_streak = evidence_count, 0
         else:
@@ -179,10 +194,10 @@ def _upsert_gap(con, gap_key, gap_type, gap_reason, role, priority, severity,
         con.execute(
             "UPDATE internal_learning_gaps SET priority=?, severity=?, uncertainty=?, "
             "evidence_count=?, resolution_attempts=?, evidence_count_at_last_gain=?, "
-            "stagnant_streak=?, status=?, habituated_at=?, updated_at=? WHERE id=?",
+            "stagnant_streak=?, status=?, habituated_at=?, updated_at=?, last_gain_cycle=? WHERE id=?",
             (priority, severity, uncertainty, max(int(prior_ev or 0), evidence_count),
              int(prior_attempts or 0) + 1, new_gain_ev, new_streak, new_status,
-             new_habituated_at, now, gid),
+             new_habituated_at, now, new_gain_cycle, gid),
         )
         if habituated_delta:
             _set_kv(con, STATE_TABLE, "gaps_habituated_total",
@@ -194,10 +209,11 @@ def _upsert_gap(con, gap_key, gap_type, gap_reason, role, priority, severity,
     con.execute(
         "INSERT INTO internal_learning_gaps(gap_key,gap_type,gap_reason,role,priority,"
         "severity,hypothesis_id,uncertainty,pattern_key,status,resolution_score,"
-        "evidence_count,evidence_count_at_last_gain,stagnant_streak,created_at,updated_at) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "evidence_count,evidence_count_at_last_gain,stagnant_streak,created_at,updated_at,last_gain_cycle) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (gap_key, gap_type, gap_reason, role, priority, severity, hypothesis_id,
-         uncertainty, pattern_key, "open", 0.0, evidence_count, evidence_count, 0, now, now),
+         uncertainty, pattern_key, "open", 0.0, evidence_count, evidence_count, 0, now, now,
+         _current_cycle(con)),
     )
     return "created"
 
@@ -318,9 +334,24 @@ def _detect_contested_pairs(con, scan_limit, now, habituation_max=64, acetylchol
             "no_learned_cue": no_cue, "no_competitor": no_competitor}
 
 
+def _habituate_without_new_evidence(con, cycle, window, now) -> int:
+    """Time-based habituation: an open gap that has gained no evidence for
+    `window` gap-detection cycles fades from attention, however rarely it is
+    encountered. New evidence re-opens it (dishabituation in _upsert_gap).
+    Literatur: Rankin et al. 2009; Thompson & Spencer 1966"""
+    con.execute("UPDATE internal_learning_gaps SET last_gain_cycle=? WHERE last_gain_cycle IS NULL", (cycle,))
+    cur = con.execute(
+        "UPDATE internal_learning_gaps SET status='habituated', habituated_at=?, updated_at=? "
+        "WHERE status IN ('open','persistent_gap') AND last_gain_cycle <= ?",
+        (now, now, cycle - window))
+    return cur.rowcount or 0
+
+
 def run_gap_detection_cycle(con) -> Dict[str, Any]:
+    global _CURRENT_CYCLE
     ensure_schema(con)
     state = _read_kv(con, STATE_TABLE)
+    _CURRENT_CYCLE = _int(state.get("cycle_count"), 0) + 1
     if str(state.get("enabled", "true")).strip().lower() != "true":
         return {"status": "stageb_gap_detection_disabled", "created": 0, "reobserved": 0}
     scan_limit = max(1, _int(state.get("scan_limit"), 200))
@@ -355,6 +386,10 @@ def run_gap_detection_cycle(con) -> Dict[str, Any]:
 
     created = stalled["created"] + contested["created"]
     reobserved = stalled["reobserved"] + contested["reobserved"]
+    habituated_now = _habituate_without_new_evidence(con, _CURRENT_CYCLE, habituation_max, now)
+    if habituated_now:
+        _set_kv(con, STATE_TABLE, "gaps_habituated_total",
+                _int(_read_kv(con, STATE_TABLE).get("gaps_habituated_total"), 0) + habituated_now)
 
     _set_kv(con, STATE_TABLE, "cycle_count", _int(state.get("cycle_count"), 0) + 1)
     _set_kv(con, STATE_TABLE, "gaps_created_total", _int(state.get("gaps_created_total"), 0) + created)
@@ -367,6 +402,7 @@ def run_gap_detection_cycle(con) -> Dict[str, Any]:
         "contested_pairs": contested,
         "created": created,
         "reobserved": reobserved,
+        "habituated_without_new_evidence": habituated_now,
     }
 
 

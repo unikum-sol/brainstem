@@ -22,7 +22,15 @@ def db_of(o=None):
             x=getattr(o,a,None)
             if x: return sqlite3.connect(str(x)),True
     return sqlite3.connect('ki_memory.sqlite3'),True
-def ex(db,t): return db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?",(t,)).fetchone() is not None
+# Positive table-existence answers are kept per connection: tables are
+# never dropped while the learning loop runs, so a table seen once stays.
+_KNOWN_TABLES = set()
+def ex(db,t):
+    key=(id(db),t)
+    if key in _KNOWN_TABLES: return True
+    found=db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?",(t,)).fetchone() is not None
+    if found: _KNOWN_TABLES.add(key)
+    return found
 def cols(db,t): return [r[1] for r in db.execute('PRAGMA table_info(%s)'%t).fetchall()] if ex(db,t) else []
 def add(db,t,col,decl,changes):
     if ex(db,t) and col not in cols(db,t):
@@ -108,7 +116,7 @@ def apply_diversification(obj=None,limit_gaps=120):
     try:
         ensure_schema(db); vals=ctrls(db); mem,stats=build_memory(db); total,ao,ac,av,an=stats; ts=n(); gaps=[]
         if ex(db,'internal_learning_gaps'):
-            gaps=db.execute("SELECT id,COALESCE(gap_key,''),COALESCE(gap_type,'unknown'),COALESCE(role,'unknown'),hypothesis_id,COALESCE(priority,0),COALESCE(resolution_score,0),COALESCE(strategy_effectiveness_score,0) FROM internal_learning_gaps WHERE COALESCE(status,'open') NOT IN ('closed','resolved') ORDER BY COALESCE(priority,0) DESC, COALESCE(resolution_score,0) ASC, id DESC LIMIT ?",(limit_gaps,)).fetchall()
+            gaps=db.execute("SELECT id,COALESCE(gap_key,''),COALESCE(gap_type,'unknown'),COALESCE(role,'unknown'),hypothesis_id,COALESCE(priority,0),COALESCE(resolution_score,0),COALESCE(strategy_effectiveness_score,0) FROM internal_learning_gaps WHERE COALESCE(status,'open') NOT IN ('closed','resolved','habituated') ORDER BY COALESCE(priority,0) DESC, COALESCE(resolution_score,0) ASC, id DESC LIMIT ?",(limit_gaps,)).fetchall()
         created=q=0; mc=maxchunk(db); dist=Counter()
         for g in gaps:
             gid,gkey,gt,role,hid,prio,res,eff=g; cen=center(db,g); strat=choose(db,gt,role,res); dist[strat]+=1

@@ -16,7 +16,15 @@ def _db(mem=None):
     if hasattr(mem,'execute'): return mem
     return sqlite3.connect('ki_memory.sqlite3')
 
-def _exists(db,t): return db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?",(t,)).fetchone() is not None
+# Positive table-existence answers are kept per connection: tables are
+# never dropped while the learning loop runs, so a table seen once stays.
+_KNOWN_TABLES = set()
+def _exists(db,t):
+    key=(id(db),t)
+    if key in _KNOWN_TABLES: return True
+    found=db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?",(t,)).fetchone() is not None
+    if found: _KNOWN_TABLES.add(key)
+    return found
 def _cols(db,t): return {r[1] for r in db.execute(f'PRAGMA table_info({t})').fetchall()} if _exists(db,t) else set()
 def _cnt(db,t): return db.execute(f'SELECT COUNT(*) FROM {t}').fetchone()[0] if _exists(db,t) else 0
 

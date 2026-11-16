@@ -519,8 +519,21 @@ def _measure_effectiveness(con, recent, batch, neuromod, cycle_index, window_siz
     else: state="outcome_observed_change"; reason="observed_comparison_changed"
     allowed=1 if state in ("outcome_observed_change","outcome_observed_no_change") else 0; plateau=1 if state=="outcome_observed_no_change" else 0
     eff=(0.5+0.3*neuromod["dopamine"])*d_o+(0.3+0.2*neuromod["noradrenaline"])*d_c+(0.2+0.2*neuromod["acetylcholine"])*d_ov if allowed else 0.0
+    # Replay effectiveness proper: cued-versus-uncued capture of tagged traces
+    # (v8_replay_cue_effect). The batch comparison above stays as a logged
+    # diagnostic (delta columns); replay cannot change experiment outcome
+    # scores, so it no longer drives plasticity.
+    cue=None
+    try:
+        from ki_system import v8_replay_cue_effect as _cue
+        cue=_cue.measure(con)
+    except Exception as exc:
+        cue={"cue_error":type(exc).__name__+":"+str(exc)[:120]}
+    if cue and "effectiveness_score" in cue:
+        eff=cue["effectiveness_score"]; plateau=cue["plateau_flag"]; allowed=cue["state_change_allowed"]
+        state=cue["evidence_state"]; reason=cue["evidence_reason"]
     row=con.execute("SELECT AVG(stability_score) FROM phase6b_anchor_pool WHERE active=1").fetchone(); anchor=_to_float(row[0] if row else 0.0,0.0)
-    notes=json.dumps({"novel_ratio_target":batch.get("novel_ratio_target"),"anchor_count":batch.get("anchor_count"),"novel_count":batch.get("novel_count"),"plateau_eps":eps,"source_phase6a_cycle_id":source_id})
+    notes=json.dumps({"novel_ratio_target":batch.get("novel_ratio_target"),"anchor_count":batch.get("anchor_count"),"novel_count":batch.get("novel_count"),"plateau_eps":eps,"source_phase6a_cycle_id":source_id,"replay_cue_effect":cue})
     sql="INSERT INTO phase6b_effectiveness_events (created_at,cycle_index,window_size,replay_batch_size,novel_count,anchor_count,pre_outcome_score,post_outcome_score,pre_closure_delta,post_closure_delta,pre_overlap_score,post_overlap_score,delta_outcome,delta_closure,delta_overlap,effectiveness_score,plateau_flag,critic_penalty,anchor_consistency,dopamine,serotonin,noradrenaline,acetylcholine,glutamate,gaba,notes,measurement_owner,population_available,outcome_observation_available,comparison_window_available,evidence_state,evidence_reason,source_phase6a_cycle_id,source_phase6a_created_at,source_phase6a_fresh) VALUES("+",".join("?" for _ in range(35))+")"
     curx=con.execute(sql,(_now(),cycle_index,window_size,batch.get("batch_size",0),batch.get("novel_count",0),batch.get("anchor_count",0),pre_o,post_o,pre_c,post_c,pre_ov,post_ov,d_o,d_c,d_ov,eff,plateau,0.0,anchor,neuromod["dopamine"],neuromod["serotonin"],neuromod["noradrenaline"],neuromod["acetylcholine"],neuromod["glutamate"],neuromod["gaba"],notes,"canonical_phase6b",population,outcome_obs,comparison,state,reason,source_id,source_created,1))
     _kv_set(con,"phase6b_state","last_consumed_phase6a_cycle_id",source_id); _kv_set(con,"phase6b_state","last_consumed_phase6a_created_at",source_created); con.commit()
@@ -561,6 +574,21 @@ def _critic_gate(con: sqlite3.Connection,
     return True, penalty, "scaled_by_critic_deviation"
 
 
+def _bias_step_factors(con):
+    """Meta-metaplasticity of the five biases (Phase 6d): the learning rate
+    ratio scales every step, and the direction bias makes the step away from
+    a recently saturated boundary easier than a step further into it.
+    Literatur: Abraham & Bear 1996; Lee & Kirkwood 2019"""
+    out = {}
+    if not _table_exists(con, "phase6d_meta_metaplasticity_state"):
+        return out
+    for key, lr, default_lr, direction in con.execute(
+            "SELECT parameter_key, current_lr, default_lr, direction_bias FROM phase6d_meta_metaplasticity_state WHERE kind='bias'").fetchall():
+        ratio = _to_float(lr, 0.0) / max(1e-9, _to_float(default_lr, 1.0))
+        out[str(key)] = (_clamp(ratio, 0.25, 3.0), _clamp(_to_float(direction, 0.0), -1.0, 1.0))
+    return out
+
+
 def _apply_plasticity_adjustment(con, eff, neuromod, meta_state):
     if eff.get("skip_no_fresh_source"):
         return {"adjustment_type":"skipped_no_fresh_source","pre":{},"post":{},"critic_gate_result":"not_run",
@@ -574,6 +602,16 @@ def _apply_plasticity_adjustment(con, eff, neuromod, meta_state):
         post_plast=_clamp(pre_plast*scale); post_expl=_clamp(pre_expl+_cfg_value(cfg,"exploration_delta",0.15)*(1-neuromod["gaba"])+0.05*neuromod["noradrenaline"]); post_inh=_clamp(pre_inh+_cfg_value(cfg,"inhibition_delta",0.10)*neuromod["gaba"]+0.05*(1-neuromod["dopamine"])); post_rev=_clamp(pre_rev+_cfg_value(cfg,"revision_delta",0.10)*neuromod["serotonin"]+0.05*neuromod["acetylcholine"]); post_cons=_clamp(pre_cons-0.05*(1-score)); reasons.append("plateau_break_canonical")
     elif allowed_state and score>_cfg_value(cfg,"stabilize_threshold",0.02):
         adj="stabilize_gains"; post_cons=_clamp(pre_cons+_cfg_value(cfg,"consolidation_delta",0.05)*neuromod["dopamine"]+0.05*neuromod["glutamate"]); post_rev=_clamp(pre_rev-0.03*neuromod["serotonin"]); post_plast=_clamp(pre_plast+0.02*neuromod["dopamine"]); reasons.append("stabilize_positive_effectiveness")
+    factors=_bias_step_factors(con)
+    def _scaled(key, pre, post):
+        ratio, direction = factors.get(key, (1.0, 0.0))
+        step = post - pre
+        if abs(step) < 1e-12: return post
+        gain = ratio * _clamp(1.0 + direction * (1.0 if step > 0 else -1.0), 0.25, 2.0)
+        return _clamp(pre + step * gain)
+    post_plast=_scaled("last_plasticity_level",pre_plast,post_plast); post_expl=_scaled("last_exploration_bias",pre_expl,post_expl)
+    post_cons=_scaled("last_consolidation_bias",pre_cons,post_cons); post_inh=_scaled("last_inhibition_bias",pre_inh,post_inh)
+    post_rev=_scaled("last_revision_bias",pre_rev,post_rev)
     proposed={"plasticity_level":post_plast,"exploration_bias":post_expl,"consolidation_bias":post_cons,"inhibition_bias":post_inh,"revision_bias":post_rev}
     if allowed_state: gate,penalty,critic=_critic_gate(con,proposed,_to_float(eff.get("anchor_consistency"),0.0))
     else: gate,penalty,critic=False,0.0,"state_change_blocked_by_evidence_state"
