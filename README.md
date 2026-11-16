@@ -18,7 +18,7 @@ One CPU Core / No GPU
 [![BrainStem Project AI conversation](https://img.youtube.com/vi/4nN7zELSAMo/mqdefault.jpg)](https://www.youtube.com/watch?v=4nN7zELSAMo)
 YouTube - AI conversation about BrainStem Project
 ---
-[NotebookLM codebase exploration](https://notebook.google.com/notebook/34b994eb-9f62-4fd7-a04d-facbd6041654) 24.09.2026
+[NotebookLM codebase exploration](https://notebook.google.com/notebook/34b994eb-9f62-4fd7-a04d-facbd6041654) 16.11.2026
 ---
 ### Navigation
 - [Current State](#current-state)
