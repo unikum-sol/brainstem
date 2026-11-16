@@ -73,7 +73,7 @@ A full read-through of the corpus and more than 11,500 learning cycles ran witho
 ---
 ### Next Major Steps
 - Ontology from sentence frames: once words are confirmed, form categories from fillers that share at least two frames across different articles, instead of co-occurrence; use syllable classes to support word segmentation.
-- Benchmark protocol: now that runs are reproducible, compare variants over at least five run seeds each (same seeds for both), with criteria fixed in advance and paired differences with intervals (Henderson et al. 2018; Bouthillier et al. 2021).
+- Seed baseline: run the current code with five run seeds (started 16 November 2026) to see how far identical code spreads between seeds; it is the reference for judging later changes with `benchmark/`.
 - Watch the learning rate: its spread over a run has narrowed to about 0.010 to 0.012, close to the calibration bound of 0.01.
 - Content-weighted maturity: observe the shadow value over several runs before coupling it to the sleep rhythm.
 - Observe the reward prediction error, learning progress and meta-parameter regulation over a long production run, and how the closure signal develops as more gaps are resolved.
@@ -359,6 +359,15 @@ The clock starts one second after the newest timestamp already in the database, 
 
 Verified on 16 November 2026: two 100-cycle runs from byte-identical copies with different Python hash seeds and start times are identical in all 157 tables, including every timestamp; 50 cycles, a restart and 50 more cycles equal 100 cycles in one process; a different run seed changes 96 tables.
 
+### Benchmarks
+
+`benchmark/` compares code variants under a fixed protocol (`benchmark/PROTOCOL.md`). Because learning is reproducible, one run seed is one exact sample, and the only variance between runs comes from the seed; a single run therefore says little about a change. Each variant runs with at least five run seeds, the same seeds for both variants, from fresh copies of one snapshot, 1,000 cycles each. The tool reports every seed against the calibration criteria K1 to K9, the mean, spread and range per variant, and the paired difference per measure with a bootstrap 95 % interval and a non-inferiority verdict against a margin fixed in advance (Henderson et al. 2018; Bouthillier et al. 2021; Pineau et al. 2021). A manifest records code hash, snapshot, Python and SQLite version.
+
+```
+python benchmark/benchmark.py run --snapshot <db> --code <project folder> --label A --out <dir>
+python benchmark/benchmark.py compare --out <dir> --a A --b B
+```
+
 ### Database and Schema Discipline
 
 BrainStem uses `ki_memory.sqlite3` in the project root; it is created automatically when absent. `ki_system/db_bootstrap.py` is the central, idempotent schema authority: it creates tables, columns and indexes, and every written column must be declared there or in the owning module's own schema. Schema changes ship together with the bootstrap; structural changes require a full backup first.
@@ -446,6 +455,8 @@ A Windows `zimdump.exe` build and its DLL files must be placed in the project ro
 - **Salmon, John K.; Moraes, Mark A.; Dror, Ron O.; Shaw, David E.** (2011) _Parallel Random Numbers: As Easy as 1, 2, 3_. SC11.
 - **Henderson, Peter et al.** (2018) _Deep Reinforcement Learning That Matters_. AAAI.
 - **Bouthillier, Xavier et al.** (2021) _Accounting for Variance in Machine Learning Benchmarks_. MLSys.
+- **Pineau, Joelle et al.** (2021) _Improving Reproducibility in Machine Learning Research_. Journal of Machine Learning Research.
+- **Sandve, Geir Kjetil et al.** (2013) _Ten Simple Rules for Reproducible Computational Research_. PLoS Computational Biology.
 
 **Memory replay, tagging and consolidation**
 - **Mattar, Marcelo G.; Daw, Nathaniel D.** (2018) _Prioritized memory access explains planning and hippocampal replay_. Nature Neuroscience.
