@@ -1,5 +1,6 @@
 from __future__ import annotations
 import sqlite3, json, time, threading, csv
+from ki_system import learning_clock
 from pathlib import Path
 class Memory:
     def __init__(self,path='ki_memory.sqlite3',readonly=False):
@@ -11,6 +12,10 @@ class Memory:
             from ki_system.v8_cycle_transaction import CycleConnection
             self.db=sqlite3.connect(str(self.path),check_same_thread=False,timeout=60,factory=CycleConnection)
         self.db.row_factory=sqlite3.Row
+        # Learning time instead of wall-clock time (learning_clock.py). It is
+        # attached before the schema checks, because they already write
+        # timestamps.
+        learning_clock.attach(self.db, writable=not readonly)
         if not readonly: self._init()
     def _json(self,o): return json.dumps(o,ensure_ascii=False,default=str)
     def _init(self):
@@ -104,22 +109,22 @@ class Memory:
     def add_fact(self,s,r,v,c=.7,chunk_id=None):
         if self.readonly: raise PermissionError('readonly')
         with self.lock:
-            cur=self.db.execute('INSERT OR IGNORE INTO facts(subject,relation,value,confidence,source_chunk_id,created_at) VALUES(?,?,?,?,?,?)',(s,r,v,c,chunk_id,int(time.time()))); self.db.commit(); return cur.lastrowid if cur.rowcount else None
+            cur=self.db.execute('INSERT OR IGNORE INTO facts(subject,relation,value,confidence,source_chunk_id,created_at) VALUES(?,?,?,?,?,?)',(s,r,v,c,chunk_id,learning_clock.now())); self.db.commit(); return cur.lastrowid if cur.rowcount else None
     def add_relation(self,s,r,t,c=.7,chunk_id=None):
         if self.readonly: raise PermissionError('readonly')
         with self.lock:
-            cur=self.db.execute('INSERT OR IGNORE INTO relations(source,relation,target,confidence,source_chunk_id,created_at) VALUES(?,?,?,?,?,?)',(s,r,t,c,chunk_id,int(time.time()))); self.db.commit(); return cur.lastrowid if cur.rowcount else None
+            cur=self.db.execute('INSERT OR IGNORE INTO relations(source,relation,target,confidence,source_chunk_id,created_at) VALUES(?,?,?,?,?,?)',(s,r,t,c,chunk_id,learning_clock.now())); self.db.commit(); return cur.lastrowid if cur.rowcount else None
     def add_ontology(self,child,parent,rel='is_a',conf=.7,fact_id=None):
         if self.readonly: raise PermissionError('readonly')
         with self.lock:
-            cur=self.db.execute('INSERT OR IGNORE INTO ontology(child,parent,relation,confidence,fact_id,created_at) VALUES(?,?,?,?,?,?)',(child,parent,rel,conf,fact_id,int(time.time()))); self.db.commit(); return cur.lastrowid if cur.rowcount else None
+            cur=self.db.execute('INSERT OR IGNORE INTO ontology(child,parent,relation,confidence,fact_id,created_at) VALUES(?,?,?,?,?,?)',(child,parent,rel,conf,fact_id,learning_clock.now())); self.db.commit(); return cur.lastrowid if cur.rowcount else None
     def add_question(self,q,priority=.5):
         if self.readonly: return
-        with self.lock: self.db.execute('INSERT OR IGNORE INTO questions(question,priority,status,created_at,updated_at) VALUES(?,?,?,?,?)',(q,priority,'open',int(time.time()),int(time.time()))); self.db.commit()
+        with self.lock: self.db.execute('INSERT OR IGNORE INTO questions(question,priority,status,created_at,updated_at) VALUES(?,?,?,?,?)',(q,priority,'open',learning_clock.now(),learning_clock.now())); self.db.commit()
     def open_questions(self,limit=1): return self.rows("SELECT * FROM questions WHERE status='open' ORDER BY priority DESC,id ASC LIMIT ?",(limit,))
     def update_question(self,qid,status):
         if self.readonly: return
-        with self.lock: self.db.execute('UPDATE questions SET status=?,updated_at=? WHERE id=?',(status,int(time.time()),qid)); self.db.commit()
+        with self.lock: self.db.execute('UPDATE questions SET status=?,updated_at=? WHERE id=?',(status,learning_clock.now(),qid)); self.db.commit()
     def add_conversation(self,role,text,topic=None):
         if self.readonly: return
         with self.lock: self.db.execute('INSERT INTO conversations(role,text,topic,created_at) VALUES(?,?,?,?)',(role,text,topic,int(time.time()))); self.db.commit()

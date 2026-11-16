@@ -72,7 +72,8 @@ SLOW_WAVE_PARAMS = {
     "tag_dopamine_gain": 0.5,
 }
 
-def _now(): return int(time.time())
+from ki_system import learning_clock as _learning_clock
+def _now(): return _learning_clock.now()
 def _clamp(x, lo=0.0, hi=1.0):
     try: x = float(x)
     except Exception: x = 0.0
@@ -274,7 +275,7 @@ def _sample_role(con, role, n_wanted, used, rnd, recent_ratio):
     if n_recent > 0:
         window = con.execute(
             "SELECT id FROM context_hypotheses WHERE role=? AND COALESCE(origin,'')<>'sleep_encoded' "
-            "ORDER BY updated_at DESC LIMIT ?",
+            "ORDER BY updated_at DESC, id DESC LIMIT ?",
             (role, max(n_recent * 4, n_recent)),
         ).fetchall()
         ids = [_to_int(r[0]) for r in window if _to_int(r[0]) not in used]
@@ -313,7 +314,7 @@ def _build_candidate_pool(con, pool_size, anchor_ratio, context_hypotheses_min_n
     state = _read_kv(con, "phase7d_state")
     phase6b_state = _read_kv(con, "phase6b_state")
     current_cycle = _to_int(state.get("cycle_count"), 0) + 1
-    rnd = random.Random(current_cycle * 104729 + pool_size)
+    rnd = _learning_clock.rng("phase7d", "pool:%d" % pool_size)
 
     s_a, s_s, s_n = _track_shares(con, neuromod)
     n_anchor_target = int(round(pool_size * s_a))
@@ -325,7 +326,7 @@ def _build_candidate_pool(con, pool_size, anchor_ratio, context_hypotheses_min_n
     if n_anchor_target > 0 and _table_exists(con, "phase6b_anchor_pool"):
         anchor_rows = con.execute(
             "SELECT id,stability_score FROM phase6b_anchor_pool "
-            "WHERE active=1 ORDER BY stability_score DESC,last_replayed_at ASC LIMIT ?",
+            "WHERE active=1 ORDER BY stability_score DESC,last_replayed_at ASC,id ASC LIMIT ?",
             (n_anchor_target,),
         ).fetchall()
         for row in anchor_rows:
@@ -477,7 +478,7 @@ def _run_slow_wave_sleep(con, cycle_index, neuromod, adenosine_level):
     ctx_min_novel_ratio = _get_sw(con, "context_hypotheses_min_novel_ratio", 0.3)
     fairness_enabled = _get_sw(con, "novel_fairness_recentering_enabled", 1.0) != 0.0
     fairness_target = _get_sw(con, "novel_fairness_recenter_target", 0.5)
-    now = _now(); rnd = random.Random(now + cycle_index * 7919)
+    now = _now(); rnd = _learning_clock.rng("phase7d", "selection:%d" % cycle_index)
     glu = neuromod["glutamate"]; gaba = neuromod["gaba"]; ach = neuromod["acetylcholine"]
     # self-regulating selection pressure from the system's own neuromodulator state
     sel_pressure = _clamp(sp_base + sp_gaba * gaba - sp_glu * glu)

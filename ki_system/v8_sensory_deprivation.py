@@ -6,8 +6,9 @@ from pathlib import Path
 PHASE = "sensory_deprivation_release"
 SCHEMA_TABLES = {"deprivation_state": [("key", "TEXT PRIMARY KEY"), ("value", "TEXT"), ("updated_at", "INTEGER")]}
 
+from ki_system import learning_clock as _learning_clock
 def _now():
-    return int(time.time())
+    return _learning_clock.now()
 
 def _table_exists(con, t):
     try:

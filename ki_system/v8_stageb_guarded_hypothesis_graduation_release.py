@@ -37,7 +37,8 @@ DEFAULTS = {"enabled":"true","warmup_cycles":"50","cycle_count":"0","minimum_7d_
             "selection_pressure_gaba_temperature_gain":"0.5",
             "selection_pressure_temperature_base":"1.0"}
 
-def _now(): return int(time.time())
+from ki_system import learning_clock as _learning_clock
+def _now(): return _learning_clock.now()
 def _table_exists(con,t): return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(t,)).fetchone() is not None
 def _columns(con,t): return [r[1] for r in con.execute("PRAGMA table_info("+t+")")] if _table_exists(con,t) else []
 def _read_kv(con,table):
@@ -236,7 +237,7 @@ def run_graduation_cycle(obj=None,cycle_index=None):
         con.commit(); return {"phase":PHASE,"graduated":0,"reason":"disabled_warmup_or_zero_budget","cycle_index":cycle,"protected_unchanged":True}
     graduated=0; decisions=[]
     import random as _random_module
-    _rnd = _random_module.Random("stageb_graduation_role_select:%d" % cycle)
+    _rnd = _learning_clock.rng("stageb_graduation", "role_select:%d" % cycle)
     _pressure = _role_pressure(con, minimum)
     _effective_pressure_snapshot, _neuromod_diagnostics = _effective_pressure(con, _pressure, st)
     _temperature_base = _float(st.get("selection_pressure_temperature_base"), 1.0)

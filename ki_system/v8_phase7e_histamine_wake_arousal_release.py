@@ -29,7 +29,8 @@ HISTAMINE_PARAMS = {
     "sleep_tmn_inhibition": 0.5,
 }
 
-def _now(): return int(time.time())
+from ki_system import learning_clock as _learning_clock
+def _now(): return _learning_clock.now()
 def _clamp(x, lo=0.0, hi=1.0):
     try: x = float(x)
     except Exception: x = 0.0

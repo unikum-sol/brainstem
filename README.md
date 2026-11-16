@@ -50,6 +50,7 @@ All cycle counts are system cycles; one autonomous-learning cycle in the GUI com
 - **Ontology from words, coexisting memories, faster strategy phases (16 November 2026):** following an advisory council, ontology categories now form only from word-level units, so the ontology stays empty until words are confirmed; two consolidated sentences that share a cue now coexist instead of revising each other; phases 5b and 5d compute their averages with index-backed queries (0.59 to 0.012 s and 0.35 to 0.18 s per cycle, identical values). A 1,000-cycle test run uncovered a savepoint error in the new ontology code, which was fixed; a 200-cycle check afterwards ran without exceptions or diagnostic findings. Details: the project status reports under `docs/`.
 - **Half the computation per cycle (16 November 2026):** partial indexes on the gap table let phases 5e, 5f, 5g, 5i, 6a and gap detection read only the about 1,300 active gaps instead of all 276,000 (2.1 s to 0.03 s per cycle, identical results); the process CPU time per cycle fell from about 5.1 to 2.6 s. A 1,000-cycle test run met all nine calibration criteria without exceptions or diagnostic findings. The capture-rate criterion K5 now counts only traces tagged at least 250 cycles before the end of a run, because capture takes a median of 62 and at most about 240 cycles. Details: the project status reports under `docs/`.
 - **Sentence frames instead of text contrasts, one commit per cycle (16 November 2026):** following an advisory council, two sentences that differ in one position are stored as a sentence frame with interchangeable fillers, the evidence from which word classes form, and become a contradiction only under strict conditions (see [Sentence frames instead of text contrasts](#sentence-frames-instead-of-text-contrasts)). In an A/B comparison over 1,000 cycles each on identical production copies, the old code added 27,032 unverified contradictions and as many gaps, the new code no contradictions and 36 frame gaps, while learning was at least as good (stable hypotheses +339 against +319, all nine calibration criteria met in both). Each cycle now commits once instead of about 74 times; this writes about a fifth less, while the wall time on the storage pool did not change measurably. A 500-cycle check with both changes ran without exceptions or diagnostic findings. Details: the project status reports under `docs/`.
+- **Reproducible learning (16 November 2026):** two learning runs from the same state now end in the same state. Before, two 100-cycle runs from byte-identical copies differed in 101 of 156 tables (4,547 against 4,541 stable hypotheses), because some phases seeded their randomness from the wall clock and some decisions depended on wall-clock seconds. Learning now runs on a learning clock (one tick per cycle) with seeded randomness; two runs with different Python hash seeds and start times are identical in all 157 tables including every timestamp, a run interrupted and restarted equals an uninterrupted one, and a different run seed gives a different replicate. A 1,000-cycle run met all nine calibration criteria. See [Learning clock and reproducibility](#learning-clock-and-reproducibility).
 - **Stability check (14 November 2026):** a 1,500-cycle sensory-deprivation run on the compacted production state ended with the verdict "konvergenz": all 21 signals stable or converging, no regulator at a boundary, and consolidation continued without input (stable hypotheses 2,598 to 3,196).
 - **All layers learn:** sentence hypotheses, lexical boundaries and relation hypotheses all take part in sleep consolidation and graduate into stable roles. In a 150-cycle run on 300 real Wikipedia chunks the system graduated 35 sentence, 15 lexical-boundary and 35 relation hypotheses and promoted 33 facts, 12 relations and 11 ontology rows.
 - **Self-correction works:** consolidated hypotheses compete with alternative completions of the same learned cue. A decisively stronger competitor is treated as a prediction error: the stored hypothesis is reverted to uncertain, its fact is retracted and the hypothesis has to be consolidated again. This happens without any external trigger (example from a test run: cue "April 20", stored evidence 1 vs. competitor evidence 3).
@@ -70,11 +71,12 @@ A full read-through of the corpus and more than 11,500 learning cycles ran witho
 
 ---
 ### Next Major Steps
-- Write load: even with one commit, a cycle writes about 50 MB; measure which tables and indexes cause it.
 - Ontology from sentence frames: once words are confirmed, form categories from fillers that share at least two frames across different articles, instead of co-occurrence; use syllable classes to support word segmentation.
+- Benchmark protocol: now that runs are reproducible, compare variants over at least five run seeds each (same seeds for both), with criteria fixed in advance and paired differences with intervals (Henderson et al. 2018; Bouthillier et al. 2021).
 - Watch the learning rate: its spread over a run has narrowed to about 0.010 to 0.012, close to the calibration bound of 0.01.
 - Content-weighted maturity: observe the shadow value over several runs before coupling it to the sleep rhythm.
 - Observe the reward prediction error, learning progress and meta-parameter regulation over a long production run, and how the closure signal develops as more gaps are resolved.
+- Later, without priority: reduce the write load of about 50 MB per cycle (measured on 16 November 2026: 43 % from the Phase-0 transition counts, regular peaks from the batched decay of attention scores). An advisory council recommends a WITHOUT ROWID transition table, checkpoints at cycle boundaries every few cycles and two partial indexes (about 30 % fewer writes). This saves SSD wear but no measurable time, so it waits behind changes that make cycles faster.
 - Catastrophic-forgetting test (Tadros/Bazhenov motivated): import a second, topically distinct corpus and measure whether already consolidated knowledge is protected, degraded or reinforced.
 
 ---
@@ -344,6 +346,16 @@ Open as an explicitly framed experiment:
 The provenance guarantee is unchanged: every artifact stays traceable to, and retractable from, its source. The architecture uses no word blacklists or hard-coded linguistic filters.
 
 ---
+### Learning Clock and Reproducibility
+
+Learning does not read the wall clock. `ki_system/learning_clock.py` keeps one clock per database: every learning cycle advances it by one tick, and every phase takes its time from it. Decay, recency and ordering therefore count learning cycles, not seconds of computation, which matches how memory works: forgetting depends mainly on intervening experience (Jenkins & Dallenbach 1924; Wixted 2004), and the hippocampal sense of time is built from the flow of experience (Howard & Kahana 2002; Tsao et al. 2018). On a computer, wall-clock seconds would only measure the speed of the machine.
+
+Random choices (replay selection, critic snapshots, slow-wave sampling, graduation order) come from generators seeded by the run seed, the cycle, the phase and the purpose (counter-based seeding, Salmon et al. 2011). The noise keeps its distribution, only its source is fixed (Faisal, Selen & Wolpert 2008). The run seed is stored in the database; `learning_clock.set_run_seed(con, n)` selects another replicate for benchmarks.
+
+The clock starts one second after the newest timestamp already in the database, so learned rows stay in order with older ones. Timestamps in the learning tables are learning time and show the order of learning, not the time of day; imports, logs and the GUI keep the wall clock. Provenance does not depend on time: every fact and relation keeps its source chunk and source hypothesis.
+
+Verified on 16 November 2026: two 100-cycle runs from byte-identical copies with different Python hash seeds and start times are identical in all 157 tables, including every timestamp; 50 cycles, a restart and 50 more cycles equal 100 cycles in one process; a different run seed changes 96 tables.
+
 ### Database and Schema Discipline
 
 BrainStem uses `ki_memory.sqlite3` in the project root; it is created automatically when absent. `ki_system/db_bootstrap.py` is the central, idempotent schema authority: it creates tables, columns and indexes, and every written column must be declared there or in the owning module's own schema. Schema changes ship together with the bootstrap; structural changes require a full backup first.
@@ -421,6 +433,16 @@ A Windows `zimdump.exe` build and its DLL files must be placed in the project ro
 - **Harris, Zellig S.** (1954) _Distributional Structure_. Word.
 - **Mintz, Toben H.** (2003) _Frequent frames as a cue for grammatical categories in child directed speech_. Cognition.
 - **Gómez, Rebecca L.** (2002) _Variability and Detection of Invariant Structure_. Psychological Science.
+
+**Time, forgetting and reproducibility**
+- **Jenkins, John G.; Dallenbach, Karl M.** (1924) _Obliviscence during Sleep and Waking_. American Journal of Psychology.
+- **Wixted, John T.** (2004) _The Psychology and Neuroscience of Forgetting_. Annual Review of Psychology.
+- **Howard, Marc W.; Kahana, Michael J.** (2002) _A Distributed Representation of Temporal Context_. Journal of Mathematical Psychology.
+- **Tsao, Albert et al.** (2018) _Integrating time from experience in the lateral entorhinal cortex_. Nature.
+- **Faisal, A. Aldo; Selen, Luc P. J.; Wolpert, Daniel M.** (2008) _Noise in the nervous system_. Nature Reviews Neuroscience.
+- **Salmon, John K.; Moraes, Mark A.; Dror, Ron O.; Shaw, David E.** (2011) _Parallel Random Numbers: As Easy as 1, 2, 3_. SC11.
+- **Henderson, Peter et al.** (2018) _Deep Reinforcement Learning That Matters_. AAAI.
+- **Bouthillier, Xavier et al.** (2021) _Accounting for Variance in Machine Learning Benchmarks_. MLSys.
 
 **Memory replay, tagging and consolidation**
 - **Mattar, Marcelo G.; Daw, Nathaniel D.** (2018) _Prioritized memory access explains planning and hippocampal replay_. Nature Neuroscience.

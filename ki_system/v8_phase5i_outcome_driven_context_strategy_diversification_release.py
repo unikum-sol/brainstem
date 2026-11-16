@@ -2,7 +2,8 @@
 import sqlite3, time, json
 from collections import Counter
 PHASE='phase5i_outcome_driven_context_strategy_diversification_release'
-def n(): return int(time.time())
+from ki_system import learning_clock as _learning_clock
+def n(): return _learning_clock.now()
 def j(o):
     try: return json.dumps(o,ensure_ascii=False,sort_keys=True)
     except Exception: return '{}'

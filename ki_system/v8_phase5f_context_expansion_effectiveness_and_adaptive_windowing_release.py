@@ -11,7 +11,8 @@ LEARNING_MODE = "context_hypotheses_with_neuromodulators"
 FACT_PROMOTION = "disabled"
 
 
-def now(): return int(time.time())
+from ki_system import learning_clock as _learning_clock
+def now(): return _learning_clock.now()
 def js(o):
     try: return json.dumps(o, ensure_ascii=False, sort_keys=True)
     except Exception: return json.dumps({"repr": repr(o)}, ensure_ascii=False)

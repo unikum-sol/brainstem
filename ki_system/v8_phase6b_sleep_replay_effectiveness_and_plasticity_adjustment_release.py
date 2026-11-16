@@ -208,8 +208,9 @@ class SchemaCheckError(RuntimeError):
 # Low-level helpers
 # =========================================================================
 
+from ki_system import learning_clock as _learning_clock
 def _now() -> int:
-    return int(time.time())
+    return _learning_clock.now()
 
 
 def _clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
@@ -475,12 +476,12 @@ def _select_replay_batch(con: sqlite3.Connection, neuromod: Dict[str, float], ba
     cfg=_phase6c_cfg(con); gaba=neuromod["gaba"]; na=neuromod["noradrenaline"]
     base=_cfg_value(cfg,"novel_ratio_base",0.6); gw=_cfg_value(cfg,"novel_ratio_gaba_weight",0.3); nw=_cfg_value(cfg,"novel_ratio_na_weight",0.2)
     novel_ratio=_clamp(base-gw*gaba+nw*na,0.3,0.9); n_anchor=int(batch_size*(1.0-novel_ratio)); n_novel=batch_size-n_anchor; now=_now()
-    anchors=con.execute("SELECT id,source_table,source_id,stability_score FROM phase6b_anchor_pool WHERE active=1 ORDER BY stability_score DESC,last_replayed_at ASC LIMIT ?",(n_anchor,)).fetchall()
+    anchors=con.execute("SELECT id,source_table,source_id,stability_score FROM phase6b_anchor_pool WHERE active=1 ORDER BY stability_score DESC,last_replayed_at ASC,id ASC LIMIT ?",(n_anchor,)).fetchall()
     novel=[]
     if _table_exists(con,"phase5g_experiment_outcomes"):
         ncols=set(_columns(con,"phase5g_experiment_outcomes")); id_col="id" if "id" in ncols else "rowid"; score_col="outcome_score" if "outcome_score" in ncols else None
         sql="SELECT "+id_col+" FROM phase5g_experiment_outcomes ORDER BY "+(score_col+" ASC" if score_col else id_col+" DESC")+" LIMIT ?"
-        raw=con.execute(sql,(int(n_novel*3),)).fetchall(); inhibit=_cfg_value(cfg,"gaba_novel_inhibition",0.5); rnd=random.Random(now)
+        raw=con.execute(sql,(int(n_novel*3),)).fetchall(); inhibit=_cfg_value(cfg,"gaba_novel_inhibition",0.5); rnd=_learning_clock.rng("phase6b","novel_inhibition")
         for r in raw:
             if rnd.random() < gaba*inhibit: continue
             novel.append(_to_int(r[0]))
@@ -686,7 +687,7 @@ def _maybe_snapshot_critic(con, neuromod, eff_score, adj, eff=None):
     stable=_to_int(_read_kv(con,"phase6b_state").get("stable_cycles_since_snapshot"),0)+1; _kv_set(con,"phase6b_state","stable_cycles_since_snapshot",stable)
     minimum=max(3,int(round(_cfg_value(cfg,"critic_min_stable_base",3.0)+(1-sero)*4)))
     if stable<minimum: con.commit(); return {"snapshot":False,"reason":"not_enough_stable_cycles"}
-    if random.random()>p: con.commit(); return {"snapshot":False,"reason":"probabilistic_skip"}
+    if _learning_clock.rng("phase6b","critic_snapshot").random()>p: con.commit(); return {"snapshot":False,"reason":"probabilistic_skip"}
     con.execute("UPDATE phase6b_critic_snapshot SET active=0 WHERE active=1"); cnt=_to_int(con.execute("SELECT COUNT(*) FROM phase6b_anchor_pool WHERE active=1").fetchone()[0],0); post=adj.get("post",{})
     con.execute("INSERT INTO phase6b_critic_snapshot (created_at,reason,dopamine,serotonin,noradrenaline,acetylcholine,glutamate,gaba,plasticity_level,exploration_bias,consolidation_bias,inhibition_bias,revision_bias,anchor_count,effectiveness_avg,state_json,active,measurement_event_id,evidence_state,snapshot_owner) VALUES("+",".join("?" for _ in range(20))+")",(_now(),"canonical_phase6b_snapshot",neuromod["dopamine"],neuromod["serotonin"],neuromod["noradrenaline"],neuromod["acetylcholine"],neuromod["glutamate"],neuromod["gaba"],_to_float(post.get("plasticity_level")),_to_float(post.get("exploration_bias")),_to_float(post.get("consolidation_bias")),_to_float(post.get("inhibition_bias")),_to_float(post.get("revision_bias")),cnt,eff_score,json.dumps({"evidence_state":state}),1,eff.get("measurement_event_id"),state,"canonical_phase6b")); _kv_set(con,"phase6b_state","stable_cycles_since_snapshot",0); con.commit(); return {"snapshot":True,"reason":"canonical_phase6b","evidence_state":state}
 

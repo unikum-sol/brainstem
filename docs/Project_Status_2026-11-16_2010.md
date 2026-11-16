@@ -1,6 +1,6 @@
 # BrainStem: Project and Function Status
 
-**As of:** 16 November 2026, 13:54
+**As of:** 16 November 2026, 20:10
 **Cycle units:** All cycle counts are system cycles (one call of `AutonomousLoop.cycle()`, one pass through the whole phase chain). One autonomous-learning cycle in the GUI comprises 5 system cycles, so 1,000 cycles correspond to 200 GUI cycles. The GUI's drift tab counts system cycles.
 **Scope:** code (`ki_system/`, `main.py`), production database `ki_memory.sqlite3`, test results from 12 and 13 November 2026, production run of 13 November 2026, packages A to D and C5 of the work plan
 
@@ -18,6 +18,7 @@
 | Plasticity, meta- and meta-meta-plasticity | fully active: replay effectiveness adjusts plasticity and biases, 16 meta parameters self-regulate with a homeostatic restoring force, no regulator saturates |
 | Sleep and wake | one common trigger: a single sleep/wake switch with hysteresis; adenosine driven by encoding load; developmental sleep share: about two thirds sleep while immature, falling toward the adult rhythm (about 55 wake and 22 sleep cycles) as consolidated knowledge grows |
 | System test | all 7 checks OK (also after packages A to D and C5) |
+| Reproducibility | since 16 November 2026: two runs from the same state are identical in all tables including timestamps, also across a restart; a different run seed gives a replicate |
 | Work plan packages A to D and C5 (13 November) | log retention and compaction, fewer writes, closure signal of experiments fixed (R1), replay effectiveness as cued-versus-uncued contrast (R5), exploration driven by learning progress, stable ontology; final 1,000-cycle run meets K1 to K9 |
 | Production run | 5,000 cycles on the full corpus without exceptions or hidden errors; stable hypotheses 36 to 2,597, facts 36 to 819, relations 0 to 493; corpus fully read; no regulator at a boundary |
 | Speed | computation about 2.6 s of CPU time per cycle on the current production state, one commit per cycle; the wall time fluctuates between about 2 and 10 s with the storage pool (median 2.3 s in the last test run) |
@@ -27,7 +28,7 @@
 
 ## 2. Code Status
 
-- **Package:** `ki_system`, 65 Python modules, 22,358 lines including `main.py`
+- **Package:** `ki_system`, 66 Python modules, 22,552 lines including `main.py`
 - **Entry points:** `python main.py --gui` (admin GUI), `python main.py --user-gui` (read-only dialogue GUI)
 - **System check:** `python -m ki_system.systemtest` (runs on a copy of the database)
 - **One-time log compaction:** `python -m ki_system.compact_logs <db> [--cutoff-ts EPOCH] [--vacuum]`
@@ -274,6 +275,20 @@ Backups: before the run `A:\ClaudeCode\Brainstem_db_backup_20261113_vor_langzeit
 
 ## 6. Test Results from 12 and 13 November 2026
 
+### Reproducible learning, 16 November 2026
+
+Details in `Audits/Reproduzierbarkeit_2026-11-16_2010.md` (German).
+
+| Item | Result |
+|---|---|
+| Before | two 100-cycle runs from byte-identical copies differed in 101 of 156 tables (4,547 vs 4,541 stable hypotheses, 1,143 vs 1,140 facts): wall-clock seeds in phases 6b and 7d, an unseeded random call, decisions on wall-clock seconds, iteration over string sets |
+| Advisory council | experience time (cycles) is the biologically better internal time (Jenkins & Dallenbach 1924; Wixted 2004; Howard & Kahana 2002; Tsao et al. 2018); seeded noise keeps its distribution (Faisal et al. 2008); counter-based seeds (Salmon et al. 2011); several run seeds for benchmarks (Henderson et al. 2018; Bouthillier et al. 2021) |
+| Change | `learning_clock.py` (one tick per cycle, base one second after the newest timestamp), 35 phase modules and `semantic_evidence` read it, all random sources seeded, ties broken by id, string sets sorted; wall clock kept for GUI, import, logs, compaction and WAL maintenance |
+| A/A test | different Python hash seeds and start times: all 157 tables identical, including timestamps |
+| Restart test | 50 cycles, new process, 50 cycles equals 100 cycles in one process |
+| Negative control | run seed 1 instead of 0 changes 96 tables |
+| 1,000 cycles | all nine criteria met; stable hypotheses +323 (old code +319, frames +339), K5 0.899, 0 exceptions |
+
 ### Test run R8, 16 November 2026: sentence frames and one commit per cycle
 
 Details in `Audits/Test_Run_R8_2026-11-16_1354.md` (German).
@@ -484,7 +499,7 @@ Effective measures:
 
 - one process, one CPU core, no GPU
 - SQLite in WAL mode, 60 s wait on locks
-- deterministic phase order; randomness only in replay selection and noise, seeded per cycle
+- reproducible: learning reads a learning clock (one tick per cycle, `learning_clock.py`) instead of the wall clock, and every random choice comes from a generator seeded by run seed, cycle, phase and purpose; two runs from the same state end in the same state
 - every phase error is captured in the cycle result and evaluated by the diagnostics module
 
 ---

@@ -10,8 +10,9 @@ PHASE = "phase5h_strategy_experiment_outcome_learning_release"
 LEARNING_MODE = "context_hypotheses_with_neuromodulators"
 
 
+from ki_system import learning_clock as _learning_clock
 def _now() -> int:
-    return int(time.time())
+    return _learning_clock.now()
 
 
 def _clamp(x: Any, lo: float = 0.0, hi: float = 1.0) -> float:

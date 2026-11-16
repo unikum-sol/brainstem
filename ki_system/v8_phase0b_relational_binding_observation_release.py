@@ -52,8 +52,9 @@ DEFAULTS = {
 }
 
 
+from ki_system import learning_clock as _learning_clock
 def _now() -> int:
-    return int(time.time())
+    return _learning_clock.now()
 
 
 def _norm(value, limit=3000) -> str:

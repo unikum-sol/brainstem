@@ -5,7 +5,8 @@ from collections import defaultdict
 PHASE='phase5g_context_strategy_selection_and_experiment_memory_release'
 LEARNING_MODE='context_hypotheses_with_neuromodulators'
 
-def _now(): return int(time.time())
+from ki_system import learning_clock as _learning_clock
+def _now(): return _learning_clock.now()
 def _json(x):
     try: return json.dumps(x, ensure_ascii=False, sort_keys=True)
     except Exception: return json.dumps({'repr':repr(x)}, ensure_ascii=False)

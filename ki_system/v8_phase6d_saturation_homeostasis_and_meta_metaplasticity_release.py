@@ -154,8 +154,9 @@ class SchemaCheckError(RuntimeError):
 # Low-level helpers
 # =========================================================================
 
+from ki_system import learning_clock as _learning_clock
 def _now():
-    return int(time.time())
+    return _learning_clock.now()
 
 
 def _clamp(x, lo=0.0, hi=1.0):

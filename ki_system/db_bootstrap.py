@@ -1308,6 +1308,9 @@ def ensure_database_exists(db_path):
     try:
         try: con.execute("PRAGMA journal_mode=WAL")
         except Exception: pass
+        # The learning clock must exist before any phase writes a timestamp.
+        from ki_system import learning_clock
+        learning_clock.attach(con)
         base_report = _apply_base_schema(con)
         _self_check_schema(con)
         bootstrapped, phase_reports, errors = _bootstrap_phase_modules(con)

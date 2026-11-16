@@ -18,6 +18,8 @@ sqlite3.connect in a tool) run their cycles as before.
 """
 import sqlite3
 
+from ki_system import learning_clock
+
 STEP = "bs_cycle_step"
 
 
@@ -87,12 +89,25 @@ def _connection(loop):
     return con if isinstance(con, CycleConnection) else None
 
 
+def _tick(con):
+    """One tick of the learning clock per cycle (learning_clock.py), kept by
+    a step boundary so that a rollback inside a phase cannot undo it."""
+    learning_clock.advance(con)
+    con.commit()
+
+
 def managed_cycle(self, *args, **kwargs):
     con = _connection(self)
-    if con is None or con._bundle or not ENABLED:
+    if con is not None and con._bundle:
+        return _PREV_CYCLE(self, *args, **kwargs)
+    if con is None or not ENABLED:
+        plain = getattr(getattr(self, "memory", None), "db", None)
+        if plain is not None:
+            _tick(plain)
         return _PREV_CYCLE(self, *args, **kwargs)
     con.begin_cycle()
     try:
+        _tick(con)
         return _PREV_CYCLE(self, *args, **kwargs)
     finally:
         con.end_cycle()

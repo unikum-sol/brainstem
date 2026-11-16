@@ -3,6 +3,7 @@
 No language-specific words, negation lists, pretrained model or generated grammar.
 A surface contrast is NOT a logical contradiction. Repetition is NOT truth.
 """
+from ki_system import learning_clock as _learning_clock
 import difflib
 import json
 import math
@@ -108,7 +109,7 @@ def ensure_schema(con):
         con.execute('CREATE UNIQUE INDEX IF NOT EXISTS ' + name + ' ON ' + table + '(' + ','.join(cols) + ')')
     if _columns(con,'stageb_graduation_events'):
         con.execute('CREATE INDEX IF NOT EXISTS idx_semantic_graduation_hypothesis ON stageb_graduation_events(hypothesis_id,id)')
-    now=int(time.time())
+    now=_learning_clock.now()
     for k,v in DEFAULTS.items():
         con.execute('INSERT OR IGNORE INTO semantic_evidence_state(key,value,updated_at) VALUES(?,?,?)',(k,v,now))
     missing=_self_check_schema(con)
@@ -123,7 +124,7 @@ def _read_kv(con,table):
 def _set(con,key,value):
     con.execute('INSERT INTO semantic_evidence_state(key,value,updated_at) VALUES(?,?,?) '
                 'ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at',
-                (key,str(value),int(time.time())))
+                (key,str(value),_learning_clock.now()))
 
 
 def _word_char(char):
@@ -326,14 +327,14 @@ def _record_frame(con, signature, fillers, anchors, df, titles, cycle, now):
         per_slot = json.loads(per_slot_json or '[]')
         per_slot += [0] * (len(fillers) - len(per_slot))
     for slot, pair in enumerate(fillers):
-        for filler in set(pair):
+        for filler in sorted(set(pair)):
             if con.execute('INSERT OR IGNORE INTO semantic_frame_fillers(frame_id,slot,filler,n) VALUES(?,?,?,1)',
                            (fid, slot, filler)).rowcount:
                 per_slot[slot] += 1
             else:
                 con.execute('UPDATE semantic_frame_fillers SET n=n+1 WHERE frame_id=? AND slot=? AND filler=?',
                             (fid, slot, filler))
-    for title in {t for t in titles if t}:
+    for title in sorted({t for t in titles if t}):
         n_src += con.execute('INSERT OR IGNORE INTO semantic_frame_sources(frame_id,title) VALUES(?,?)',
                              (fid, title)).rowcount
     n_fill = max(per_slot, default=0)
@@ -513,7 +514,7 @@ def discover_text_contrasts(con):
         checkpoint=hid
     _set(con,'index_checkpoint',checkpoint)
     _set(con,'indexed_total',n_index)
-    now=int(time.time())
+    now=_learning_clock.now()
     ctx = {'cycle': _current_cycle(con), 'now': now, 'created': 0, 'frames_created': 0, 'frame_pairs': 0,
            'superseded': 0, 'upsert_gap': _upsert_gap, 'habituation_max': habituation_max}
     # Rotate the scan so old candidates can receive real new evidence. No

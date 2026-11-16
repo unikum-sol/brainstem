@@ -1,6 +1,6 @@
 # BrainStem: Projekt- und Funktionsstatus
 
-**Stand:** 16.11.2026, 13:54 Uhr
+**Stand:** 16.11.2026, 20:10 Uhr
 **Zählweise:** Alle Zyklenangaben sind Systemzyklen (ein Aufruf von `AutonomousLoop.cycle()`, ein Durchlauf der ganzen Phasenkette). Ein Dauerlern-Zyklus der GUI umfasst 5 Systemzyklen; 1.000 Zyklen entsprechen also 200 GUI-Zyklen. Der Entzug-Tab der GUI zählt Systemzyklen.
 **Umfang:** Code (`ki_system/`, `main.py`), Produktionsdatenbank `ki_memory.sqlite3`, Testergebnisse vom 12. und 13.11.2026, Produktionslauf vom 13.11.2026, Pakete A bis D und C5 des Arbeitsplans
 
@@ -18,6 +18,7 @@
 | Plastizität, Meta- und Meta-Metaplastizität | voll aktiv: die Replay-Wirksamkeit passt Plastizität und Biases an, 16 Meta-Parameter regeln sich selbst mit homöostatischer Rückstellkraft, kein Regler sättigt |
 | Schlafen und Wachen | ein gemeinsamer Auslöser: ein einziger Schlaf-Wach-Schalter mit Hysterese; Adenosin folgt der Lernlast; entwicklungsabhängiger Schlafanteil: etwa zwei Drittel Schlaf im unreifen Zustand, sinkt mit wachsendem konsolidiertem Wissen zum Erwachsenenrhythmus (etwa 55 Wach- und 22 Schlafzyklen) |
 | Systemtest | alle 7 Prüfpunkte OK (auch nach den Paketen A bis D und C5) |
+| Reproduzierbarkeit | seit 16.11.2026: zwei Läufe vom gleichen Stand sind in allen Tabellen gleich, einschließlich der Zeitstempel, auch über einen Neustart; ein anderer run_seed ergibt eine Wiederholung |
 | Arbeitsplan, Pakete A bis D und C5 (13.11.2026) | Aufbewahrung und Verdichtung der Protokolle, weniger Schreibzugriffe, Schließungssignal der Experimente behoben (R1), Replay-Wirksamkeit als Vergleich reaktiviert gegen nicht reaktiviert (R5), Exploration nach Lernfortschritt, stabile Ontologie; Abschlusslauf über 1.000 Zyklen erfüllt K1 bis K9 |
 | Produktionslauf | 5.000 Zyklen auf dem vollen Korpus ohne Ausnahmen oder versteckte Fehler; stabile Hypothesen 36 auf 2.597, Fakten 36 auf 819, Relationen 0 auf 493; Korpus vollständig gelesen; kein Regler an einer Grenze |
 | Geschwindigkeit | Rechenanteil etwa 2,6 s CPU-Zeit pro Zyklus auf dem aktuellen Produktionsstand, ein Commit pro Zyklus; die Wandzeit schwankt mit dem Speicherpool zwischen etwa 2 und 10 s (Median 2,3 s im letzten Prüflauf) |
@@ -27,7 +28,7 @@
 
 ## 2. Code-Stand
 
-- **Paket:** `ki_system`, 65 Python-Module, zusammen mit `main.py` 22.358 Zeilen
+- **Paket:** `ki_system`, 66 Python-Module, zusammen mit `main.py` 22.552 Zeilen
 - **Einstieg:** `python main.py --gui` (Admin-GUI), `python main.py --user-gui` (lesende Dialog-GUI)
 - **Systemprüfung:** `python -m ki_system.systemtest` (arbeitet auf einer Kopie der Datenbank)
 - **Einmalige Verdichtung der Protokolle:** `python -m ki_system.compact_logs <db> [--cutoff-ts EPOCH] [--vacuum]`
@@ -274,6 +275,20 @@ Backups: vor dem Lauf `A:\ClaudeCode\Brainstem_db_backup_20261113_vor_langzeitla
 
 ## 6. Testergebnisse vom 12. und 13.11.2026
 
+### Reproduzierbares Lernen, 16.11.2026
+
+Einzelheiten in `Audits/Reproduzierbarkeit_2026-11-16_2010.md`.
+
+| Punkt | Ergebnis |
+|---|---|
+| Vorher | zwei Läufe über 100 Zyklen von byte-gleichen Kopien unterschieden sich in 101 von 156 Tabellen (4.547 gegen 4.541 stabile Hypothesen, 1.143 gegen 1.140 Fakten): Uhrzeit als Startwert in 6b und 7d, ein Zufallsaufruf ohne Startwert, Entscheidungen nach Sekunden der Wanduhr, Iteration über Mengen von Zeichenketten |
+| Expertenrat | Erfahrungszeit (Zyklen) ist die biologisch bessere innere Zeit (Jenkins & Dallenbach 1924; Wixted 2004; Howard & Kahana 2002; Tsao et al. 2018); Rauschen mit festem Startwert behält seine Verteilung (Faisal et al. 2008); zählerbasierte Startwerte (Salmon et al. 2011); mehrere run_seed für Benchmarks (Henderson et al. 2018; Bouthillier et al. 2021) |
+| Änderung | `learning_clock.py` (ein Takt pro Zyklus, Start eine Sekunde nach dem neuesten Zeitstempel), 35 Phasenmodule und `semantic_evidence` lesen sie, alle Zufallsquellen mit Startwert, Gleichstände über id, Mengen sortiert; Wanduhr bleibt für GUI, Import, Protokolle, Verdichtung und WAL-Wartung |
+| A/A-Test | verschiedene Hash-Startwerte und Startzeiten: alle 157 Tabellen gleich, einschließlich der Zeitstempel |
+| Neustart-Test | 50 Zyklen, neuer Prozess, 50 Zyklen gleich 100 Zyklen in einem Prozess |
+| Gegenprobe | run_seed 1 statt 0 ändert 96 Tabellen |
+| 1.000 Zyklen | alle neun Kriterien erfüllt; stabile Hypothesen +323 (alter Code +319, Satzrahmen +339), K5 0,899, 0 Ausnahmen |
+
 ### Prüflauf R8, 16.11.2026: Satzrahmen und ein Commit pro Zyklus
 
 Einzelheiten in `Audits/Test_Run_R8_2026-11-16_1354.md`.
@@ -484,7 +499,7 @@ Wirksame Maßnahmen:
 
 - Ein Prozess, ein CPU-Kern, keine GPU
 - SQLite im WAL-Modus, 60 s Wartezeit bei Sperren
-- deterministische Reihenfolge der Phasen; Zufall nur in Replay-Auswahl und Rauschen, pro Zyklus geseedet
+- reproduzierbar: das Lernen liest eine Lernuhr (ein Takt pro Zyklus, `learning_clock.py`) statt der Wanduhr, und jede Zufallsentscheidung kommt aus einem Generator mit Startwert aus run_seed, Zyklus, Phase und Zweck; zwei Läufe vom gleichen Stand enden gleich
 - jeder Phasenfehler wird im Zyklusergebnis erfasst und vom Diagnosemodul ausgewertet
 
 ---

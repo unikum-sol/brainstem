@@ -5,7 +5,8 @@ import os, sqlite3, time, json
 
 PHASE = "phase5c_learning_outcome_closure_and_question_cluster_resolution"
 
-def _now(): return int(time.time())
+from ki_system import learning_clock as _learning_clock
+def _now(): return _learning_clock.now()
 def _json(obj): return json.dumps(obj, ensure_ascii=False, sort_keys=True)
 def _connect(): return sqlite3.connect('ki_memory.sqlite3')
 

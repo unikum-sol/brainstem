@@ -3,7 +3,8 @@ import sqlite3, time, json
 PHASE='phase5e_context_expansion_and_gap_closure_release'
 LEARNING_MODE='context_hypotheses_with_neuromodulators'
 
-def _now(): return int(time.time())
+from ki_system import learning_clock as _learning_clock
+def _now(): return _learning_clock.now()
 def _json(o):
     try: return json.dumps(o, ensure_ascii=False, sort_keys=True)
     except Exception: return json.dumps({'repr':repr(o)}, ensure_ascii=False)

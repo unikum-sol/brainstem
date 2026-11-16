@@ -61,8 +61,9 @@ DEFAULTS = {
 _WS_RE = re.compile(r"\s+")
 
 
+from ki_system import learning_clock as _learning_clock
 def _now():
-    return int(time.time())
+    return _learning_clock.now()
 
 
 def _norm(value, limit):

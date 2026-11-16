@@ -97,7 +97,8 @@ BIAS_MIDS = {"last_plasticity_level":0.5,"last_exploration_bias":0.5,"last_conso
 
 class SchemaCheckError(RuntimeError): pass
 
-def _now(): return int(time.time())
+from ki_system import learning_clock as _learning_clock
+def _now(): return _learning_clock.now()
 def _clamp(x, lo=0.0, hi=1.0):
     try: x=float(x)
     except Exception: x=0.0

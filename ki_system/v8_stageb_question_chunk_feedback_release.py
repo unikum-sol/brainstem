@@ -62,8 +62,9 @@ def _search_terms_from_question(question_text: str) -> str:
     return " OR ".join(terms[:12])
 
 
+from ki_system import learning_clock as _learning_clock
 def _now() -> int:
-    return int(time.time())
+    return _learning_clock.now()
 
 
 def _table_exists(con, table) -> bool:

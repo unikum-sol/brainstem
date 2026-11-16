@@ -49,8 +49,9 @@ PHASE = "phase6a_neuromodulated_sleep_replay_and_meta_plasticity_release"
 LEARNING_MODE = "context_hypotheses_with_neuromodulators"
 
 
+from ki_system import learning_clock as _learning_clock
 def _now() -> int:
-    return int(time.time())
+    return _learning_clock.now()
 
 
 def _j(obj: Any) -> str:

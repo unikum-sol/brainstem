@@ -34,8 +34,9 @@ DEFAULTS = {
 _ELIGIBLE_GAP_STATUSES = ("open", "persistent_gap")
 
 
+from ki_system import learning_clock as _learning_clock
 def _now() -> int:
-    return int(time.time())
+    return _learning_clock.now()
 
 
 def _table_exists(con, table) -> bool:

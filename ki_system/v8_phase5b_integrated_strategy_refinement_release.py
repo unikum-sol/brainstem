@@ -16,8 +16,9 @@ LEARNING_MODE = "context_hypotheses_with_neuromodulators"
 _ORIGINAL_RUN = None
 _ORIGINAL_CYCLE = None
 
+from ki_system import learning_clock as _learning_clock
 def _now() -> int:
-    return int(time.time())
+    return _learning_clock.now()
 
 def _json(obj: Any) -> str:
     try:
