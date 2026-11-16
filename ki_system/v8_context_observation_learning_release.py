@@ -124,6 +124,9 @@ def _deprivation_active(connection):
     return str(row[0]).strip().strip('"').strip("'").lower() in {"1", "true", "yes", "on", "active"}
 
 
+SEED_STATE_TABLE = "reading_queue_seed_state"
+
+
 def seed_queue(connection, target=2000):
     ensure_schema(connection)
     if not _table_exists(connection, "chunks"):
@@ -134,11 +137,25 @@ def seed_queue(connection, target=2000):
     chunk_id, _text, _title = _chunk_columns(connection)
     if not chunk_id:
         return {"seeded": 0, "reason": "chunk_id_missing"}
+    # Once every chunk is in the queue, the search below finds nothing until
+    # new chunks are imported. Queue rows are never deleted while learning
+    # (only a learning reset clears the queue, and it clears this table too),
+    # and new chunks get higher ids, so an unchanged largest chunk id means
+    # the search would still find nothing. Saves a scan of all chunks.
+    connection.execute("CREATE TABLE IF NOT EXISTS " + SEED_STATE_TABLE + " (key TEXT PRIMARY KEY, value TEXT)")
+    max_id = connection.execute("SELECT MAX(" + chunk_id + ") FROM chunks").fetchone()[0]
+    marker = connection.execute("SELECT value FROM " + SEED_STATE_TABLE + " WHERE key='all_queued_up_to_chunk_id'").fetchone()
+    if marker is not None and max_id is not None and str(max_id) == str(marker[0]):
+        connection.commit()
+        return {"seeded": 0, "pending_before": pending}
     rows = connection.execute(
         "SELECT c." + chunk_id + " FROM chunks c LEFT JOIN reading_queue rq ON rq.chunk_id=c." + chunk_id +
         " WHERE rq.chunk_id IS NULL ORDER BY c." + chunk_id + " ASC LIMIT ?",
         (target - pending,),
     ).fetchall()
+    if len(rows) < target - pending and max_id is not None:
+        connection.execute("INSERT OR REPLACE INTO " + SEED_STATE_TABLE + "(key,value) VALUES('all_queued_up_to_chunk_id',?)",
+                           (str(max_id),))
     now = _now()
     for (value,) in rows:
         connection.execute(

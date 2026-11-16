@@ -1,6 +1,6 @@
 # BrainStem: Projekt- und Funktionsstatus
 
-**Stand:** 16.11.2026, 20:10 Uhr
+**Stand:** 16.11.2026, 22:19 Uhr
 **Zählweise:** Alle Zyklenangaben sind Systemzyklen (ein Aufruf von `AutonomousLoop.cycle()`, ein Durchlauf der ganzen Phasenkette). Ein Dauerlern-Zyklus der GUI umfasst 5 Systemzyklen; 1.000 Zyklen entsprechen also 200 GUI-Zyklen. Der Entzug-Tab der GUI zählt Systemzyklen.
 **Umfang:** Code (`ki_system/`, `main.py`), Produktionsdatenbank `ki_memory.sqlite3`, Testergebnisse vom 12. und 13.11.2026, Produktionslauf vom 13.11.2026, Pakete A bis D und C5 des Arbeitsplans
 
@@ -21,14 +21,14 @@
 | Reproduzierbarkeit | seit 16.11.2026: zwei Läufe vom gleichen Stand sind in allen Tabellen gleich, einschließlich der Zeitstempel, auch über einen Neustart; ein anderer run_seed ergibt eine Wiederholung |
 | Arbeitsplan, Pakete A bis D und C5 (13.11.2026) | Aufbewahrung und Verdichtung der Protokolle, weniger Schreibzugriffe, Schließungssignal der Experimente behoben (R1), Replay-Wirksamkeit als Vergleich reaktiviert gegen nicht reaktiviert (R5), Exploration nach Lernfortschritt, stabile Ontologie; Abschlusslauf über 1.000 Zyklen erfüllt K1 bis K9 |
 | Produktionslauf | 5.000 Zyklen auf dem vollen Korpus ohne Ausnahmen oder versteckte Fehler; stabile Hypothesen 36 auf 2.597, Fakten 36 auf 819, Relationen 0 auf 493; Korpus vollständig gelesen; kein Regler an einer Grenze |
-| Geschwindigkeit | Rechenanteil etwa 2,6 s CPU-Zeit pro Zyklus auf dem aktuellen Produktionsstand, ein Commit pro Zyklus; die Wandzeit schwankt mit dem Speicherpool zwischen etwa 2 und 10 s (Median 2,3 s im letzten Prüflauf) |
+| Geschwindigkeit | Rechenanteil etwa 2,4 s CPU-Zeit pro Zyklus auf dem aktuellen Produktionsstand (2,76 s vor der Wiederverwendung der Wortstatistik im Zyklus), ein Commit pro Zyklus; die Wandzeit schwankt mit dem Speicherpool zwischen etwa 2 und 10 s |
 | Produktionsdatenbank | 8,09 GB nach dem zweiten Produktionslauf (5.000 Zyklen, 15.11.2026); Größe ab Zyklus 1.750 konstant, 17,5 Mio. alte Protokollzeilen durch die Aufbewahrung entfernt; Integritätsprüfung OK; jeder Fakt und jede Relation ist bis zum Chunk rückverfolgbar |
 
 ---
 
 ## 2. Code-Stand
 
-- **Paket:** `ki_system`, 66 Python-Module, zusammen mit `main.py` 22.552 Zeilen
+- **Paket:** `ki_system`, 66 Python-Module, zusammen mit `main.py` 22.640 Zeilen
 - **Einstieg:** `python main.py --gui` (Admin-GUI), `python main.py --user-gui` (lesende Dialog-GUI)
 - **Systemprüfung:** `python -m ki_system.systemtest` (arbeitet auf einer Kopie der Datenbank)
 - **Einmalige Verdichtung der Protokolle:** `python -m ki_system.compact_logs <db> [--cutoff-ts EPOCH] [--vacuum]`
@@ -274,6 +274,18 @@ Backups: vor dem Lauf `A:\ClaudeCode\Brainstem_db_backup_20261113_vor_langzeitla
 ---
 
 ## 6. Testergebnisse vom 12. und 13.11.2026
+
+### Schnellere Wortstatistik, 16.11.2026
+
+Einzelheiten in `Audits/Beschleunigung_2026-11-16_2219.md`.
+
+| Punkt | Ergebnis |
+|---|---|
+| Phase 0 | gespeicherte Übergangszählungen einmal pro Zyklus statt einmal pro Chunk, Entscheidung einmal pro Kontext und Chunk: 0,41 auf 0,20 s pro Zyklus |
+| Cue-Konkurrenz | `learned_boundaries` behält Gesamtzahl und Entropie pro Kontext für den Zyklus (verworfen, wenn Phase 0 schreibt oder bei einem Rollback): 0,30 auf 0,11 s |
+| Lesewarteschlange | `seed_queue` überspringt die Suche über alle Chunks, sobald alle eingereiht sind (`reading_queue_seed_state`); partieller Index auf die wartenden Einträge: 0,05 s auf unter 0,001 s |
+| Gleiche Ergebnisse | alter und neuer Code, 100 Zyklen von byte-gleichen Kopien: alle 157 gemeinsamen Tabellen gleich |
+| CPU-Zeit | 2,755 auf 2,455 s pro Zyklus, gepaarte Ersparnis 0,30 s (95-%-Intervall 0,26 bis 0,34 s), 11 % |
 
 ### Reproduzierbares Lernen, 16.11.2026
 

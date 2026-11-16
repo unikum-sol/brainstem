@@ -30,6 +30,8 @@ Yu & Dayan 2005
 from __future__ import annotations
 
 import math
+
+from ki_system import learning_clock
 from typing import Dict, List, Optional, Tuple
 
 TRANSITIONS_TABLE = "lexical_context_transitions"
@@ -120,7 +122,8 @@ def learned_boundaries(con, text: str) -> List[int]:
     threshold = _f(st.get("entropy_threshold_bits"), 1.0)
     if len(text) <= k:
         return []
-    contexts = sorted({text[i - k:i] for i in range(k, len(text))})
+    stats = _context_stats(con)
+    contexts = sorted({text[i - k:i] for i in range(k, len(text))} - stats.keys())
     dist: Dict[str, Dict[str, int]] = {}
     for start in range(0, len(contexts), 400):
         part = contexts[start:start + 400]
@@ -128,16 +131,36 @@ def learned_boundaries(con, text: str) -> List[int]:
                 "SELECT context, next_char, count FROM " + TRANSITIONS_TABLE +
                 " WHERE context IN (" + ",".join("?" for _ in part) + ")", part).fetchall():
             dist.setdefault(ctx, {})[nxt] = int(cnt or 0)
+    for ctx in contexts:
+        d = dist.get(ctx)
+        stats[ctx] = (sum(d.values()), _entropy_bits(d.values())) if d else None
     out = []
     for i in range(k, len(text)):
-        d = dist.get(text[i - k:i])
-        if not d:
+        st_ctx = stats.get(text[i - k:i])
+        if not st_ctx:
             continue
-        if sum(d.values()) < min_obs:
+        if st_ctx[0] < min_obs:
             continue
-        if _entropy_bits(d.values()) >= threshold:
+        if st_ctx[1] >= threshold:
             out.append(i)
     return out
+
+
+# Total count and branching entropy per context, valid while the transition
+# counts are unchanged: within one learning cycle and until Phase 0 writes
+# new counts or a rollback happens (learning_clock.data_epoch). The values
+# are computed exactly as before, so the boundaries are identical; the cache
+# only avoids reading and computing the same context again for every
+# sentence of the cycle.
+_STATS_CACHE = {"key": None, "stats": {}}
+
+
+def _context_stats(con):
+    key = (id(con), learning_clock.cycle(), learning_clock.data_epoch())
+    if _STATS_CACHE["key"] != key:
+        _STATS_CACHE["key"] = key
+        _STATS_CACHE["stats"] = {}
+    return _STATS_CACHE["stats"]
 
 
 def learned_cue(con, text: str, acetylcholine: float) -> Optional[str]:

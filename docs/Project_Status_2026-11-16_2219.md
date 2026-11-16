@@ -1,6 +1,6 @@
 # BrainStem: Project and Function Status
 
-**As of:** 16 November 2026, 20:10
+**As of:** 16 November 2026, 22:19
 **Cycle units:** All cycle counts are system cycles (one call of `AutonomousLoop.cycle()`, one pass through the whole phase chain). One autonomous-learning cycle in the GUI comprises 5 system cycles, so 1,000 cycles correspond to 200 GUI cycles. The GUI's drift tab counts system cycles.
 **Scope:** code (`ki_system/`, `main.py`), production database `ki_memory.sqlite3`, test results from 12 and 13 November 2026, production run of 13 November 2026, packages A to D and C5 of the work plan
 
@@ -21,14 +21,14 @@
 | Reproducibility | since 16 November 2026: two runs from the same state are identical in all tables including timestamps, also across a restart; a different run seed gives a replicate |
 | Work plan packages A to D and C5 (13 November) | log retention and compaction, fewer writes, closure signal of experiments fixed (R1), replay effectiveness as cued-versus-uncued contrast (R5), exploration driven by learning progress, stable ontology; final 1,000-cycle run meets K1 to K9 |
 | Production run | 5,000 cycles on the full corpus without exceptions or hidden errors; stable hypotheses 36 to 2,597, facts 36 to 819, relations 0 to 493; corpus fully read; no regulator at a boundary |
-| Speed | computation about 2.6 s of CPU time per cycle on the current production state, one commit per cycle; the wall time fluctuates between about 2 and 10 s with the storage pool (median 2.3 s in the last test run) |
+| Speed | computation about 2.4 s of CPU time per cycle on the current production state (2.76 s before the per-cycle reuse of lexical statistics), one commit per cycle; the wall time fluctuates between about 2 and 10 s with the storage pool |
 | Production database | 8.09 GB after the second production run (5,000 cycles, 15 November 2026); size constant from cycle 1,750 on, 17.5 million old log rows removed by the retention; integrity check OK; every fact and relation traces back to its chunk |
 
 ---
 
 ## 2. Code Status
 
-- **Package:** `ki_system`, 66 Python modules, 22,552 lines including `main.py`
+- **Package:** `ki_system`, 66 Python modules, 22,640 lines including `main.py`
 - **Entry points:** `python main.py --gui` (admin GUI), `python main.py --user-gui` (read-only dialogue GUI)
 - **System check:** `python -m ki_system.systemtest` (runs on a copy of the database)
 - **One-time log compaction:** `python -m ki_system.compact_logs <db> [--cutoff-ts EPOCH] [--vacuum]`
@@ -274,6 +274,18 @@ Backups: before the run `A:\ClaudeCode\Brainstem_db_backup_20261113_vor_langzeit
 ---
 
 ## 6. Test Results from 12 and 13 November 2026
+
+### Faster lexical statistics, 16 November 2026
+
+Details in `Audits/Beschleunigung_2026-11-16_2219.md` (German).
+
+| Item | Result |
+|---|---|
+| Phase 0 | stored transition counts read once per cycle instead of once per chunk, decision once per context and chunk: 0.41 to 0.20 s per cycle |
+| Cue competition | `learned_boundaries` keeps total and entropy per context for the cycle (invalidated when Phase 0 writes or on a rollback): 0.30 to 0.11 s |
+| Reading queue | `seed_queue` skips the corpus scan once every chunk is queued (`reading_queue_seed_state`); partial index on pending rows: 0.05 s to below 0.001 s |
+| Identical results | old and new code, 100 cycles from byte-identical copies: all 157 common tables identical |
+| CPU time | 2.755 to 2.455 s per cycle, paired saving 0.30 s (95 % interval 0.26 to 0.34 s), 11 % |
 
 ### Reproducible learning, 16 November 2026
 

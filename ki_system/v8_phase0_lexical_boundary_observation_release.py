@@ -258,6 +258,13 @@ def observe_lexical_boundaries(con, neuromodulators):
     last_id = cursor
 
     pending_transition_updates = {}
+    # The stored counts do not change during the batch (they are written
+    # after the loop), so each context is read from the database once per
+    # batch instead of once per chunk. pending_by_context holds this batch's
+    # own counts per context, in the order they were first seen, so the
+    # merged distribution has the same entries in the same order as before.
+    stored_counts = {}
+    pending_by_context = {}
 
     for chunk_id, raw_text in batch:
         last_id = chunk_id
@@ -266,23 +273,39 @@ def observe_lexical_boundaries(con, neuromodulators):
             continue
 
         distinct_contexts = {text[i - k:i] for i in range(k, len(text))}
-        historical = _fetch_context_counts(con, distinct_contexts)
-        for (ctx, nc), cnt in pending_transition_updates.items():
-            if ctx in distinct_contexts:
-                historical.setdefault(ctx, {})
-                historical[ctx][nc] = historical[ctx].get(nc, 0) + cnt
+        missing = [c for c in distinct_contexts if c not in stored_counts]
+        if missing:
+            fetched = _fetch_context_counts(con, missing)
+            for c in missing:
+                stored_counts[c] = fetched.get(c)
+        historical = {}
+        for ctx in distinct_contexts:
+            base = stored_counts.get(ctx)
+            own = pending_by_context.get(ctx)
+            if own is None:
+                if base is not None:
+                    historical[ctx] = base
+                continue
+            merged = dict(base) if base is not None else {}
+            for nc, cnt in own.items():
+                merged[nc] = merged.get(nc, 0) + cnt
+            historical[ctx] = merged
 
+        # A context gives the same decision at every position of the chunk.
+        is_boundary = {}
         candidate_positions = []
         for i in range(k, len(text)):
             context = text[i - k:i]
-            dist = historical.get(context)
-            if not dist:
-                continue
-            total = sum(dist.values())
-            if total < min_obs:
-                continue
-            h = _entropy_bits(dist.values())
-            if h >= threshold:
+            decision = is_boundary.get(context)
+            if decision is None:
+                dist = historical.get(context)
+                if not dist:
+                    decision = False
+                else:
+                    total = sum(dist.values())
+                    decision = total >= min_obs and _entropy_bits(dist.values()) >= threshold
+                is_boundary[context] = decision
+            if decision:
                 candidate_positions.append(i)
 
         for i in candidate_positions[:max_per_chunk]:
@@ -328,6 +351,8 @@ def observe_lexical_boundaries(con, neuromodulators):
             next_char = text[i]
             key = (context, next_char)
             pending_transition_updates[key] = pending_transition_updates.get(key, 0) + 1
+            own = pending_by_context.setdefault(context, {})
+            own[next_char] = own.get(next_char, 0) + 1
 
     if pending_transition_updates:
         con.executemany(
@@ -335,6 +360,7 @@ def observe_lexical_boundaries(con, neuromodulators):
             "ON CONFLICT(context,next_char) DO UPDATE SET count=count+excluded.count",
             [(c, n, cnt) for (c, n), cnt in pending_transition_updates.items()],
         )
+        _learning_clock.bump_data_epoch()
 
     _set_kv(con, STATE_TABLE, "cursor_chunk_id", last_id)
     _set_kv(con, STATE_TABLE, "cycle_count", _int(state.get("cycle_count"), 0) + 1)

@@ -68,6 +68,8 @@ class CycleConnection(sqlite3.Connection):
         self._open_step()
 
     def rollback(self):
+        # Cached statistics may describe rolled-back data.
+        learning_clock.bump_data_epoch()
         if not self._bundle:
             sqlite3.Connection.rollback(self)
             return

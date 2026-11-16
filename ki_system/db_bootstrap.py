@@ -1168,6 +1168,13 @@ SCHEMA_EXPRESSION_INDEXES = [
 # same WHERE expression, so each entry names the queries it serves; a query
 # that changes its filter must change the entry too. Same rows, same results
 # (checked on 16 November 2026); about 2 s less per cycle.
+# Partial indexes on explicit columns. Context observation counts and selects
+# the pending chunks of the reading queue; once the corpus is read, almost no
+# row is pending. The query text must contain the same condition.
+SCHEMA_PARTIAL_INDEXES_ON = [
+    ('idx_bs_reading_queue_pending', 'reading_queue', ('chunk_id', 'status'), "status='pending'"),
+]
+
 SCHEMA_PARTIAL_INDEXES = [
     # 5e, 5i and 6a select active gaps.
     ('idx_bs_gaps_active', 'internal_learning_gaps', ('status',),
@@ -1196,6 +1203,9 @@ def _apply_schema_indexes(con):
     for name, table, columns, where in SCHEMA_PARTIAL_INDEXES:
         if _table_exists(con, table) and all(c in _columns(con, table) for c in columns):
             con.execute("CREATE INDEX IF NOT EXISTS " + name + " ON " + table + "(id) WHERE " + where)
+    for name, table, columns, where in SCHEMA_PARTIAL_INDEXES_ON:
+        if _table_exists(con, table) and all(c in _columns(con, table) for c in columns):
+            con.execute("CREATE INDEX IF NOT EXISTS " + name + " ON " + table + "(" + ",".join(columns) + ") WHERE " + where)
     for name, table, columns, unique in SCHEMA_INDEXES:
         if not _table_exists(con, table):
             continue

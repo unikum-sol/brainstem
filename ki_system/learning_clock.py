@@ -35,7 +35,7 @@ _TIME_COL = re.compile(r"(_at$|^ts$|timestamp)", re.I)
 _FULL_SCAN_LIMIT = 200000
 FRESH_BASE = 1700000000
 
-_state = {"base": None, "cycle": None, "run_seed": None}
+_state = {"base": None, "cycle": None, "run_seed": None, "data_epoch": 0}
 
 
 def _ensure(con):
@@ -133,3 +133,13 @@ def set_run_seed(con, seed):
     con.execute("UPDATE " + TABLE + " SET value=? WHERE key='run_seed'", (str(seed),))
     con.commit()
     _state["run_seed"] = str(seed)
+
+
+def data_epoch():
+    """Changes whenever cached learned statistics may be stale: on every
+    write of the transition counts (Phase 0) and on every rollback."""
+    return _state["data_epoch"]
+
+
+def bump_data_epoch():
+    _state["data_epoch"] += 1
