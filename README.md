@@ -114,6 +114,8 @@ Core principles:
 
 **BrainStem** is an autonomous software architecture for continuous, self-improving data processing and knowledge acquisition. An Autonomous Loop runs a chain of 36 learning phases that read, analyze, consolidate and revise information without manual intervention.
 
+**Long-term aim:** language understanding should emerge from these mechanisms, in a system that does not forget what it has consolidated and does not hallucinate, because every learned item stays traceable to its source and can be retracted. Whether this can work is the open research question behind all experiments; the current state is described under [Claims and Limitations](#claims-and-limitations).
+
 The biological terminology ("neuromodulators", "sleep", "homeostasis", "reconsolidation") is not decorative. The terms are functional designators for mathematical state variables and algorithmic control mechanisms. The values are floats, not molecules. The behavior is biologically inspired, the implementation is strictly mathematical.
 
 **Main mechanics:**
@@ -350,6 +352,12 @@ The GUI includes a sensory-deprivation mode that skips new reading while replay,
 ### Running the System
 
 From the project root: `python main.py --gui` (admin GUI) or `python main.py --user-gui` (read-only dialogue GUI).
+
+<a href="assets/BrainStem-Admin-GUI.png" target="_blank">
+  <img src="assets/BrainStem-Admin-GUI.png" alt="BrainStem admin GUI: import and autonomous learning controls, reading progress with chunk, fact, relation, ontology, question and hypothesis counts, the digital neuromodulator panel, sleep and maturity state, and the log" width="100%" />
+</a>
+
+The admin GUI on a copy of the production state (16 November 2026): the whole corpus has been read, the system is asleep and consolidating, and the ontology is empty because categories now wait for confirmed word units.
 
 System check on an isolated snapshot of the database: `python -m ki_system.systemtest`
 
