@@ -43,16 +43,17 @@ YouTube - AI conversation about BrainStem Project
 
 All cycle counts are system cycles; one autonomous-learning cycle in the GUI comprises 5 of them (see [Cycle units](#cycle-units)).
 
-- **Runtime chain:** 36 phase modules plus a log-retention maintenance step, loaded by `ki_system/phase_registry.py`. The chain top is the log retention (`v8_log_retention`).
+- **Runtime chain:** 36 phase modules plus a log-retention maintenance step and the cycle transaction, loaded by `ki_system/phase_registry.py`. The chain top is the cycle transaction (`v8_cycle_transaction`).
 - **Production run (13 November 2026):** 5,000 cycles on the full corpus without exceptions or hidden errors. Stable hypotheses grew from 36 to 2,597, facts from 36 to 819 (101 retracted after lost competitions), relations from 0 to 493; the corpus was read completely and no regulator reached a boundary.
 - **Database hygiene and learning fixes (13 November 2026):** the experiment event logs are now kept for the last 1,000 cycles only (a one-time compaction shrinks the 20.5 GB database to 5.8 GB with unchanged lifetime summaries); experiments now report closure when their gap actually closes; replay effectiveness is measured as a cued-versus-uncued contrast; exploration follows learning progress; and ontology categories are stable (10 promotions and 1 retraction in 1,000 cycles, before about 200 of each). A final 1,000-cycle learning run met all nine calibration criteria.
 - **Second production run (15 November 2026):** 5,000 cycles on the compacted production database without exceptions or hidden errors. Stable hypotheses grew from 2,597 to 4,505, facts to 1,136 and relations to 1,067, with a capture rate of 97.4 % and no regulator at a boundary. The database grew from 5.8 to 8.1 GB during the first 1,750 cycles and then stayed constant, while the log retention removed 17.5 million old rows. Ontology churn fell to a tenth (110 promotions and 112 retractions, before 1,013 and 1,010), but categories over characters and syllables still dissolve as the relation graph grows.
 - **Ontology from words, coexisting memories, faster strategy phases (16 November 2026):** following an advisory council, ontology categories now form only from word-level units, so the ontology stays empty until words are confirmed; two consolidated sentences that share a cue now coexist instead of revising each other; phases 5b and 5d compute their averages with index-backed queries (0.59 to 0.012 s and 0.35 to 0.18 s per cycle, identical values). A 1,000-cycle test run uncovered a savepoint error in the new ontology code, which was fixed; a 200-cycle check afterwards ran without exceptions or diagnostic findings. Details: the project status reports under `docs/`.
 - **Half the computation per cycle (16 November 2026):** partial indexes on the gap table let phases 5e, 5f, 5g, 5i, 6a and gap detection read only the about 1,300 active gaps instead of all 276,000 (2.1 s to 0.03 s per cycle, identical results); the process CPU time per cycle fell from about 5.1 to 2.6 s. A 1,000-cycle test run met all nine calibration criteria without exceptions or diagnostic findings. The capture-rate criterion K5 now counts only traces tagged at least 250 cycles before the end of a run, because capture takes a median of 62 and at most about 240 cycles. Details: the project status reports under `docs/`.
+- **Sentence frames instead of text contrasts, one commit per cycle (16 November 2026):** following an advisory council, two sentences that differ in one position are stored as a sentence frame with interchangeable fillers, the evidence from which word classes form, and become a contradiction only under strict conditions (see [Sentence frames instead of text contrasts](#sentence-frames-instead-of-text-contrasts)). In an A/B comparison over 1,000 cycles each on identical production copies, the old code added 27,032 unverified contradictions and as many gaps, the new code no contradictions and 36 frame gaps, while learning was at least as good (stable hypotheses +339 against +319, all nine calibration criteria met in both). Each cycle now commits once instead of about 74 times; this writes about a fifth less, while the wall time on the storage pool did not change measurably. A 500-cycle check with both changes ran without exceptions or diagnostic findings. Details: the project status reports under `docs/`.
 - **Stability check (14 November 2026):** a 1,500-cycle sensory-deprivation run on the compacted production state ended with the verdict "konvergenz": all 21 signals stable or converging, no regulator at a boundary, and consolidation continued without input (stable hypotheses 2,598 to 3,196).
 - **All layers learn:** sentence hypotheses, lexical boundaries and relation hypotheses all take part in sleep consolidation and graduate into stable roles. In a 150-cycle run on 300 real Wikipedia chunks the system graduated 35 sentence, 15 lexical-boundary and 35 relation hypotheses and promoted 33 facts, 12 relations and 11 ontology rows.
 - **Self-correction works:** consolidated hypotheses compete with alternative completions of the same learned cue. A decisively stronger competitor is treated as a prediction error: the stored hypothesis is reverted to uncertain, its fact is retracted and the hypothesis has to be consolidated again. This happens without any external trigger (example from a test run: cue "April 20", stored evidence 1 vs. competitor evidence 3).
-- **Speed:** on the current production state the computation takes about 2.6 s of CPU time per learning cycle (1.2 s on the much smaller state of 13 November); on the storage pool, waiting for the commits adds between under 1 s and about 6 s, so the wall time per cycle fluctuates between about 2.4 and 9 s. See [Performance](#performance).
+- **Speed:** on the current production state the computation takes about 2.6 s of CPU time per learning cycle (1.2 s on the much smaller state of 13 November); on the storage pool, waiting for the writes adds between under 1 s and about 7 s, so the wall time per cycle fluctuates between about 2 and 10 s (median 2.3 s in the last test run). See [Performance](#performance).
 - **Stability:** system test fully green; repeated multi-hundred-cycle runs without exceptions or hidden error states in the nested cycle results.
 - **Reading strategies use live state:** phases 5b to 5i take their learning controls (learning rate, error weight, revision, exploration, inhibition, consolidation) and the six core neuromodulators from the live state of Phases 6a and 7c, cluster the real curiosity questions, and read gap resolution from the actual gap status. Phase 5b's exploration and inhibition recommendations act back on the persistent bias state with a damped step (top-down strategy control), counterbalanced by saturation homeostasis (6d) and the endocannabinoid pull (7b).
 - **One sleep trigger, developmental sleep share:** a single sleep/wake switch decides when the system sleeps. Adenosine (Process S) rises with the encoding load of each cycle and falls during sleep; sleep starts at an upper and ends at a lower threshold. Like a newborn, the immature system builds up sleep pressure faster and sleeps about two thirds of the time; as consolidated knowledge grows, wake episodes lengthen toward the adult rhythm of about 55 wake and 22 sleep cycles (about 28% sleep). In a 400-cycle run from a fresh database the system slept 62% of the time and graduated 231 hypotheses (103 with a fixed adult rhythm); only 3 of 275 tagged survivors expired before consolidation.
@@ -69,9 +70,8 @@ A full read-through of the corpus and more than 11,500 learning cycles ran witho
 
 ---
 ### Next Major Steps
-- Bundle the commits: a cycle commits about 74 times because many phases commit or release an outermost savepoint themselves; on the storage pool these commits are now the largest cost. This changes every phase and needs its own plan.
-- Text-contrast search: frequent terms make its full-text queries match tens of thousands of rows (about 0.3 s per cycle); narrowing it changes behaviour, so it goes to an advisory council first.
-- Ontology: later, form categories from sentence positions instead of co-occurrence, and use syllable classes to support word segmentation.
+- Write load: even with one commit, a cycle writes about 50 MB; measure which tables and indexes cause it.
+- Ontology from sentence frames: once words are confirmed, form categories from fillers that share at least two frames across different articles, instead of co-occurrence; use syllable classes to support word segmentation.
 - Watch the learning rate: its spread over a run has narrowed to about 0.010 to 0.012, close to the calibration bound of 0.01.
 - Content-weighted maturity: observe the shadow value over several runs before coupling it to the sleep rhythm.
 - Observe the reward prediction error, learning progress and meta-parameter regulation over a long production run, and how the closure signal develops as more gaps are resolved.
@@ -151,7 +151,7 @@ BrainStem does not run as a continuously coupled system of differential equation
 <tr><td>2</td><td>Autonomous learning</td><td>The AutonomousLoop processes chunks while the neuromodulatory, replay, consolidation and write-path chain reacts to the evolving internal state.</td></tr>
 </table>
 
-#### Runtime chain (36 phases and a maintenance step, in execution order)
+#### Runtime chain (36 phases, a maintenance step and the cycle transaction, in execution order)
 
 <table>
 <tr><th>Group</th><th>Phases</th></tr>
@@ -160,6 +160,7 @@ BrainStem does not run as a continuously coupled system of differential equation
 <tr><td>Sleep and homeostasis</td><td>6a replay and meta-plasticity, 6b replay effectiveness and critic gate, 6c bias persistence and self-regulating meta-parameters, 6d saturation homeostasis, 7a adenosine, 7b endocannabinoids, 7b1 wake-chain bridge, 7c adaptive boundaries and E/I balance, connection accelerator, 7d slow-wave consolidation, 7e histamine, 7f orexin, 7g BDNF, 7cort cortisol, cooperative core</td></tr>
 <tr><td>Stage B write chain</td><td>Graduation, contradiction detection, hypothesis revision, fact promotion, relational binding, relation promotion, ontology cluster observation, ontology promotion, question promotion, question-chunk feedback</td></tr>
 <tr><td>Maintenance</td><td>Log retention: keeps the raw experiment event logs of the last 1,000 cycles and prunes older rows during sleep with a row budget; lifetime summaries stay intact</td></tr>
+<tr><td>Cycle transaction</td><td>One durable commit per cycle: inside a cycle, a commit of the Memory connection only marks a step boundary (savepoint) and a rollback undoes the work since the last boundary; the cycle commits once at its end, also when it raises</td></tr>
 </table>
 
 The Stage B chain is ordered so that a competition decided in a cycle already causes its fact to be retracted within the same cycle, and a relation, cluster or question promoted in a cycle is already visible to the next module.
@@ -242,6 +243,12 @@ Categories are built to be stable. Label Propagation runs in a fixed node order,
 
 `v8_stageb_question_promotion_release` promotes a persistent, repeatedly reconfirmed gap into a question (Information-Gap Theory of curiosity). The question text is a fixed marker plus already observed surface text; no sentence is generated. `v8_stageb_question_chunk_feedback_release` boosts the source chunk of every open question and searches the corpus via FTS5 for not yet read chunks that might resolve it.
 
+#### Sentence frames instead of text contrasts
+
+Two observed sentences that agree everywhere except in one position used to be stored as an unverified contradiction with its own gap. On the production state these made up 274,644 of 276,246 gaps, almost all of them citation and navigation boilerplate, and not one of them ever became a question. Following an advisory council, such aligned alternatives are now treated as what they are in language acquisition: a frame with interchangeable fillers, the evidence from which word classes form (distributional analysis, Harris 1954; frequent frames, Mintz 2003; non-adjacent dependencies, Gómez 2002). `semantic_text_frames` records each frame (for example `<_> archiviert vom original ...`) with its fillers per slot and the articles it occurs in. A pair still becomes a contradiction with one gap per frame only when one side is a stable hypothesis, the rarest shared word is specific (document frequency at most the square root of the index size), the slot is closed (at most three fillers) and the two sides come from different articles. When the slot later opens, the frame's gap habituates. Every such status change is logged in `semantic_frame_gap_log` and can be undone, and the reclassification of the old pairs is reversible as well.
+
+The candidate search was narrowed at the same time: only the rarest cue terms that a similar sentence must share are searched (prefix filtering, Chaudhuri et al. 2006; Bayardo et al. 2007), the number of postings read is bounded by 2.5 % of the index, and only the 64 best bm25 matches are compared.
+
 #### Habituation
 
 A persistent but unproductive gap (no evidence growth for a serotonin-modulated number of reconfirmations) is retired into a reversible `habituated` state, following the inverted-U relationship between resolvability and curiosity.
@@ -310,7 +317,7 @@ The noradrenaline coupling of the ontology minimum cluster size is deliberately 
 ---
 ### Performance
 
-On the production state of 16 November 2026 the computation takes about 2.6 s of process CPU time per learning cycle (about 5.1 s before the partial gap indexes); measuring CPU time separately from wall time is the reliable way to judge a code change here. On the storage pool used here (SSDs of different speed), the commit at the end of each cycle dominates and fluctuates between about 2.4 and 7 s without code changes. Measured alone on the pool on the compacted production copy (5.8 GB): median 2.5 s per cycle (5.95 s before the write-load fixes). Over the 5,000 cycles of the second production run the median rose from 2.7 s to 5.9 s although the file size stayed constant, so the remaining rise comes from growing learned tables rather than logs.
+On the production state of 16 November 2026 the computation takes about 2.6 s of process CPU time per learning cycle (about 5.1 s before the partial gap indexes); measuring CPU time separately from wall time is the reliable way to judge a code change here. On the storage pool used here (SSDs of different speed), waiting for the writes of each cycle dominates and fluctuates between about 2 and 10 s without code changes. Measured alone on the pool on the compacted production copy (5.8 GB): median 2.5 s per cycle (5.95 s before the write-load fixes). Over the 5,000 cycles of the second production run the median rose from 2.7 s to 5.9 s although the file size stayed constant, so the remaining rise comes from growing learned tables rather than logs.
 
 - **Schema checks** run once per database connection instead of once per observed sentence.
 - **Incrementally maintained aggregates** (`v8_outcome_aggregates.py`): phases 5h and 5i read group-wise counts and averages over the experiment-outcome history (about 0.9 million rows) from a small table that SQLite triggers keep current on insert, update and delete, instead of rescanning the history every cycle. Results are identical to the full scans.
@@ -321,6 +328,8 @@ On the production state of 16 November 2026 the computation takes about 2.6 s of
 - **Index-backed averages in phases 5b and 5d:** the active-gap averages read the few distinct statuses through the status index and compute both averages in one pass, instead of scanning the gap table several times per cycle.
 - **Partial indexes on the gap table:** almost all gaps are habituated, so `db_bootstrap.SCHEMA_PARTIAL_INDEXES` indexes only the rows each phase filter selects. SQLite uses a partial index only when the query's condition matches the index condition, so a phase that changes its filter must change its index entry too.
 - **Unique checks skip the duplicate scan** in phases 5b and 5c once the unique index exists.
+- **One commit per cycle** (`v8_cycle_transaction.py`): the about 74 commits per cycle became step boundaries inside one transaction. The CPU time stays the same and about 20 to 35 % fewer bytes are written; on the storage pool the wall time did not change measurably, because most of the about 50 MB written per cycle does not come from the commits themselves. Other writing connections wait at most until the cycle ends (60 s lock timeout).
+- **Bounded text-frame search:** only the rarest cue terms are searched, the postings read are capped at 2.5 % of the index and only the 64 best bm25 matches are compared, which removes the outliers with tens of thousands of matches.
 - **Fewer writes:** Phase 5h rewrites only evaluations that changed, and the global decay of reading-queue and attention scores runs every 10 cycles with the factor raised to the 10th power.
 
 ---
@@ -409,6 +418,9 @@ A Windows `zimdump.exe` build and its DLL files must be placed in the project ro
 - **Räsänen, Okko; Rasilo, Heikki** _Joint word segmentation and referential learning_ (computational model).
 - **Yurovsky, Daniel; Yu, Chen; Smith, Linda B.** (2012) _Statistical speech segmentation and word learning in parallel_. Frontiers in Psychology.
 - **Zhang, Yayun; Yurovsky, Daniel; Yu, Chen** (2015) _Statistical word learning as a continuous, cumulative process_.
+- **Harris, Zellig S.** (1954) _Distributional Structure_. Word.
+- **Mintz, Toben H.** (2003) _Frequent frames as a cue for grammatical categories in child directed speech_. Cognition.
+- **Gómez, Rebecca L.** (2002) _Variability and Detection of Invariant Structure_. Psychological Science.
 
 **Memory replay, tagging and consolidation**
 - **Mattar, Marcelo G.; Daw, Nathaniel D.** (2018) _Prioritized memory access explains planning and hippocampal replay_. Nature Neuroscience.
@@ -506,6 +518,8 @@ A Windows `zimdump.exe` build and its DLL files must be placed in the project ro
 - **Gupta, Ashish; Mumick, Inderpal Singh** (1995) _Maintenance of Materialized Views: Problems, Techniques, and Applications_. IEEE Data Engineering Bulletin.
 - **Koch, Christoph; et al.** (2014) _DBToaster: higher-order delta processing for dynamic, frequently fresh views_. The VLDB Journal.
 - **Chaudhuri, Surajit; Narasayya, Vivek R.** (1997) _An Efficient, Cost-Driven Index Selection Tool for Microsoft SQL Server_. VLDB.
+- **Chaudhuri, Surajit; Ganti, Venkatesh; Kaushik, Raghav** (2006) _A Primitive Operator for Similarity Joins in Data Cleaning_. ICDE.
+- **Bayardo, Roberto J.; Ma, Yiming; Srikant, Ramakrishnan** (2007) _Scaling Up All Pairs Similarity Search_. WWW.
 - **Gaffney, Kevin P.; Prammer, Martin; Brasfield, Larry; Hipp, D. Richard; Kennedy, Dan; Patel, Jignesh M.** (2022) _SQLite: Past, Present, and Future_. PVLDB.
 
 <details>
@@ -772,7 +786,7 @@ A Windows `zimdump.exe` build and its DLL files must be placed in the project ro
 
 ---
 ### Development Notes
-- **Python package:** ki_system (63 modules)
+- **Python package:** ki_system (64 modules)
 - **Local project folder:** BrainStem
 - **Primary runtime:** Python 3.11 on Windows with SQLite
 - **Documentation language:** English, German

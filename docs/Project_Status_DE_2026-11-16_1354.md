@@ -1,6 +1,6 @@
 # BrainStem: Projekt- und Funktionsstatus
 
-**Stand:** 16.11.2026, 08:30 Uhr
+**Stand:** 16.11.2026, 13:54 Uhr
 **Zählweise:** Alle Zyklenangaben sind Systemzyklen (ein Aufruf von `AutonomousLoop.cycle()`, ein Durchlauf der ganzen Phasenkette). Ein Dauerlern-Zyklus der GUI umfasst 5 Systemzyklen; 1.000 Zyklen entsprechen also 200 GUI-Zyklen. Der Entzug-Tab der GUI zählt Systemzyklen.
 **Umfang:** Code (`ki_system/`, `main.py`), Produktionsdatenbank `ki_memory.sqlite3`, Testergebnisse vom 12. und 13.11.2026, Produktionslauf vom 13.11.2026, Pakete A bis D und C5 des Arbeitsplans
 
@@ -10,7 +10,7 @@
 
 | Bereich | Status |
 |---|---|
-| Lernkette | 36 Phasen und ein Wartungsschritt für die Aufbewahrung der Protokolle, alle laden fehlerfrei, Kettenspitze: Protokoll-Aufbewahrung |
+| Lernkette | 36 Phasen, ein Wartungsschritt für die Aufbewahrung der Protokolle und die Zyklustransaktion, alle laden fehlerfrei, Kettenspitze: Zyklustransaktion (`v8_cycle_transaction`) |
 | Lernen auf allen Ebenen | aktiv: Sätze, Wortgrenzen und Relationen konsolidieren und graduieren |
 | Selbstkorrektur | aktiv und nachgewiesen: Cue-Konkurrenz, Revision, Rücknahme von Fakten, Rekonsolidierung |
 | Emergenz von Relationen, Kategorien, Fragen | aktiv und produktiv |
@@ -20,14 +20,14 @@
 | Systemtest | alle 7 Prüfpunkte OK (auch nach den Paketen A bis D und C5) |
 | Arbeitsplan, Pakete A bis D und C5 (13.11.2026) | Aufbewahrung und Verdichtung der Protokolle, weniger Schreibzugriffe, Schließungssignal der Experimente behoben (R1), Replay-Wirksamkeit als Vergleich reaktiviert gegen nicht reaktiviert (R5), Exploration nach Lernfortschritt, stabile Ontologie; Abschlusslauf über 1.000 Zyklen erfüllt K1 bis K9 |
 | Produktionslauf | 5.000 Zyklen auf dem vollen Korpus ohne Ausnahmen oder versteckte Fehler; stabile Hypothesen 36 auf 2.597, Fakten 36 auf 819, Relationen 0 auf 493; Korpus vollständig gelesen; kein Regler an einer Grenze |
-| Geschwindigkeit | Rechenanteil etwa 1,2 s pro Zyklus; der Abschluss der Transaktion auf dem Speicherpool überwiegt. Zweiter Produktionslauf: Median 2,7 s steigend auf 5,9 s über 5.000 Zyklen, obwohl die Datei nicht mehr wächst; der Anstieg kommt jetzt von wachsenden gelernten Tabellen |
+| Geschwindigkeit | Rechenanteil etwa 2,6 s CPU-Zeit pro Zyklus auf dem aktuellen Produktionsstand, ein Commit pro Zyklus; die Wandzeit schwankt mit dem Speicherpool zwischen etwa 2 und 10 s (Median 2,3 s im letzten Prüflauf) |
 | Produktionsdatenbank | 8,09 GB nach dem zweiten Produktionslauf (5.000 Zyklen, 15.11.2026); Größe ab Zyklus 1.750 konstant, 17,5 Mio. alte Protokollzeilen durch die Aufbewahrung entfernt; Integritätsprüfung OK; jeder Fakt und jede Relation ist bis zum Chunk rückverfolgbar |
 
 ---
 
 ## 2. Code-Stand
 
-- **Paket:** `ki_system`, 64 Python-Module, zusammen mit `main.py` 21.549 Zeilen
+- **Paket:** `ki_system`, 65 Python-Module, zusammen mit `main.py` 22.358 Zeilen
 - **Einstieg:** `python main.py --gui` (Admin-GUI), `python main.py --user-gui` (lesende Dialog-GUI)
 - **Systemprüfung:** `python -m ki_system.systemtest` (arbeitet auf einer Kopie der Datenbank)
 - **Einmalige Verdichtung der Protokolle:** `python -m ki_system.compact_logs <db> [--cutoff-ts EPOCH] [--vacuum]`
@@ -69,7 +69,7 @@ Jede Phase ruft zuerst die vorher registrierte Phase auf und erledigt danach ihr
 | 25 | Phase 7cort | Cortisol: Stabilitätswächter, Stufe 2 (vorsichtiger Regler) | aktiv, im Betrieb ruhig |
 | 26 | Cooperative Core | gemeinsame Dynamik der sechs Kern-Botenstoffe; der einzige Schlaf-Wach-Schalter (siehe 4.7) | aktiv |
 | 27 | Stage-B Graduation | höchstens eine Graduierung pro Zyklus, Rollen konkurrieren über divisive Normalisierung | aktiv |
-| 28 | Stage-B Contradiction Detection | entscheidet Cue-Konkurrenzen nach Belegen; zeichnet ungeprüfte Oberflächen-Kontraste auf | aktiv |
+| 28 | Stage-B Contradiction Detection | entscheidet Cue-Konkurrenzen nach Belegen; Textalternativen an einer Stelle werden als Satzrahmen erfasst, nur ein spezifischer, geschlossener Rahmen aus verschiedenen Artikeln mit einer stabilen Seite wird zum ungeprüften Widerspruch | aktiv |
 | 29 | Stage-B Hypothesis Revision | stuft unterlegene, gefestigte Hypothesen zurück, schließt die Lücke | aktiv |
 | 30 | Stage-B Fact Promotion | graduierte Satz- und Wortgrenzen-Hypothesen werden Fakten; Rücknahme bei Revision | aktiv |
 | 31 | Phase 0b Relational Binding | bindet gemeinsam auftretende Elemente (PMI, Richtung aus Position) | aktiv |
@@ -79,6 +79,7 @@ Jede Phase ruft zuerst die vorher registrierte Phase auf und erledigt danach ihr
 | 35 | Stage-B Question Promotion | hartnäckige Lücken werden Fragen | aktiv |
 | 36 | Stage-B Question-Chunk Feedback | offene Fragen lenken das Lesen (Quelle und Volltextsuche); globaler Zerfall gebündelt alle 10 Zyklen | aktiv |
 | + | Protokoll-Aufbewahrung (Wartung) | hält die rohen Ereignisprotokolle der Experimente der letzten 1.000 Zyklen; löscht ältere Zeilen im Schlaf mit Zeilenbudget; Langzeitsummen bleiben erhalten | aktiv |
+| + | Zyklustransaktion (`v8_cycle_transaction`) | ein dauerhafter Commit pro Zyklus: innerhalb eines Zyklus ist ein Commit der Memory-Verbindung eine Schrittgrenze (Savepoint), ein Rollback setzt bis zur letzten Grenze zurück; der Zyklus schreibt einmal am Ende fest, auch bei einer Ausnahme | aktiv |
 
 ---
 
@@ -179,7 +180,7 @@ Die kalibrierten Grundwerte gelten nur, solange ein Wert noch nicht geschrieben 
 | `memory.py` | Datenbankzugriff, Dokumente und Abschnitte, Volltextindex | aktiv |
 | `ingest.py` | Import von ZIM, TXT, PDF, Fortsetzen nach Abbruch | aktiv |
 | `search.py`, `dialogue.py`, `text_utils.py`, `wiki_quality.py` | Suche, Antwort, Dialog, neutrale Texthilfen ohne Wortfilter | aktiv |
-| `semantic_evidence.py` | Oberflächen-Belege und ungeprüfte Textkontraste (werden nie automatisch aufgelöst) | aktiv |
+| `semantic_evidence.py` | Oberflächen-Belege; Satzrahmen mit Füllern und Quellen (`semantic_text_frames`); ungeprüfte Textkontraste nur nach den Rahmenregeln, nie automatisch aufgelöst | aktiv |
 | `v8_cue_competition.py` | gelernte Cues und konkurrierende Vervollständigungen | aktiv |
 | `v8_outcome_aggregates.py` | per Trigger laufend gepflegte Summen über die Experiment-Ergebnisse für 5d, 5h und 5i | aktiv |
 | `v8_learning_controls.py` | Steuerwerte und Botenstoffe der Strategiephasen aus dem echten Zustand | aktiv |
@@ -272,6 +273,19 @@ Backups: vor dem Lauf `A:\ClaudeCode\Brainstem_db_backup_20261113_vor_langzeitla
 ---
 
 ## 6. Testergebnisse vom 12. und 13.11.2026
+
+### Prüflauf R8, 16.11.2026: Satzrahmen und ein Commit pro Zyklus
+
+Einzelheiten in `Audits/Test_Run_R8_2026-11-16_1354.md`.
+
+| Punkt | Ergebnis |
+|---|---|
+| Expertenrat zu Textkontrasten | Alternativen an einer Stelle sind Rahmen mit Füllern, die Evidenz, aus der Wortklassen entstehen (Harris 1954, Mintz 2003, Gómez 2002), keine Widersprüche; Widerspruch nur, wenn eine Seite stabil ist, das seltenste gemeinsame Wort spezifisch ist (df höchstens Wurzel aus N), die Stelle geschlossen ist (höchstens 3 Füller) und die Seiten aus verschiedenen Artikeln stammen; eine Lücke pro Rahmen, habituiert, wenn sich die Stelle öffnet, jede Änderung protokolliert und umkehrbar |
+| Suche | nur die seltensten Hinweiswörter (Präfixfilter), höchstens 2,5 % des Index an Treffern, die 64 besten nach bm25; offline 98,4 % der spezifischen Paare des alten Verfahrens wiedergefunden |
+| A/B über je 1.000 Zyklen auf gleichen Produktionskopien | alle neun Kriterien in beiden erfüllt; alter Code gegen Rahmen: stabile Hypothesen +319 gegen +339, Graduierungen 319 gegen 339, K5 0,896 gegen 0,898, Fragen 355 gegen 355; ungeprüfte Widersprüche +27.032 gegen 0; gepaarte Blöcke zu 50 Zyklen: B minus A +1,0 pro Block, 95-%-Intervall -1,4 bis +3,4 (Mittel 16,0) |
+| Rahmen | 50.742 Rahmen aus 319.469 Paaren, 375 paradigmatisch; die häufigsten sind Zitierbausteine; 1.728 alte Lücken pro Paar neu eingeordnet und habituiert (protokolliert), Neueinordnung abgeschlossen |
+| Ein Commit pro Zyklus | 1 statt etwa 74 Commits; gleiche CPU-Zeit; etwa 20 bis 35 % weniger geschrieben; Wandzeit auf dem Speicherpool nicht messbar verschieden |
+| Prüflauf mit Rahmen und Bündelung, 500 Zyklen | 0 Ausnahmen, 0 Diagnosemeldungen, K6 320, K7 0,011; K5 0,807, auf gleich langen Fenstern über dem alten Code (0,72 bis 0,74); Median 2,3 s pro Zyklus |
 
 ### Prüflauf R7, 16.11.2026
 
@@ -479,16 +493,16 @@ Wirksame Maßnahmen:
 
 | Punkt | Auswirkung | Einordnung |
 |---|---|---|
-| Die Zykluszeit steigt weiter mit den gelernten Tabellen | partielle Indizes auf der Lückentabelle am 16.11.2026: CPU-Zeit pro Zyklus 5,1 auf 2,6 s bei gleichen Ergebnissen; die Wandzeit schwankt zwischen etwa 2,4 und 9 s durch Warten auf die Commits im Speicherpool | die etwa 74 Commits pro Zyklus bündeln (betrifft alle Phasen); Suche nach Textkontrasten erst nach einem Expertenrat |
+| Die Zykluszeit steigt weiter mit den gelernten Tabellen | seit 16.11.2026: CPU-Zeit 2,6 s pro Zyklus, ein Commit pro Zyklus statt etwa 74, etwa ein Fünftel weniger geschrieben; ein Zyklus schreibt aber noch etwa 50 MB, und die Wandzeit schwankt mit dem Speicherpool | messen, welche Tabellen und Indizes die Schreiblast verursachen |
 | Ontologie auf dem Produktionsstand | gelöst am 16.11.2026: Kategorien entstehen nur aus Worteinheiten; Silben-Cluster werden beobachtet, aber nie befördert; die Ontologie ist jetzt leer, der erwartete Stand, solange keine Worteinheit bestätigt ist | beobachten, sobald Wörter entstehen |
 | Streuung der Lernrate | 0,010 bis 0,012 in den Prüfläufen vom 16.11.2026, knapp an der Grenze von K7 (0,01) | beobachten |
 | Fangquote (K5) wird am Laufende zensiert | gelöst am 16.11.2026: K5 zählt nur Spuren, die mindestens 250 Zyklen vor Laufende markiert wurden (Einfangen dauert im Median 62 Zyklen, 99. Perzentil 238); 0,886 im Prüflauf R7 | keine |
-| Abschluss der Transaktion auf dem Speicherpool | die Zykluszeit schwankt zwischen etwa 2,4 und 7 s und steigt mit der Datenbankgröße | der Pool lässt sich derzeit nicht ändern; die Rechenarbeit beträgt etwa 1,2 s |
+| Schreiblast auf dem Speicherpool | die Zykluszeit schwankt zwischen etwa 2 und 10 s; ein Commit pro Zyklus hat die Wandzeit nicht messbar verändert | der Pool lässt sich derzeit nicht ändern; die Schreibmenge selbst senken |
 | Die Replay-Wirksamkeit zeigt keinen messbaren Nutzen der Reaktivierung (leicht negativ, nicht gesichert) | 6b passt die Plastizität nur bei schwachen Belegen an | mögliche Zensierung: reaktivierte Spuren graduieren früher und überleben danach nicht mehr; nächste Prüfung: Graduierung innerhalb des Horizonts als Erfolg zählen |
 | Die Reifezahl zählt stabile Hypothesen, die überwiegend Textstücke sind | das System verlässt seinen Säuglingsrhythmus früher, als es seinem Entwicklungsstand entspricht | Reife an die Art des Gelernten koppeln, sobald Satzbezüge entstehen |
 | Fakten sind beobachtete Textstücke mit der Relation `observed_as`; 27 % stammen aus Literaturangaben | noch keine Aussagen über Inhalte | zurückgestellt: früher Entwicklungsstand, das System lernt noch Wörter und Satzzusammenhänge |
 | Relationen (`associated_with`) und Kategorien verbinden oft einzelne Zeichen oder Silben | frühe Relationen und Kategorien sind Rauschen; die Kategorien sind jetzt stabil, bestehen aber weiter aus Zeichen und Silben | zurückgestellt: verbessert sich mit gelernten Wortgrenzen |
-| Ungeprüfte Textkontraste werden nie automatisch aufgelöst | viele Kontraste in der Tabelle | gewollt (Wiederholung ist keine Wahrheit) |
+| Ungeprüfte Textkontraste werden nie automatisch aufgelöst | seit 16.11.2026 entstehen sie nur nach den Rahmenregeln (36 Rahmen-Lücken in 1.000 Zyklen statt 27.032 Lücken pro Paar); die 274.644 alten bleiben in der Tabelle, ihre Lücken sind habituiert | gewollt (Wiederholung ist keine Wahrheit); alte Zeilen über `semantic_frame_gap_log` umkehrbar |
 | Pro Zyklus höchstens eine Graduierung | begrenzt die Lerngeschwindigkeit | gewolltes Budget |
 | Im Schlaf wird weitergelesen | Schlaf kostet keine Lesezeit | biologisch wird der Sinneseingang im Schlaf gedrosselt; Entscheidung offen |
 | `Audits/System_Audit_2026-09-28.md` | beschreibt den Stand vom 28.09.2026 | historisches Dokument |

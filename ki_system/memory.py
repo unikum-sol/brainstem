@@ -7,7 +7,9 @@ class Memory:
         if readonly:
             self.db=sqlite3.connect(f'file:{self.path.resolve().as_posix()}?mode=ro',uri=True,check_same_thread=False,timeout=60)
         else:
-            self.path.parent.mkdir(parents=True,exist_ok=True); self.db=sqlite3.connect(str(self.path),check_same_thread=False,timeout=60)
+            self.path.parent.mkdir(parents=True,exist_ok=True)
+            from ki_system.v8_cycle_transaction import CycleConnection
+            self.db=sqlite3.connect(str(self.path),check_same_thread=False,timeout=60,factory=CycleConnection)
         self.db.row_factory=sqlite3.Row
         if not readonly: self._init()
     def _json(self,o): return json.dumps(o,ensure_ascii=False,default=str)

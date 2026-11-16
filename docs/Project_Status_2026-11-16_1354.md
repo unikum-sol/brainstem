@@ -1,6 +1,6 @@
 # BrainStem: Project and Function Status
 
-**As of:** 16 November 2026, 08:30
+**As of:** 16 November 2026, 13:54
 **Cycle units:** All cycle counts are system cycles (one call of `AutonomousLoop.cycle()`, one pass through the whole phase chain). One autonomous-learning cycle in the GUI comprises 5 system cycles, so 1,000 cycles correspond to 200 GUI cycles. The GUI's drift tab counts system cycles.
 **Scope:** code (`ki_system/`, `main.py`), production database `ki_memory.sqlite3`, test results from 12 and 13 November 2026, production run of 13 November 2026, packages A to D and C5 of the work plan
 
@@ -10,7 +10,7 @@
 
 | Area | Status |
 |---|---|
-| Learning chain | 36 phases plus a log-retention maintenance step, all load without errors, chain top: log retention |
+| Learning chain | 36 phases plus a log-retention maintenance step and the cycle transaction, all load without errors, chain top: cycle transaction (`v8_cycle_transaction`) |
 | Learning on all layers | active: sentences, word boundaries and relations consolidate and graduate |
 | Self-correction | active and demonstrated: cue competition, revision, fact retraction, reconsolidation |
 | Emergence of relations, categories, questions | active and productive |
@@ -20,14 +20,14 @@
 | System test | all 7 checks OK (also after packages A to D and C5) |
 | Work plan packages A to D and C5 (13 November) | log retention and compaction, fewer writes, closure signal of experiments fixed (R1), replay effectiveness as cued-versus-uncued contrast (R5), exploration driven by learning progress, stable ontology; final 1,000-cycle run meets K1 to K9 |
 | Production run | 5,000 cycles on the full corpus without exceptions or hidden errors; stable hypotheses 36 to 2,597, facts 36 to 819, relations 0 to 493; corpus fully read; no regulator at a boundary |
-| Speed | computation about 1.2 s per cycle; the commit on the storage pool dominates. Second production run: median 2.7 s rising to 5.9 s over 5,000 cycles, although the database file no longer grows; the rise now comes from growing learned tables |
+| Speed | computation about 2.6 s of CPU time per cycle on the current production state, one commit per cycle; the wall time fluctuates between about 2 and 10 s with the storage pool (median 2.3 s in the last test run) |
 | Production database | 8.09 GB after the second production run (5,000 cycles, 15 November 2026); size constant from cycle 1,750 on, 17.5 million old log rows removed by the retention; integrity check OK; every fact and relation traces back to its chunk |
 
 ---
 
 ## 2. Code Status
 
-- **Package:** `ki_system`, 64 Python modules, 21,549 lines including `main.py`
+- **Package:** `ki_system`, 65 Python modules, 22,358 lines including `main.py`
 - **Entry points:** `python main.py --gui` (admin GUI), `python main.py --user-gui` (read-only dialogue GUI)
 - **System check:** `python -m ki_system.systemtest` (runs on a copy of the database)
 - **One-time log compaction:** `python -m ki_system.compact_logs <db> [--cutoff-ts EPOCH] [--vacuum]`
@@ -69,7 +69,7 @@ Each phase first calls the phase registered before it and then does its own work
 | 25 | Phase 7cort | cortisol: stability watcher, Stage 2 (guarded soft regulator) | active, calm in operation |
 | 26 | Cooperative Core | joint dynamics of the six core neuromodulators; the single sleep/wake switch (see 4.7) | active |
 | 27 | Stage-B Graduation | at most one graduation per cycle, roles compete via divisive normalization | active |
-| 28 | Stage-B Contradiction Detection | decides cue competitions from evidence; records unverified surface contrasts | active |
+| 28 | Stage-B Contradiction Detection | decides cue competitions from evidence; one-slot text alternatives are recorded as sentence frames, and only a specific, closed, cross-article frame with a stable side becomes an unverified contradiction | active |
 | 29 | Stage-B Hypothesis Revision | reverts consolidated hypotheses that lost a competition, closes the gap | active |
 | 30 | Stage-B Fact Promotion | graduated sentence and word-boundary hypotheses become facts; retraction on revision | active |
 | 31 | Phase 0b Relational Binding | binds co-occurring elements (PMI, direction from position) | active |
@@ -79,6 +79,7 @@ Each phase first calls the phase registered before it and then does its own work
 | 35 | Stage-B Question Promotion | persistent gaps become questions | active |
 | 36 | Stage-B Question-Chunk Feedback | open questions steer reading (source chunk and full-text search); global decay batched every 10 cycles | active |
 | + | Log Retention (maintenance) | keeps the raw experiment event logs of the last 1,000 cycles; prunes older rows during sleep with a row budget; lifetime summaries stay intact | active |
+| + | Cycle Transaction (`v8_cycle_transaction`) | one durable commit per cycle: inside a cycle a commit of the Memory connection is a step boundary (savepoint), a rollback undoes the work since the last boundary; the cycle commits once at its end, also on an exception | active |
 
 ---
 
@@ -179,7 +180,7 @@ The calibrated base values apply only while a value has not been written yet (fr
 | `memory.py` | database access, documents and chunks, full-text index | active |
 | `ingest.py` | import of ZIM, TXT, PDF, resume after interruption | active |
 | `search.py`, `dialogue.py`, `text_utils.py`, `wiki_quality.py` | search, answers, dialogue, neutral text helpers without word filters | active |
-| `semantic_evidence.py` | surface evidence and unverified text contrasts (never resolved automatically) | active |
+| `semantic_evidence.py` | surface evidence; sentence frames with fillers and sources (`semantic_text_frames`); unverified text contrasts only under the frame rules, never resolved automatically | active |
 | `v8_cue_competition.py` | learned cues and competing completions | active |
 | `v8_outcome_aggregates.py` | trigger-maintained sums over the experiment outcomes for 5d, 5h and 5i | active |
 | `v8_learning_controls.py` | control values and neuromodulators of the strategy phases from the live state | active |
@@ -272,6 +273,19 @@ Backups: before the run `A:\ClaudeCode\Brainstem_db_backup_20261113_vor_langzeit
 ---
 
 ## 6. Test Results from 12 and 13 November 2026
+
+### Test run R8, 16 November 2026: sentence frames and one commit per cycle
+
+Details in `Audits/Test_Run_R8_2026-11-16_1354.md` (German).
+
+| Item | Result |
+|---|---|
+| Advisory council on text contrasts | aligned one-slot alternatives are frames with fillers, the evidence from which word classes form (Harris 1954, Mintz 2003, Gómez 2002), not contradictions; a contradiction only when one side is stable, the rarest shared word is specific (df at most sqrt(N)), the slot is closed (at most 3 fillers) and the sides come from different articles; one gap per frame, habituated when the slot opens, every change logged and reversible |
+| Search | rarest cue terms only (prefix filtering), postings budget 2.5 % of the index, 64 best bm25 matches; 98.4 % of the specific pairs of the old method recovered offline |
+| A/B over 1,000 cycles each on identical production copies | all nine criteria met in both; old code vs frames: stable hypotheses +319 vs +339, graduations 319 vs 339, K5 0.896 vs 0.898, questions 355 vs 355; unverified contradictions +27,032 vs 0; paired 50-cycle blocks: B minus A +1.0 per block, 95 % CI -1.4 to +3.4 (mean 16.0) |
+| Frames | 50,742 frames from 319,469 pairs, 375 paradigmatic; top frames are citation templates; 1,728 old per-pair gaps reclassified and habituated (logged), backfill complete |
+| One commit per cycle | 1 instead of about 74 commits; same CPU time; about 20 to 35 % fewer bytes written; wall time not measurably different on the storage pool |
+| Verification with frames and bundling, 500 cycles | 0 exceptions, 0 diagnostic findings, K6 320, K7 0.011; K5 0.807, above old code (0.72 to 0.74) on windows of the same length; median 2.3 s per cycle |
 
 ### Test run R7, 16 November 2026
 
@@ -479,16 +493,16 @@ Effective measures:
 
 | Item | Effect | Assessment |
 |---|---|---|
-| Cycle time still rises with the learned tables | partial gap indexes on 16 November 2026: process CPU time per cycle 5.1 to 2.6 s, identical results; the wall time fluctuates between about 2.4 and 9 s because of commit waits on the storage pool | bundle the about 74 commits per cycle (changes every phase); text-contrast search only after an advisory council |
+| Cycle time still rises with the learned tables | since 16 November 2026: CPU time 2.6 s per cycle, one commit per cycle instead of about 74, about a fifth less written; a cycle still writes about 50 MB, and the wall time fluctuates with the storage pool | measure which tables and indexes cause the write load |
 | Ontology on the production state | solved on 16 November 2026: categories form only from word-level units; syllable clusters are observed but never promoted; the ontology is now empty, which is the expected stage while no word unit is confirmed | watch once words emerge |
 | Learning rate spread | 0.010 to 0.012 in the test runs of 16 November 2026, close to the K7 bound of 0.01 | watch |
 | Capture rate (K5) is censored at the end of a run | solved on 16 November 2026: K5 counts only traces tagged at least 250 cycles before the end (capture takes a median of 62 cycles, 99th percentile 238); 0.886 in test run R7 | none |
-| Commit time on the storage pool | cycle time fluctuates between about 2.4 and 7 s, rising with database size | the pool cannot be changed at the moment; computation is about 1.2 s |
+| Write load on the storage pool | cycle time fluctuates between about 2 and 10 s; one commit per cycle did not change the wall time measurably | the pool cannot be changed at the moment; reduce the write volume itself |
 | Replay effectiveness shows no measurable benefit of cued reactivation (slightly negative, not significant) | 6b adjusts plasticity only on weak evidence | possible censoring: cued traces graduate earlier and then stop surviving; next check: count graduation within the horizon as success |
 | The maturity value counts stable hypotheses, which are mostly text fragments | the system leaves its infant rhythm earlier than its developmental stage suggests | couple maturity to the kind of learned content once sentence relations appear |
 | Facts are observed text fragments with the relation `observed_as`; 27 % come from references | no statements about content yet | deferred: early developmental stage, the system is still learning words and sentence structure |
 | Relations (`associated_with`) and categories often join single characters or syllables | early relations and categories are noise; categories are stable now, but still made of characters and syllables | deferred: improves with learned word boundaries |
-| Unverified text contrasts are never resolved automatically | many contrasts in the table | intended (repetition is not truth) |
+| Unverified text contrasts are never resolved automatically | since 16 November 2026 they form only under the frame rules (36 frame gaps in 1,000 cycles instead of 27,032 per-pair gaps); the 274,644 old ones stay in the table, their gaps are habituated | intended (repetition is not truth); old rows reversible via `semantic_frame_gap_log` |
 | At most one graduation per cycle | limits learning speed | intended budget |
 | Reading continues during sleep | sleep costs no reading time | biologically, sensory input is gated during sleep; open decision |
 | `Audits/System_Audit_2026-09-28.md` | describes the state of 28 September 2026 | historical document |

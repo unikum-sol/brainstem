@@ -97,9 +97,11 @@ LOAD_ORDER = [{'module': 'v8_context_observation_learning_release',
  {'module': 'v8_stageb_ontology_promotion_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_ONTOLOGY_PROMOTION'},
  {'module': 'v8_stageb_question_promotion_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_QUESTION_PROMOTION'},
  {'module': 'v8_stageb_question_chunk_feedback_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_QUESTION_CHUNK_FEEDBACK'},
- {'module': 'v8_log_retention', 'how': 'autoload', 'target': 'LOOP', 'label': 'LOG_RETENTION_MAINTENANCE'}]
+ {'module': 'v8_log_retention', 'how': 'autoload', 'target': 'LOOP', 'label': 'LOG_RETENTION_MAINTENANCE'},
+ # Outermost: one durable commit per cycle around the whole chain.
+ {'module': 'v8_cycle_transaction', 'how': 'autoload', 'target': 'LOOP', 'label': 'CYCLE_TRANSACTION'}]
 
-EXPECTED_TOP_MODULE = "v8_log_retention"
+EXPECTED_TOP_MODULE = "v8_cycle_transaction"
 
 
 def _resolve_arg(target, autonomous_globals, AutonomousLoop):
