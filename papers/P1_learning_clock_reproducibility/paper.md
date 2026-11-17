@@ -1,13 +1,13 @@
 ---
 title: "Learning on an Experience Clock: A General Method for Repeatable and Paired Evaluation of Stochastic Learners, Demonstrated on a Biologically Inspired Text Learner"
-author: "Nick Stephan"
+author: "Unikum-Sol"
 date: "Draft of 17 November 2026"
 status: "Preprint draft, not peer reviewed"
 ---
 
 # Learning on an Experience Clock: A General Method for Repeatable and Paired Evaluation of Stochastic Learners, Demonstrated on a Biologically Inspired Text Learner
 
-**Nick Stephan**
+**Unikum-Sol**
 
 Draft of 17 November 2026. Preprint draft, not peer reviewed.
 
