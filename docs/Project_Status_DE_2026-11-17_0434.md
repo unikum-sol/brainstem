@@ -1,6 +1,6 @@
 # BrainStem: Projekt- und Funktionsstatus
 
-**Stand:** 16.11.2026, 22:19 Uhr
+**Stand:** 17.11.2026, 04:34 Uhr
 **Zählweise:** Alle Zyklenangaben sind Systemzyklen (ein Aufruf von `AutonomousLoop.cycle()`, ein Durchlauf der ganzen Phasenkette). Ein Dauerlern-Zyklus der GUI umfasst 5 Systemzyklen; 1.000 Zyklen entsprechen also 200 GUI-Zyklen. Der Entzug-Tab der GUI zählt Systemzyklen.
 **Umfang:** Code (`ki_system/`, `main.py`), Produktionsdatenbank `ki_memory.sqlite3`, Testergebnisse vom 12. und 13.11.2026, Produktionslauf vom 13.11.2026, Pakete A bis D und C5 des Arbeitsplans
 
@@ -274,6 +274,18 @@ Backups: vor dem Lauf `A:\ClaudeCode\Brainstem_db_backup_20261113_vor_langzeitla
 ---
 
 ## 6. Testergebnisse vom 12. und 13.11.2026
+
+### Benchmark mit mehreren Startwerten, 17.11.2026
+
+Einzelheiten in `Audits/Benchmark_Basislinie_2026-11-17_0434.md`; Werkzeug und Regeln in `benchmark/` und `benchmark/PROTOCOL.md`.
+
+| Punkt | Ergebnis |
+|---|---|
+| Werkzeug | jede Variante läuft mit mindestens fünf run_seed von frischen Kopien eines Snapshots; K1 bis K9 pro Startwert; Vergleich gepaart nach Startwert mit Bootstrap-95-%-Intervall und vorab festgelegter Grenze; Manifest mit Code-Hash, Snapshot, Python- und SQLite-Version |
+| Kurztest | zweimal derselbe Code, 2 Startwerte: jede gepaarte Differenz genau null |
+| Basislinie (Code 283091a, Startwerte 0 bis 4, 1.000 Zyklen) | alle neun Kriterien in allen fünf Startwerten, keine Ausnahmen; stabile Hypothesen +328,6 ± 5,2, Fakten 1.200 ± 7, Relationen 1.329 ± 5, Fangquote 0,897 ± 0,006 |
+| Gegencheck | Startwert 0 gleicht exakt dem Lauf über 1.000 Zyklen vom 16.11.2026, der noch mit dem Code vor der Beschleunigung lief |
+| Grenze | identische Varianten ergeben etwa ± 2,8 % bei der gepaarten Differenz der stabilen Hypothesen; Standardgrenze jetzt 5 % |
 
 ### Schnellere Wortstatistik, 16.11.2026
 

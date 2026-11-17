@@ -1,6 +1,6 @@
 # BrainStem: Project and Function Status
 
-**As of:** 16 November 2026, 22:19
+**As of:** 17 November 2026, 04:34
 **Cycle units:** All cycle counts are system cycles (one call of `AutonomousLoop.cycle()`, one pass through the whole phase chain). One autonomous-learning cycle in the GUI comprises 5 system cycles, so 1,000 cycles correspond to 200 GUI cycles. The GUI's drift tab counts system cycles.
 **Scope:** code (`ki_system/`, `main.py`), production database `ki_memory.sqlite3`, test results from 12 and 13 November 2026, production run of 13 November 2026, packages A to D and C5 of the work plan
 
@@ -274,6 +274,18 @@ Backups: before the run `A:\ClaudeCode\Brainstem_db_backup_20261113_vor_langzeit
 ---
 
 ## 6. Test Results from 12 and 13 November 2026
+
+### Benchmark with several run seeds, 17 November 2026
+
+Details in `Audits/Benchmark_Basislinie_2026-11-17_0434.md` (German); tool and rules in `benchmark/` and `benchmark/PROTOCOL.md`.
+
+| Item | Result |
+|---|---|
+| Tool | each variant runs with at least five run seeds from fresh copies of one snapshot; K1 to K9 per seed; variants compared by paired differences with bootstrap 95 % intervals and a non-inferiority margin fixed in advance; manifest with code hash, snapshot, Python and SQLite version |
+| Smoke test | the same code twice, 2 seeds: every paired difference exactly zero |
+| Seed baseline (code 283091a, seeds 0 to 4, 1,000 cycles) | all nine criteria in all five seeds, no exceptions; stable hypotheses +328.6 ± 5.2, facts 1,200 ± 7, relations 1,329 ± 5, capture rate 0.897 ± 0.006 |
+| Cross-check | seed 0 equals the 1,000-cycle run of 16 November 2026 exactly, which still ran the code before the speed-up |
+| Margin | identical variants give about ± 2.8 % on the paired difference in stable hypotheses; default margin now 5 % |
 
 ### Faster lexical statistics, 16 November 2026
 

@@ -1,4 +1,4 @@
-## BrainStem Update 16.11.26
+## BrainStem Update 17.11.26
 
 [![Status: Experimental](https://img.shields.io/badge/status-experimental-orange)](#current-state)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](#running-the-system)
@@ -36,7 +36,7 @@ One CPU Core / No GPU
 ---
 ### Current State
 
-#### Status as of 16 November 2026
+#### Status as of 17 November 2026
 
 All cycle counts are system cycles; one autonomous-learning cycle in the GUI comprises 5 of them (see [Cycle units](#cycle-units)).
 
@@ -47,6 +47,7 @@ All cycle counts are system cycles; one autonomous-learning cycle in the GUI com
 - **Ontology from words, coexisting memories, faster strategy phases (16 November 2026):** following an advisory council, ontology categories now form only from word-level units, so the ontology stays empty until words are confirmed; two consolidated sentences that share a cue now coexist instead of revising each other; phases 5b and 5d compute their averages with index-backed queries (0.59 to 0.012 s and 0.35 to 0.18 s per cycle, identical values). A 1,000-cycle test run uncovered a savepoint error in the new ontology code, which was fixed; a 200-cycle check afterwards ran without exceptions or diagnostic findings. Details: the project status reports under `docs/`.
 - **Half the computation per cycle (16 November 2026):** partial indexes on the gap table let phases 5e, 5f, 5g, 5i, 6a and gap detection read only the about 1,300 active gaps instead of all 276,000 (2.1 s to 0.03 s per cycle, identical results); the process CPU time per cycle fell from about 5.1 to 2.6 s. A 1,000-cycle test run met all nine calibration criteria without exceptions or diagnostic findings. The capture-rate criterion K5 now counts only traces tagged at least 250 cycles before the end of a run, because capture takes a median of 62 and at most about 240 cycles. Details: the project status reports under `docs/`.
 - **Sentence frames instead of text contrasts, one commit per cycle (16 November 2026):** following an advisory council, two sentences that differ in one position are stored as a sentence frame with interchangeable fillers, the evidence from which word classes form, and become a contradiction only under strict conditions (see [Sentence frames instead of text contrasts](#sentence-frames-instead-of-text-contrasts)). In an A/B comparison over 1,000 cycles each on identical production copies, the old code added 27,032 unverified contradictions and as many gaps, the new code no contradictions and 36 frame gaps, while learning was at least as good (stable hypotheses +339 against +319, all nine calibration criteria met in both). Each cycle now commits once instead of about 74 times; this writes about a fifth less, while the wall time on the storage pool did not change measurably. A 500-cycle check with both changes ran without exceptions or diagnostic findings. Details: the project status reports under `docs/`.
+- **Benchmark with several run seeds (17 November 2026):** `benchmark/` runs each code variant with at least five run seeds from one snapshot and compares variants by paired differences. A first baseline of the current code met all nine calibration criteria in all five seeds; identical code spreads by 1.6 % between seeds in stable hypotheses (328.6 ± 5.2 per 1,000 cycles), 0.6 % in facts and 0.4 % in relations, so the non-inferiority margin is set to 5 %. Seed 0 reproduced the 1,000-cycle run of the day before exactly.
 - **Faster lexical statistics (16 November 2026):** Phase 0 reads the transition counts of each context once per cycle instead of once per chunk and decides each context once per chunk; cue competition keeps context statistics for the rest of the cycle; reading-queue seeding skips its full corpus scan once every chunk is queued, and a partial index serves the pending chunks. The CPU time per cycle fell from 2.76 to 2.46 s (paired over 40 cycles, saving 0.30 s, 95 % interval 0.26 to 0.34 s). Old and new code from identical copies end with all tables identical after 100 cycles.
 - **Reproducible learning (16 November 2026):** two learning runs from the same state now end in the same state. Before, two 100-cycle runs from byte-identical copies differed in 101 of 156 tables (4,547 against 4,541 stable hypotheses), because some phases seeded their randomness from the wall clock and some decisions depended on wall-clock seconds. Learning now runs on a learning clock (one tick per cycle) with seeded randomness; two runs with different Python hash seeds and start times are identical in all 157 tables including every timestamp, a run interrupted and restarted equals an uninterrupted one, and a different run seed gives a different replicate. A 1,000-cycle run met all nine calibration criteria. See [Learning clock and reproducibility](#learning-clock-and-reproducibility).
 - **Stability check (14 November 2026):** a 1,500-cycle sensory-deprivation run on the compacted production state ended with the verdict "konvergenz": all 21 signals stable or converging, no regulator at a boundary, and consolidation continued without input (stable hypotheses 2,598 to 3,196).
@@ -70,7 +71,6 @@ A full read-through of the corpus and more than 11,500 learning cycles ran witho
 ---
 ### Next Major Steps
 - Ontology from sentence frames: once words are confirmed, form categories from fillers that share at least two frames across different articles, instead of co-occurrence; use syllable classes to support word segmentation.
-- Seed baseline: run the current code with five run seeds (started 16 November 2026) to see how far identical code spreads between seeds; it is the reference for judging later changes with `benchmark/`.
 - Watch the learning rate: its spread over a run has narrowed to about 0.010 to 0.012, close to the calibration bound of 0.01.
 - Content-weighted maturity: observe the shadow value over several runs before coupling it to the sleep rhythm.
 - Observe the reward prediction error, learning progress and meta-parameter regulation over a long production run, and how the closure signal develops as more gaps are resolved.
@@ -359,6 +359,8 @@ Verified on 16 November 2026: two 100-cycle runs from byte-identical copies with
 ### Benchmarks
 
 `benchmark/` compares code variants under a fixed protocol (`benchmark/PROTOCOL.md`). Because learning is reproducible, one run seed is one exact sample, and the only variance between runs comes from the seed; a single run therefore says little about a change. Each variant runs with at least five run seeds, the same seeds for both variants, from fresh copies of one snapshot, 1,000 cycles each. The tool reports every seed against the calibration criteria K1 to K9, the mean, spread and range per variant, and the paired difference per measure with a bootstrap 95 % interval and a non-inferiority verdict against a margin fixed in advance (Henderson et al. 2018; Bouthillier et al. 2021; Pineau et al. 2021). A manifest records code hash, snapshot, Python and SQLite version.
+
+The seed baseline of 17 November 2026 (code 283091a, five seeds, 1,000 cycles) gives the spread of identical code: 328.6 ± 5.2 stable hypotheses, 1,200 ± 7 facts, 1,329 ± 5 relations, capture rate 0.897 ± 0.006. Two identical variants would give a 95 % interval of about ± 2.8 % on the paired difference in stable hypotheses, so the default margin is 5 %.
 
 ```
 python benchmark/benchmark.py run --snapshot <db> --code <project folder> --label A --out <dir>

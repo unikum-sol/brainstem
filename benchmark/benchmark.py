@@ -11,7 +11,7 @@ Commands
   run      python benchmark.py run --snapshot DB --code PROJECT --label A
                                    --out DIR [--seeds 0,1,2,3,4] [--cycles 1000]
                                    [--parallel 2] [--keep-db]
-  compare  python benchmark.py compare --out DIR --a A --b B [--margin 0.10]
+  compare  python benchmark.py compare --out DIR --a A --b B [--margin 0.05]
   report   python benchmark.py report --out DIR --a A
 
 PROJECT is a folder that contains ki_system/ (for example the BrainStem
@@ -283,7 +283,7 @@ def main():
     r.add_argument("--parallel", type=int, default=2); r.add_argument("--keep-db", action="store_true")
     c = sub.add_parser("compare")
     c.add_argument("--out", required=True); c.add_argument("--a", required=True); c.add_argument("--b", required=True)
-    c.add_argument("--margin", type=float, default=0.10)
+    c.add_argument("--margin", type=float, default=0.05)
     rp = sub.add_parser("report")
     rp.add_argument("--out", required=True); rp.add_argument("--a", required=True)
     a = p.parse_args()
