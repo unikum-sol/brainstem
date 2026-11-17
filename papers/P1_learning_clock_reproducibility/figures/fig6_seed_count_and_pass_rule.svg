@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330" width="760" height="330">
+<rect width="760" height="330" fill="#ffffff"/>
+<line x1="70.0" x2="360.0" y1="260.0" y2="260.0" stroke="#e6e5e1" stroke-width="1"/>
+<text x="64.0" y="264.0" font-size="11" fill="#8a8984" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">0</text>
+<line x1="70.0" x2="360.0" y1="225.0" y2="225.0" stroke="#e6e5e1" stroke-width="1"/>
+<text x="64.0" y="229.0" font-size="11" fill="#8a8984" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">1</text>
+<line x1="70.0" x2="360.0" y1="190.0" y2="190.0" stroke="#e6e5e1" stroke-width="1"/>
+<text x="64.0" y="194.0" font-size="11" fill="#8a8984" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">2</text>
+<line x1="70.0" x2="360.0" y1="155.0" y2="155.0" stroke="#e6e5e1" stroke-width="1"/>
+<text x="64.0" y="159.0" font-size="11" fill="#8a8984" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">3</text>
+<line x1="70.0" x2="360.0" y1="120.0" y2="120.0" stroke="#e6e5e1" stroke-width="1"/>
+<text x="64.0" y="124.0" font-size="11" fill="#8a8984" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">4</text>
+<line x1="70.0" x2="360.0" y1="85.0" y2="85.0" stroke="#e6e5e1" stroke-width="1"/>
+<text x="64.0" y="89.0" font-size="11" fill="#8a8984" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">5</text>
+<line x1="70.0" x2="360.0" y1="50.0" y2="50.0" stroke="#e6e5e1" stroke-width="1"/>
+<text x="64.0" y="54.0" font-size="11" fill="#8a8984" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">6</text>
+<text x="70.0" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">3</text>
+<text x="106.2" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">5</text>
+<text x="142.5" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">7</text>
+<text x="178.8" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">9</text>
+<text x="215.0" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">11</text>
+<text x="251.2" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">13</text>
+<text x="287.5" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">15</text>
+<text x="323.8" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">17</text>
+<text x="360.0" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">19</text>
+<line x1="70.0" x2="360.0" y1="260.0" y2="260.0" stroke="#8a8984" stroke-width="1"/>
+<text x="215.0" y="294.0" font-size="12" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">number of run seeds per variant</text>
+<text x="24.0" y="155.0" font-size="12" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif" transform="rotate(-90 24.0 155.0)">95 % half-width (% of mean)</text>
+<text x="70.0" y="38.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="bold" style="font-family:Helvetica,Arial,sans-serif">(a) resolution of a paired comparison</text>
+<polyline points="70.0,66.3 88.1,135.9 106.2,163.2 124.4,178.2 142.5,187.9 160.6,194.8 178.8,200.1 196.9,204.2 215.0,207.6 233.1,210.5 251.2,212.9 269.4,215.0 287.5,216.8 305.6,218.5 323.8,219.9 341.9,221.2 360.0,222.4" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="1"/>
+<polyline points="70.0,186.0 88.1,212.6 106.2,223.0 124.4,228.7 142.5,232.4 160.6,235.1 178.8,237.1 196.9,238.7 215.0,240.0 233.1,241.1 251.2,242.0 269.4,242.8 287.5,243.5 305.6,244.1 323.8,244.7 341.9,245.2 360.0,245.6" fill="none" stroke="#eb6834" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="1"/>
+<polyline points="70.0,214.2 88.1,230.7 106.2,237.1 124.4,240.7 142.5,242.9 160.6,244.6 178.8,245.8 196.9,246.8 215.0,247.6 233.1,248.3 251.2,248.9 269.4,249.4 287.5,249.8 305.6,250.2 323.8,250.5 341.9,250.8 360.0,251.1" fill="none" stroke="#1baf7a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="1"/>
+<line x1="70.0" x2="360.0" y1="85.0" y2="85.0" stroke="#52514e" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="360.0" y="79.0" font-size="11" fill="#52514e" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">margin 5 %</text>
+<line x1="106.2" x2="106.2" y1="50.0" y2="260.0" stroke="#8a8984" stroke-width="1" stroke-dasharray="2 3"/>
+<line x1="187" x2="209" y1="116" y2="116" stroke="#2a78d6" stroke-width="2.5"/>
+<text x="215.8" y="120.5" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">stable hypotheses</text>
+<line x1="187" x2="209" y1="134" y2="134" stroke="#eb6834" stroke-width="2.5"/>
+<text x="215.8" y="138.5" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">facts</text>
+<line x1="187" x2="209" y1="152" y2="152" stroke="#1baf7a" stroke-width="2.5"/>
+<text x="215.8" y="156.5" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">relations</text>
+<line x1="450.0" x2="720.0" y1="260.0" y2="260.0" stroke="#e6e5e1" stroke-width="1"/>
+<text x="444.0" y="264.0" font-size="11" fill="#8a8984" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">0.0</text>
+<line x1="450.0" x2="720.0" y1="218.0" y2="218.0" stroke="#e6e5e1" stroke-width="1"/>
+<text x="444.0" y="222.0" font-size="11" fill="#8a8984" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">0.2</text>
+<line x1="450.0" x2="720.0" y1="176.0" y2="176.0" stroke="#e6e5e1" stroke-width="1"/>
+<text x="444.0" y="180.0" font-size="11" fill="#8a8984" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">0.4</text>
+<line x1="450.0" x2="720.0" y1="134.0" y2="134.0" stroke="#e6e5e1" stroke-width="1"/>
+<text x="444.0" y="138.0" font-size="11" fill="#8a8984" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">0.6</text>
+<line x1="450.0" x2="720.0" y1="92.0" y2="92.0" stroke="#e6e5e1" stroke-width="1"/>
+<text x="444.0" y="96.0" font-size="11" fill="#8a8984" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">0.8</text>
+<line x1="450.0" x2="720.0" y1="50.0" y2="50.0" stroke="#e6e5e1" stroke-width="1"/>
+<text x="444.0" y="54.0" font-size="11" fill="#8a8984" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">1.0</text>
+<text x="450.0" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">0.0</text>
+<text x="504.0" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">0.2</text>
+<text x="558.0" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">0.4</text>
+<text x="612.0" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">0.6</text>
+<text x="666.0" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">0.8</text>
+<text x="720.0" y="276.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">1.0</text>
+<line x1="450.0" x2="720.0" y1="260.0" y2="260.0" stroke="#8a8984" stroke-width="1"/>
+<text x="585.0" y="294.0" font-size="12" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">per-seed failure probability p</text>
+<text x="404.0" y="155.0" font-size="12" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif" transform="rotate(-90 404.0 155.0)">probability that the criterion passes</text>
+<text x="450.0" y="38.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="bold" style="font-family:Helvetica,Arial,sans-serif">(b) operating characteristic of the pass rule</text>
+<polyline points="450.0,50.0 452.7,50.2 455.4,50.8 458.1,51.8 460.8,53.1 463.5,54.7 466.2,56.7 468.9,58.9 471.6,61.4 474.3,64.1 477.0,67.1 479.7,70.3 482.4,73.6 485.1,77.1 487.8,80.8 490.5,84.6 493.2,88.5 495.9,92.6 498.6,96.7 501.3,100.9 504.0,105.2 506.7,109.5 509.4,113.9 512.1,118.3 514.8,122.7 517.5,127.1 520.2,131.5 522.9,136.0 525.6,140.4 528.3,144.7 531.0,149.1 533.7,153.4 536.4,157.6 539.1,161.8 541.8,166.0 544.5,170.0 547.2,174.0 549.9,178.0 552.6,181.8 555.3,185.6 558.0,189.2 560.7,192.8 563.4,196.3 566.1,199.7 568.8,203.0 571.5,206.2 574.2,209.3 576.9,212.3 579.6,215.2 582.3,217.9 585.0,220.6 587.7,223.2 590.4,225.7 593.1,228.0 595.8,230.3 598.5,232.4 601.2,234.5 603.9,236.5 606.6,238.3 609.3,240.1 612.0,241.7 614.7,243.3 617.4,244.8 620.1,246.1 622.8,247.4 625.5,248.7 628.2,249.8 630.9,250.8 633.6,251.8 636.3,252.7 639.0,253.5 641.7,254.3 644.4,255.0 647.1,255.6 649.8,256.2 652.5,256.7 655.2,257.2 657.9,257.6 660.6,258.0 663.3,258.3 666.0,258.6 668.7,258.8 671.4,259.1 674.1,259.2 676.8,259.4 679.5,259.5 682.2,259.6 684.9,259.7 687.6,259.8 690.3,259.9 693.0,259.9 695.7,259.9 698.4,260.0 701.1,260.0 703.8,260.0 706.5,260.0 709.2,260.0 711.9,260.0 714.6,260.0 717.3,260.0 720.0,260.0" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="1"/>
+<polyline points="450.0,50.0 452.7,60.3 455.4,70.2 458.1,79.7 460.8,88.8 463.5,97.5 466.2,105.9 468.9,113.9 471.6,121.6 474.3,129.0 477.0,136.0 479.7,142.7 482.4,149.2 485.1,155.3 487.8,161.2 490.5,166.8 493.2,172.2 495.9,177.3 498.6,182.1 501.3,186.8 504.0,191.2 506.7,195.4 509.4,199.4 512.1,203.2 514.8,206.8 517.5,210.2 520.2,213.4 522.9,216.5 525.6,219.4 528.3,222.1 531.0,224.7 533.7,227.2 536.4,229.5 539.1,231.6 541.8,233.7 544.5,235.6 547.2,237.5 549.9,239.2 552.6,240.8 555.3,242.3 558.0,243.7 560.7,245.0 563.4,246.2 566.1,247.4 568.8,248.4 571.5,249.4 574.2,250.4 576.9,251.2 579.6,252.0 582.3,252.8 585.0,253.4 587.7,254.1 590.4,254.6 593.1,255.2 595.8,255.7 598.5,256.1 601.2,256.5 603.9,256.9 606.6,257.3 609.3,257.6 612.0,257.8 614.7,258.1 617.4,258.3 620.1,258.5 622.8,258.7 625.5,258.9 628.2,259.0 630.9,259.2 633.6,259.3 636.3,259.4 639.0,259.5 641.7,259.6 644.4,259.6 647.1,259.7 649.8,259.8 652.5,259.8 655.2,259.8 657.9,259.9 660.6,259.9 663.3,259.9 666.0,259.9 668.7,259.9 671.4,260.0 674.1,260.0 676.8,260.0 679.5,260.0 682.2,260.0 684.9,260.0 687.6,260.0 690.3,260.0 693.0,260.0 695.7,260.0 698.4,260.0 701.1,260.0 703.8,260.0 706.5,260.0 709.2,260.0 711.9,260.0 714.6,260.0 717.3,260.0 720.0,260.0" fill="none" stroke="#eb6834" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="1"/>
+<polyline points="450.0,50.0 452.7,50.9 455.4,53.4 458.1,57.2 460.8,62.2 463.5,68.1 466.2,74.7 468.9,81.9 471.6,89.5 474.3,97.3 477.0,105.4 479.7,113.6 482.4,121.8 485.1,129.9 487.8,137.9 490.5,145.7 493.2,153.3 495.9,160.7 498.6,167.8 501.3,174.6 504.0,181.1 506.7,187.3 509.4,193.1 512.1,198.7 514.8,203.9 517.5,208.8 520.2,213.3 522.9,217.6 525.6,221.6 528.3,225.2 531.0,228.6 533.7,231.8 536.4,234.7 539.1,237.3 541.8,239.7 544.5,241.9 547.2,244.0 549.9,245.8 552.6,247.4 555.3,248.9 558.0,250.3 560.7,251.5 563.4,252.5 566.1,253.5 568.8,254.4 571.5,255.1 574.2,255.8 576.9,256.4 579.6,256.9 582.3,257.3 585.0,257.7 587.7,258.1 590.4,258.4 593.1,258.6 595.8,258.9 598.5,259.1 601.2,259.2 603.9,259.4 606.6,259.5 609.3,259.6 612.0,259.6 614.7,259.7 617.4,259.8 620.1,259.8 622.8,259.9 625.5,259.9 628.2,259.9 630.9,259.9 633.6,259.9 636.3,260.0 639.0,260.0 641.7,260.0 644.4,260.0 647.1,260.0 649.8,260.0 652.5,260.0 655.2,260.0 657.9,260.0 660.6,260.0 663.3,260.0 666.0,260.0 668.7,260.0 671.4,260.0 674.1,260.0 676.8,260.0 679.5,260.0 682.2,260.0 684.9,260.0 687.6,260.0 690.3,260.0 693.0,260.0 695.7,260.0 698.4,260.0 701.1,260.0 703.8,260.0 706.5,260.0 709.2,260.0 711.9,260.0 714.6,260.0 717.3,260.0 720.0,260.0" fill="none" stroke="#1baf7a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="1" stroke-dasharray="6 4"/>
+<line x1="560" x2="582" y1="72" y2="72" stroke="#2a78d6" stroke-width="2.5"/>
+<text x="588.0" y="76.0" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">5 seeds, at most 1 failure</text>
+<line x1="560" x2="582" y1="90" y2="90" stroke="#eb6834" stroke-width="2.5"/>
+<text x="588.0" y="94.0" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">5 seeds, none (K9)</text>
+<line x1="560" x2="582" y1="108" y2="108" stroke="#1baf7a" stroke-width="2.5" stroke-dasharray="6 4"/>
+<text x="588.0" y="112.0" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">10 seeds, at most 1 failure</text>
+</svg>

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" width="760" height="300">
+<rect width="760" height="300" fill="#ffffff"/>
+<text x="20.0" y="24.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="bold" style="font-family:Helvetica,Arial,sans-serif">Tables of the database that end identical in two runs</text>
+<line x1="250.0" x2="250.0" y1="46" y2="250" stroke="#e6e5e1"/>
+<text x="250.0" y="278.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">0</text>
+<line x1="332.5" x2="332.5" y1="46" y2="250" stroke="#e6e5e1"/>
+<text x="332.5" y="278.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">40</text>
+<line x1="415.0" x2="415.0" y1="46" y2="250" stroke="#e6e5e1"/>
+<text x="415.0" y="278.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">80</text>
+<line x1="497.5" x2="497.5" y1="46" y2="250" stroke="#e6e5e1"/>
+<text x="497.5" y="278.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">120</text>
+<line x1="580.0" x2="580.0" y1="46" y2="250" stroke="#e6e5e1"/>
+<text x="580.0" y="278.0" font-size="11" fill="#8a8984" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">160</text>
+<text x="415.0" y="298.0" font-size="12" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">number of tables</text>
+<text x="240.0" y="64.0" font-size="11" fill="#0b0b0b" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">A/A before the fix (100 cycles,</text>
+<text x="240.0" y="78.0" font-size="11" fill="#52514e" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">time columns excluded)</text>
+<rect x="250.0" y="52" width="112.4" height="30" rx="4" fill="#2a78d6"/>
+<rect x="364.4" y="52" width="207.3" height="30" rx="4" fill="#eb6834"/>
+<text x="577.8" y="72.0" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">55 identical, 101 differing</text>
+<text x="240.0" y="120.0" font-size="11" fill="#0b0b0b" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">A/A after the fix (100 cycles,</text>
+<text x="240.0" y="134.0" font-size="11" fill="#52514e" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">all columns incl. timestamps)</text>
+<rect x="250.0" y="108" width="322.8" height="30" rx="4" fill="#2a78d6"/>
+<text x="579.8" y="128.0" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">157 identical, 0 differing</text>
+<text x="240.0" y="176.0" font-size="11" fill="#0b0b0b" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">Restart: 50 + 50 cycles</text>
+<text x="240.0" y="190.0" font-size="11" fill="#52514e" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">vs. 100 cycles in one process</text>
+<rect x="250.0" y="164" width="322.8" height="30" rx="4" fill="#2a78d6"/>
+<text x="579.8" y="184.0" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">157 identical, 0 differing</text>
+<text x="240.0" y="232.0" font-size="11" fill="#0b0b0b" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">Other run seed (1 vs. 0)</text>
+<text x="240.0" y="246.0" font-size="11" fill="#52514e" text-anchor="end" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">100 cycles</text>
+<rect x="250.0" y="220" width="124.8" height="30" rx="4" fill="#2a78d6"/>
+<rect x="376.8" y="220" width="197.0" height="30" rx="4" fill="#eb6834"/>
+<text x="579.8" y="240.0" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">61 identical, 96 differing</text>
+<rect x="470" y="14" width="12" height="12" rx="2" fill="#2a78d6"/>
+<text x="487.0" y="24.0" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">identical</text>
+<rect x="550" y="14" width="12" height="12" rx="2" fill="#eb6834"/>
+<text x="567.0" y="24.0" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">differing</text>
+</svg>

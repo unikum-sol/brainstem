@@ -1,0 +1,22 @@
+{
+ "label": "baseline_283091a_s1",
+ "run_seed": "1",
+ "cycles": 1000,
+ "exceptions": 0,
+ "diag_findings": 0,
+ "elapsed_s": 20822,
+ "stable_start": 4505,
+ "stable_end": 4832,
+ "tagged": 376,
+ "captured": 323,
+ "tagged_uncensored": 284,
+ "captured_uncensored": 257,
+ "capture_window": 250,
+ "regulation_events": 6913,
+ "saturation_events": 0,
+ "boundary_events": 0,
+ "critic_snapshots": 1397,
+ "facts": 1197,
+ "relations": 1329,
+ "quick_check": "ok"
+}

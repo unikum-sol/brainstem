@@ -1,0 +1,21 @@
+{
+ "label": "det_1000",
+ "cycles": 1000,
+ "exceptions": 0,
+ "diag_findings": 0,
+ "elapsed_s": 5551,
+ "stable_start": 4505,
+ "stable_end": 4828,
+ "tagged": 378,
+ "captured": 322,
+ "tagged_uncensored": 288,
+ "captured_uncensored": 259,
+ "capture_window": 250,
+ "regulation_events": 7209,
+ "saturation_events": 0,
+ "boundary_events": 0,
+ "critic_snapshots": 1393,
+ "facts": 1212,
+ "relations": 1321,
+ "quick_check": "ok"
+}

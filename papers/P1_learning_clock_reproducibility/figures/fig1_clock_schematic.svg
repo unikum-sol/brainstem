@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" width="760" height="300">
+<rect width="760" height="300" fill="#ffffff"/>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#52514e"/></marker></defs>
+<text x="20.0" y="26.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="bold" style="font-family:Helvetica,Arial,sans-serif">One learning cycle (one durable transaction)</text>
+<rect x="20" y="44" width="170" height="70" rx="6" fill="#eef5fd" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="105.0" y="68.0" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="bold" style="font-family:Helvetica,Arial,sans-serif">cycle transaction</text>
+<text x="105.0" y="86.0" font-size="11" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">advance(): cycle += 1</text>
+<text x="105.0" y="102.0" font-size="11" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">kept by a step boundary</text>
+<line x1="190" y1="79" x2="240" y2="79" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="240" y="44" width="250" height="70" rx="6" fill="#f7f7f5" stroke="#8a8984" stroke-width="1.5"/>
+<text x="365.0" y="68.0" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="bold" style="font-family:Helvetica,Arial,sans-serif">36 learning phases in fixed order</text>
+<text x="365.0" y="86.0" font-size="11" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">time:  now() = base + cycle</text>
+<text x="365.0" y="102.0" font-size="11" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">noise: rng(phase, purpose)</text>
+<line x1="490" y1="79" x2="540" y2="79" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="540" y="44" width="200" height="70" rx="6" fill="#eef5fd" stroke="#2a78d6" stroke-width="1.5"/>
+<text x="640.0" y="68.0" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="bold" style="font-family:Helvetica,Arial,sans-serif">one commit at cycle end</text>
+<text x="640.0" y="86.0" font-size="11" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">state(t+1) = F(state(t),</text>
+<text x="640.0" y="102.0" font-size="11" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">cycle, run_seed)</text>
+<text x="20.0" y="156.0" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="bold" style="font-family:Helvetica,Arial,sans-serif">Inputs of every random stream (counter-based seeding)</text>
+<rect x="20" y="172" width="110" height="46" rx="6" fill="#fdf0ea" stroke="#eb6834" stroke-width="1.5"/>
+<text x="75.0" y="192.0" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="bold" style="font-family:Helvetica,Arial,sans-serif">run_seed</text>
+<text x="75.0" y="208.0" font-size="10" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">replicate</text>
+<rect x="150" y="172" width="110" height="46" rx="6" fill="#fdf0ea" stroke="#eb6834" stroke-width="1.5"/>
+<text x="205.0" y="192.0" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="bold" style="font-family:Helvetica,Arial,sans-serif">cycle</text>
+<text x="205.0" y="208.0" font-size="10" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">learning clock</text>
+<rect x="280" y="172" width="110" height="46" rx="6" fill="#fdf0ea" stroke="#eb6834" stroke-width="1.5"/>
+<text x="335.0" y="192.0" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="bold" style="font-family:Helvetica,Arial,sans-serif">phase</text>
+<text x="335.0" y="208.0" font-size="10" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">module name</text>
+<rect x="410" y="172" width="110" height="46" rx="6" fill="#fdf0ea" stroke="#eb6834" stroke-width="1.5"/>
+<text x="465.0" y="192.0" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="bold" style="font-family:Helvetica,Arial,sans-serif">purpose</text>
+<text x="465.0" y="208.0" font-size="10" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">e.g. replay pick</text>
+<line x1="75" y1="218" x2="590" y2="252" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<line x1="205" y1="218" x2="590" y2="252" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<line x1="335" y1="218" x2="590" y2="252" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<line x1="465" y1="218" x2="590" y2="252" stroke="#52514e" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="540" y="240" width="200" height="46" rx="6" fill="#f7f7f5" stroke="#8a8984" stroke-width="1.5"/>
+<text x="640.0" y="260.0" font-size="12" fill="#0b0b0b" text-anchor="middle" font-weight="bold" style="font-family:Helvetica,Arial,sans-serif">blake2b, 64-bit seed</text>
+<text x="640.0" y="276.0" font-size="11" fill="#52514e" text-anchor="middle" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">random.Random(seed)</text>
+<text x="20.0" y="262.0" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">Wall-clock time stays outside learning:</text>
+<text x="20.0" y="278.0" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal" style="font-family:Helvetica,Arial,sans-serif">GUI, import, logs, log compaction, WAL maintenance.</text>
+</svg>

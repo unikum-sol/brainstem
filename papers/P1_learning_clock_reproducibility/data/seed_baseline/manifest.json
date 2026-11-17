@@ -1,0 +1,23 @@
+{
+ "label": "baseline_283091a",
+ "seeds": [
+  "0",
+  "1",
+  "2",
+  "3",
+  "4"
+ ],
+ "cycles": 1000,
+ "code": "A:\\ClaudeCode\\Brainstem-main\\Brainstem",
+ "code_sha256": "379c4957ef486ae3",
+ "snapshot": {
+  "path": "A:\\ClaudeCode\\Brainstem-main\\benchmarks\\snapshots\\production_2026-11-15.sqlite3",
+  "bytes": 8087453696,
+  "head_tail_sha256": "89f4c35053f26713"
+ },
+ "python": "3.11.8",
+ "sqlite": "3.43.1",
+ "machine": "Windows-10-10.0.19045-SP0",
+ "started": "2026-11-16 22:37:58",
+ "finished": "2026-11-17 04:33:23"
+}

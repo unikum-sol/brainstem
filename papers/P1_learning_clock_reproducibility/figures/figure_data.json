@@ -1,0 +1,129 @@
+{
+ "tables": {
+  "before_fix_AA": [
+   55,
+   101
+  ],
+  "after_fix_AA": [
+   157,
+   0
+  ],
+  "restart": [
+   157,
+   0
+  ],
+  "other_run_seed": [
+   61,
+   96
+  ]
+ },
+ "det_vs_seed0_differing_cells": 0,
+ "det_vs_seed0_cells_compared": 24000,
+ "first_divergent_cycle": {
+  "1": 12,
+  "2": 12,
+  "3": 12,
+  "4": 12
+ },
+ "first_sleep_cycle_seed0": 11,
+ "wall": {
+  "det_sum_s": 5550.910999999988,
+  "det_median_s": 2.9325,
+  "seed0_sum_s": 20979.97200000003,
+  "seed0_median_s": 22.566499999999998
+ },
+ "seed_measures": {
+  "0": {
+   "stable_gain": 323,
+   "facts": 1212,
+   "relations": 1321,
+   "capture_rate": 0.8993055555555556
+  },
+  "1": {
+   "stable_gain": 327,
+   "facts": 1197,
+   "relations": 1329,
+   "capture_rate": 0.9049295774647887
+  },
+  "2": {
+   "stable_gain": 325,
+   "facts": 1196,
+   "relations": 1334,
+   "capture_rate": 0.8896797153024911
+  },
+  "3": {
+   "stable_gain": 333,
+   "facts": 1202,
+   "relations": 1332,
+   "capture_rate": 0.898989898989899
+  },
+  "4": {
+   "stable_gain": 335,
+   "facts": 1194,
+   "relations": 1329,
+   "capture_rate": 0.8938356164383562
+  }
+ },
+ "sleep_cycles": {
+  "0": 411,
+  "1": 411,
+  "2": 408,
+  "3": 410,
+  "4": 411
+ },
+ "half_widths": [
+  {
+   "measure": "stable_gain",
+   "mean": 328.6,
+   "sd": 5.176871642217914,
+   "half_width_pct": 2.7659816548652367
+  },
+  {
+   "measure": "facts",
+   "mean": 1200.2,
+   "sd": 7.224956747275377,
+   "half_width_pct": 1.0568931582342047
+  },
+  {
+   "measure": "relations",
+   "mean": 1329,
+   "sd": 4.949747468305833,
+   "half_width_pct": 0.6538942503954237
+  },
+  {
+   "measure": "capture_rate",
+   "mean": 0.8973480727502181,
+   "sd": 0.005812650027319767,
+   "half_width_pct": 1.1372676834643212
+  }
+ ],
+ "oc": {
+  "0.1": {
+   "5_1": 0.9185400000000001,
+   "5_0": 0.5904900000000001,
+   "10_1": 0.7360989291000002
+  },
+  "0.3": {
+   "5_1": 0.5282199999999999,
+   "5_0": 0.16806999999999994,
+   "10_1": 0.14930834589999992
+  },
+  "0.5": {
+   "5_1": 0.1875,
+   "5_0": 0.03125,
+   "10_1": 0.0107421875
+  }
+ },
+ "noninferiority_sim": {
+  "reps": 20000,
+  "sd_diff_pct": 2.2279982005749392,
+  "coverage_t": 0.9507,
+  "coverage_boot": 0.84125,
+  "pass_at_margin_t": 0.0247,
+  "pass_at_margin_boot": 0.079,
+  "pass_at_0_t": 0.9565,
+  "pass_at_0_boot": 0.9973,
+  "pass_at_-2.5_t": 0.48285,
+  "pass_at_-2.5_boot": 0.77295
+ }
+}
