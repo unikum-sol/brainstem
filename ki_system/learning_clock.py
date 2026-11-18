@@ -143,3 +143,10 @@ def data_epoch():
 
 def bump_data_epoch():
     _state["data_epoch"] += 1
+
+
+def uniform(phase, key):
+    """A uniform number in [0, 1) for one item in the current cycle, fixed by
+    run seed, cycle, phase and item key; cheaper than a generator per item."""
+    text = "%s|%d|%s|%s" % (_state["run_seed"] or "0", cycle(), phase, key)
+    return int.from_bytes(hashlib.blake2b(text.encode("utf-8"), digest_size=8).digest(), "big") / 18446744073709551616.0

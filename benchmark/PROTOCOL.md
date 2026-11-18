@@ -62,3 +62,20 @@ A margin must be wider than the interval two identical variants produce, otherwi
 - Pineau, J. et al. (2021) Improving Reproducibility in Machine Learning Research. JMLR.
 - Sandve, G. K. et al. (2013) Ten Simple Rules for Reproducible Computational Research. PLoS Computational Biology.
 - Lakens, D. (2017) Equivalence Tests. Social Psychological and Personality Science.
+
+## Amendment 1 (17 November 2026): K7 becomes a responsiveness probe
+
+**Reason.** The original K7 (standard deviation of the learning rate above 0.01 over a run) does not measure what it should: a random walk or a sleep/wake swing passes it, and a correctly stable system can fail it. In the seed baseline the learning rate followed sleep pressure and did not respond to surprise at all (advisory council, `Audits/K7_Lernrate_Fakten_2026-11-17.md`). The old K7 stays in the reports as "K7 legacy (information)"; results under the old definition remain valid.
+
+**New K7** (Behrens et al. 2007; Nassar et al. 2010), fixed before the first comparison run (`Audits/Lernrate_Wirksam_Vorabregistrierung_2026-11-17.md`, Nachtrag 3):
+
+1. Each main run saves a checkpoint after cycle 500 (`run --checkpoint-at 500`). Two branches continue from it for 300 cycles (`branch --arm fail|sham --k 2000 --probe-len 10`): before each of the first 10 wake cycles, the fail branch inserts 2,000 marked experiment outcomes with score 0, the sham branch the same number with the mean score of the last 500 outcomes. The unperturbed main run is the control.
+2. All windows count from the probe onset t0 (first wake cycle with injected rows).
+3. Manipulation check: the largest 5-cycle mean of surprise (fail minus control) in cycles t0 to t0+9 is at least 0.10; otherwise the seed is invalid.
+4. Response: the largest 5-cycle mean of d = eta_raw(fail) minus eta_raw(control) in cycles t0 to t0+9 is at least delta = 0.05.
+5. Specificity: the largest 5-cycle mean of abs(eta_raw(sham) minus eta_raw(control)) in cycles t0 to t0+9 is below delta/2.
+6. Relaxation: the magnitude of the mean d over cycles t0+150 to t0+249 is below delta/2.
+7. The encoding rate stays within [0.05, 1] in all arms.
+8. Pass rule: all seeds but at most one. `python benchmark/benchmark.py k7 --out <dir> --label <variant>` evaluates it.
+
+delta = 0.05 is the smallest effect of interest (a 5 % higher encoding probability, Lakens 2017), fixed from the design, not from data.

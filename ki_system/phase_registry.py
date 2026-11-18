@@ -98,6 +98,9 @@ LOAD_ORDER = [{'module': 'v8_context_observation_learning_release',
  {'module': 'v8_stageb_question_promotion_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_QUESTION_PROMOTION'},
  {'module': 'v8_stageb_question_chunk_feedback_release', 'how': 'autoload', 'target': 'LOOP', 'label': 'STAGEB_QUESTION_CHUNK_FEEDBACK'},
  {'module': 'v8_log_retention', 'how': 'autoload', 'target': 'LOOP', 'label': 'LOG_RETENTION_MAINTENANCE'},
+ # Effective learning rate: computes the encoding rate and sleep gain at the
+ # start of each cycle, inside the cycle transaction (v8_encoding_rate.py).
+ {'module': 'v8_encoding_rate', 'how': 'autoload', 'target': 'LOOP', 'label': 'ENCODING_RATE'},
  # Outermost: one durable commit per cycle around the whole chain.
  {'module': 'v8_cycle_transaction', 'how': 'autoload', 'target': 'LOOP', 'label': 'CYCLE_TRANSACTION'}]
 

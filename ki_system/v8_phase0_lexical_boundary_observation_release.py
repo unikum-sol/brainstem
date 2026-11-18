@@ -62,6 +62,7 @@ _WS_RE = re.compile(r"\s+")
 
 
 from ki_system import learning_clock as _learning_clock
+from ki_system import v8_encoding_rate as encoding_rate
 def _now():
     return _learning_clock.now()
 
@@ -319,7 +320,8 @@ def observe_lexical_boundaries(con, neuromodulators):
             ).fetchone()
             if existing:
                 hid, ev = existing
-                new_evidence_count = int(ev or 1) + 1
+                # Counts with the encoding rate; the transition statistics below do not.
+                new_evidence_count = int(ev or 1) + encoding_rate.increment("boundary", signature, con)
                 new_confidence = 1.0 - (1.0 / (1.0 + new_evidence_count))
                 new_uncertainty = 1.0 / (1.0 + new_evidence_count)
                 con.execute(

@@ -53,6 +53,7 @@ DEFAULTS = {
 
 
 from ki_system import learning_clock as _learning_clock
+from ki_system import v8_encoding_rate as encoding_rate
 def _now() -> int:
     return _learning_clock.now()
 
@@ -349,7 +350,8 @@ def _process_sentence(con, chunk_id, sentence_elements, neuromod, pmi_threshold,
             ).fetchone()
             if hyp_existing:
                 hyp_id, ev = hyp_existing
-                new_evidence_count = int(ev or 1) + 1
+                # Counts with the encoding rate (v8_encoding_rate.py).
+                new_evidence_count = int(ev or 1) + encoding_rate.increment("binding", signature, con)
                 new_confidence = 1.0 - (1.0 / (1.0 + new_evidence_count))
                 new_uncertainty = 1.0 / (1.0 + new_evidence_count)
                 con.execute(

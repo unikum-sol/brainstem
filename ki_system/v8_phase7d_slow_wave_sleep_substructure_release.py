@@ -73,6 +73,7 @@ SLOW_WAVE_PARAMS = {
 }
 
 from ki_system import learning_clock as _learning_clock
+from ki_system import v8_encoding_rate as encoding_rate
 def _now(): return _learning_clock.now()
 def _clamp(x, lo=0.0, hi=1.0):
     try: x = float(x)
@@ -482,6 +483,11 @@ def _run_slow_wave_sleep(con, cycle_index, neuromod, adenosine_level):
     glu = neuromod["glutamate"]; gaba = neuromod["gaba"]; ach = neuromod["acetylcholine"]
     # self-regulating selection pressure from the system's own neuromodulator state
     sel_pressure = _clamp(sp_base + sp_gaba * gaba - sp_glu * glu)
+    # Sleep consolidation gain (v8_encoding_rate.py): after a long, loaded or
+    # surprising wake period more new traces survive (Huber et al. 2004;
+    # Redondo & Morris 2011). Anchors keep the plain selection pressure.
+    gain = encoding_rate.sleep_gain()
+    sel_eff = sel_pressure if gain == 1.0 else _clamp(sel_pressure - 0.5 * (gain - 1.0), 0.05, 0.95)
     pool_size = max(size, int(size * pool_factor))
     pool = _build_candidate_pool(con, pool_size, anchor_ratio, ctx_min_novel_ratio,
                                   fairness_enabled, fairness_target)
@@ -503,6 +509,7 @@ def _run_slow_wave_sleep(con, cycle_index, neuromod, adenosine_level):
         selected = keyed[:size]
         sel_acts = sorted(a for (_k, _it, a) in selected)
         threshold = max(thr_floor, _quantile(sel_acts, sel_pressure)); thresholds.append(threshold)
+        threshold_new = threshold if sel_eff == sel_pressure else max(thr_floor, _quantile(sel_acts, sel_eff))
         # Down-selection threshold per memory population (anchors, strategy
         # experiments, context hypotheses): anchors are interleaved to protect
         # old knowledge, not to compete with new memories for consolidation.
@@ -510,7 +517,8 @@ def _run_slow_wave_sleep(con, cycle_index, neuromod, adenosine_level):
         by_group = {}
         for _k, it, a in selected:
             by_group.setdefault("anchor" if it["is_anchor"] else it["source_table"], []).append(a)
-        group_thr = {g: max(thr_floor, _quantile(sorted(v), sel_pressure)) if len(v) >= 3 else threshold
+        group_thr = {g: (max(thr_floor, _quantile(sorted(v), sel_pressure if g == "anchor" else sel_eff)) if len(v) >= 3
+                         else (threshold if g == "anchor" else threshold_new))
                      for g, v in by_group.items()}
         for _k, it, a in selected:
             key = (it["source_table"], it["source_id"])

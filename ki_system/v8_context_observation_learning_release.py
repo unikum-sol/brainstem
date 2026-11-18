@@ -26,6 +26,7 @@ _REQUIRED_SCHEMA = {
 
 
 from ki_system import learning_clock as _learning_clock
+from ki_system import v8_encoding_rate as encoding_rate
 def _now():
     return _learning_clock.now()
 
@@ -252,7 +253,9 @@ def insert_observation(connection, chunk_id, sentence, title, neuromodulators, s
     ).fetchone()
     if existing:
         hypothesis_id = existing[0]
-        evidence_count = int(existing[1] or 1) + 1
+        # Wake re-observations count with the encoding rate (v8_encoding_rate.py).
+        step = 1 if sleep_encoded else encoding_rate.increment("sentence", signature, connection)
+        evidence_count = int(existing[1] or 1) + step
         new_confidence = 1.0 - (1.0 / (1.0 + evidence_count))
         new_uncertainty = 1.0 / (1.0 + evidence_count)
         if sleep_encoded:

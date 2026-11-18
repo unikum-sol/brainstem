@@ -13,6 +13,14 @@ Commands
                                    [--parallel 2] [--keep-db]
   compare  python benchmark.py compare --out DIR --a A --b B [--margin 0.05]
   report   python benchmark.py report --out DIR --a A
+  branch   python benchmark.py branch --out DIR --label A --arm fail|sham --k K
+                                   [--checkpoint 500] [--cycles 300] [--seeds ...]
+  k7       python benchmark.py k7 --out DIR --label A
+
+K7 since 17 November 2026 (PROTOCOL.md, amendment 1): a responsiveness probe.
+The main runs of a variant save a checkpoint (run --checkpoint-at 500); a
+fail branch and a sham branch continue from it with injected experiment
+outcomes, and the unperturbed main run is the control arm.
 
 PROJECT is a folder that contains ki_system/ (for example the BrainStem
 project folder or a code backup). DIR collects one folder per label and seed
@@ -34,7 +42,7 @@ CRITERIA = {
     "K4": "no meta parameter at a bound",
     "K5": "capture rate of tagged traces at least 0.85 (runs of 1,000 cycles or more)",
     "K6": "graduations per 1,000 cycles (compared between variants, not judged alone)",
-    "K7": "learning-rate spread above 0.01, values within [0.05, 0.95]",
+    "K7": "learning-rate spread above 0.01, values within [0.05, 0.95] (legacy, information only since 17 November 2026; see k7)",
     "K8": "no neuromodulator at 0 or 1 in 5 % of cycles or more",
     "K9": "no exceptions and no diagnostic findings",
 }
@@ -88,6 +96,10 @@ def evaluate(run_dir):
     m["exceptions"], m["diag_findings"] = s["exceptions"], s["diag_findings"]
     m["facts"], m["relations"] = s.get("facts"), s.get("relations")
     m["quick_check"] = s.get("quick_check")
+    for key in ("stable_lost", "facts_retracted", "revisions", "unsourced_facts", "unsourced_relations"):
+        m[key] = s.get(key)
+    eta = _vals(rows, "eta", "wake")
+    m["eta_wake_mean"] = _mean(eta) if eta else float("nan")
     m["wall_median_s"] = st.median(_vals(rows, "seconds")) if rows else float("nan")
     ok = {
         "K1": abs(m["rpe_wake"]) < 0.02 and abs(m["rpe_sleep"]) < 0.02,
@@ -155,8 +167,9 @@ def cmd_run(a):
             run_dir = os.path.join(base, "seed_" + seed)
             _prepare(run_dir, a.snapshot, code_dir)
             log = open(os.path.join(run_dir, "run.log"), "w", encoding="utf-8")
+            extra = ["checkpoint_at=%d" % a.checkpoint_at] if a.checkpoint_at else []
             proc = subprocess.Popen([sys.executable, os.path.join(HERE, "run_one.py"), run_dir, str(a.cycles),
-                                     a.label + "_s" + seed, seed], stdout=log, stderr=subprocess.STDOUT)
+                                     a.label + "_s" + seed, seed] + extra, stdout=log, stderr=subprocess.STDOUT)
             running.append((seed, run_dir, proc, log))
             print("started", a.label, "seed", seed, flush=True)
         time.sleep(5)
@@ -273,6 +286,118 @@ def cmd_report(a):
     print(text)
 
 
+# ---------------------------------------------------------------- K7 probe
+def _clear_db(d):
+    for suffix in ("", "-wal", "-shm"):
+        q = os.path.join(d, "ki_memory.sqlite3" + suffix)
+        if os.path.exists(q):
+            os.remove(q)
+
+
+def cmd_branch(a):
+    """Continue each seed's checkpoint with a fail or sham probe."""
+    seeds = [x.strip() for x in a.seeds.split(",") if x.strip()]
+    queue = list(seeds); running = []
+    while queue or running:
+        while queue and len(running) < a.parallel:
+            seed = queue.pop(0)
+            src = os.path.join(a.out, a.label, "seed_" + seed)
+            ckpt = os.path.join(src, "checkpoint_%d.sqlite3" % a.checkpoint)
+            dst = os.path.join(a.out, a.label + "_" + a.arm, "seed_" + seed)
+            os.makedirs(dst, exist_ok=True)
+            if os.path.isdir(os.path.join(dst, "ki_system")):
+                shutil.rmtree(os.path.join(dst, "ki_system"))
+            shutil.copytree(os.path.join(src, "ki_system"), os.path.join(dst, "ki_system"),
+                            ignore=shutil.ignore_patterns("__pycache__"))
+            _clear_db(dst)
+            shutil.copyfile(ckpt, os.path.join(dst, "ki_memory.sqlite3"))
+            log = open(os.path.join(dst, "run.log"), "w", encoding="utf-8")
+            proc = subprocess.Popen([sys.executable, os.path.join(HERE, "run_one.py"), dst, str(a.cycles),
+                                     "%s_%s_s%s" % (a.label, a.arm, seed), seed, "probe=" + a.arm, "probe_start=1",
+                                     "probe_len=%d" % a.probe_len, "probe_k=%d" % a.k],
+                                    stdout=log, stderr=subprocess.STDOUT)
+            running.append((seed, dst, proc, log)); print("started", a.arm, "seed", seed, flush=True)
+        time.sleep(5)
+        for item in list(running):
+            seed, dst, proc, log = item
+            if proc.poll() is not None:
+                log.close(); running.remove(item)
+                print("finished", a.arm, "seed", seed, "rc", proc.returncode, flush=True)
+                _clear_db(dst)
+
+
+def _rows(d):
+    return list(csv.DictReader(open(os.path.join(d, "learn_metrics.csv"), encoding="utf-8")))
+
+
+def _series(rows, key):
+    out = []
+    for r in rows:
+        try:
+            out.append(float(r[key]))
+        except (KeyError, TypeError, ValueError):
+            out.append(float("nan"))
+    return out
+
+
+def _max_window_mean(v, width=5):
+    best = float("-inf")
+    for i in range(0, len(v) - width + 1):
+        w = v[i:i + width]
+        if not any(math.isnan(x) for x in w):
+            best = max(best, sum(w) / width)
+    return best
+
+
+def cmd_k7(a):
+    """Evaluate the responsiveness probe (pre-registration Nachtrag 3).
+
+    All windows count from the probe onset t0, the first cycle with injected
+    rows in the fail arm (the sham arm starts at the same cycle, because all
+    arms are identical up to it): manipulation, response and specificity in
+    cycles t0 .. t0+9 (surprise is transient and the arms drift apart in their
+    sleep timing later), relaxation as the mean difference over t0+150 ..
+    t0+249."""
+    base = os.path.join(a.out, a.label)
+    seeds = sorted(n[5:] for n in os.listdir(base) if n.startswith("seed_"))
+    lines = ["## K7 responsiveness probe for %s (delta %.3f)" % (a.label, a.delta), "",
+             "| seed | onset | manipulation: max 5-cycle mean surprise difference, first 10 cycles | response: max 5-cycle mean d, first 10 cycles | specificity: max 5-cycle mean abs(sham minus control), first 10 cycles | relaxation: mean d, cycles 151-250 after onset | eta in bounds | result |",
+             "|---|---|---|---|---|---|---|---|"]
+    passed = valid = total = 0
+    for seed in seeds:
+        try:
+            ctrl = _rows(os.path.join(base, "seed_" + seed))[a.checkpoint:]
+            fail = _rows(os.path.join(a.out, a.label + "_fail", "seed_" + seed))
+            sham = _rows(os.path.join(a.out, a.label + "_sham", "seed_" + seed))
+        except FileNotFoundError:
+            continue
+        total += 1
+        pr = _series(fail, "probe_rows")
+        t0 = next((i for i, x in enumerate(pr) if x > 0), 0)
+        n = min(len(ctrl), len(fail), len(sham))
+        ce, fe, se = _series(ctrl, "eta_raw")[:n], _series(fail, "eta_raw")[:n], _series(sham, "eta_raw")[:n]
+        cs, fs = _series(ctrl, "surprise")[:n], _series(fail, "surprise")[:n]
+        w = slice(t0, t0 + 10)
+        d = [x - y for x, y in zip(fe, ce)]
+        manip = _max_window_mean([x - y for x, y in zip(fs, cs)][w])
+        response = _max_window_mean(d[w])
+        spec = _max_window_mean([abs(x - y) for x, y in zip(se, ce)][w])
+        late = d[t0 + 150:t0 + 250]
+        relax = st.mean(late) if len(late) >= 50 else float("nan")
+        etas = [x for arm in (ctrl, fail, sham) for x in _series(arm, "eta")[:n] if not math.isnan(x)]
+        bounds = all(0.05 - 1e-9 <= x <= 1.0 + 1e-9 for x in etas)
+        ok_valid = manip >= 0.10
+        ok = ok_valid and response >= a.delta and spec < a.delta / 2 and abs(relax) < a.delta / 2 and bounds
+        valid += ok_valid; passed += ok
+        lines.append("| %s | %d | %s | %s | %s | %s | %s | %s |" % (
+            seed, t0 + 1, _fmt(manip), _fmt(response), _fmt(spec), _fmt(relax), "yes" if bounds else "no",
+            "invalid" if not ok_valid else ("pass" if ok else "FAIL")))
+    verdict = "pass" if total and passed >= max(1, total - 1) else "FAIL"
+    lines += ["", "K7: %s (%d of %d seeds pass, %d valid; rule: all seeds but at most one)" % (verdict, passed, total, valid)]
+    text = "\n".join(lines)
+    open(os.path.join(a.out, "k7_%s.md" % a.label), "w", encoding="utf-8").write(text + "\n")
+    print(text)
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -281,13 +406,23 @@ def main():
     r.add_argument("--label", required=True); r.add_argument("--out", required=True)
     r.add_argument("--seeds", default="0,1,2,3,4"); r.add_argument("--cycles", type=int, default=1000)
     r.add_argument("--parallel", type=int, default=2); r.add_argument("--keep-db", action="store_true")
+    r.add_argument("--checkpoint-at", type=int, default=0)
+    br = sub.add_parser("branch")
+    br.add_argument("--out", required=True); br.add_argument("--label", required=True)
+    br.add_argument("--arm", required=True, choices=["fail", "sham"]); br.add_argument("--k", type=int, required=True)
+    br.add_argument("--checkpoint", type=int, default=500); br.add_argument("--cycles", type=int, default=300)
+    br.add_argument("--probe-len", type=int, default=10); br.add_argument("--seeds", default="0,1,2,3,4")
+    br.add_argument("--parallel", type=int, default=5)
+    k7 = sub.add_parser("k7")
+    k7.add_argument("--out", required=True); k7.add_argument("--label", required=True)
+    k7.add_argument("--checkpoint", type=int, default=500); k7.add_argument("--delta", type=float, default=0.05)
     c = sub.add_parser("compare")
     c.add_argument("--out", required=True); c.add_argument("--a", required=True); c.add_argument("--b", required=True)
     c.add_argument("--margin", type=float, default=0.05)
     rp = sub.add_parser("report")
     rp.add_argument("--out", required=True); rp.add_argument("--a", required=True)
     a = p.parse_args()
-    {"run": cmd_run, "compare": cmd_compare, "report": cmd_report}[a.cmd](a)
+    {"run": cmd_run, "compare": cmd_compare, "report": cmd_report, "branch": cmd_branch, "k7": cmd_k7}[a.cmd](a)
 
 
 if __name__ == "__main__":
